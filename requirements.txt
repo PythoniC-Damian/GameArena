@@ -7,7 +7,7 @@ WTForms==3.1.2
 email-validator==2.1.2
 requests==2.31.0
 python-dotenv==1.0.0
-gunicorn==23.2.1
+gunicorn==23.0.0
 SQLAlchemy==1.4.53
 Flask-SocketIO==5.6.1
 python-socketio==5.16.3
