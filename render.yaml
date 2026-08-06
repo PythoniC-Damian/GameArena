@@ -14,7 +14,7 @@ services:
     runtime: python
     plan: free
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn app:app --worker-class eventlet -w 1 --timeout 120 --bind 0.0.0.0:$PORT"
+    startCommand: "python app.py"
     autoDeploy: true
     healthCheckPath: /
     envVars:
