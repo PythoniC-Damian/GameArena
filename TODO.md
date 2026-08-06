@@ -7,9 +7,9 @@
 - [x] 4. Create `render.yaml` Render Blueprint (web service + free Postgres)
 
 ## Step 2 — Git setup & push to GitHub
-- [ ] 5. Install GitHub CLI (`gh`) via winget
-- [ ] 6. Authenticate `gh`
-- [ ] 7. `git init` + add files + initial commit
+- [x] 5. Install GitHub CLI (`gh`) via winget
+- [x] 6. Authenticate `gh`
+- [x] 7. `git init` + add files + initial commit
 - [ ] 8. Create `GameArena` repo on GitHub via `gh repo create`
 - [ ] 9. Push to `main`
 
