@@ -10,8 +10,8 @@
 - [x] 5. Install GitHub CLI (`gh`) via winget
 - [x] 6. Authenticate `gh`
 - [x] 7. `git init` + add files + initial commit
-- [ ] 8. Create `GameArena` repo on GitHub via `gh repo create`
-- [ ] 9. Push to `main`
+- [x] 8. Create `GameArena` repo on GitHub via `gh repo create`
+- [x] 9. Push to `main`
 
 ## Step 3 — Render deployment
 - [ ] 10. Connect repo to Render (Blueprint) with env vars
