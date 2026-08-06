@@ -1,0 +1,79 @@
+<!-- ===== GameArena Preloader (splash screen) ===== -->
+<div id="gamearena-preloader" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-950">
+    <!-- subtle radial glow behind the logo -->
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.18),transparent_60%)]"></div>
+
+    <div class="relative flex flex-col items-center">
+        <!-- spinning ring around the G logo -->
+        <div class="relative flex h-24 w-24 items-center justify-center">
+            <div class="absolute inset-0 rounded-full border-4 border-emerald-500/20"></div>
+            <div class="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-400 border-r-emerald-400/40 animate-spin"></div>
+            <div class="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-3xl font-bold text-slate-950 shadow-2xl shadow-emerald-500/30">G</div>
+        </div>
+
+        <!-- GameArena wordmark (no tagline) -->
+        <p class="mt-6 text-sm uppercase tracking-[0.5em] text-emerald-300">GameArena</p>
+
+        <!-- loading dots -->
+        <div class="mt-4 flex items-center gap-1.5">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-bounce" style="animation-delay:0ms"></span>
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-bounce" style="animation-delay:150ms"></span>
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-bounce" style="animation-delay:300ms"></span>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var preloader = document.getElementById('gamearena-preloader');
+    if (!preloader) return;
+
+    // Decide whether the splash should show. It only plays on:
+    //   1. A manual page refresh (reload)
+    //   2. A login/register form submission (flag set in sessionStorage)
+    var shouldShow = false;
+    try {
+        var navEntries = performance.getEntriesByType('navigation');
+        if (navEntries.length && navEntries[0].type === 'reload') {
+            shouldShow = true;
+        }
+        if (sessionStorage.getItem('gamearenaShowSplash') === '1') {
+            shouldShow = true;
+            sessionStorage.removeItem('gamearenaShowSplash');
+        }
+    } catch (e) {}
+
+    if (!shouldShow) {
+        // Normal navigation (e.g. clicking a link) - hide the splash instantly.
+        if (preloader.parentNode) preloader.parentNode.removeChild(preloader);
+        return;
+    }
+
+    function hide() {
+        preloader.style.transition = 'opacity 0.6s ease, visibility 0.6s ease';
+        preloader.style.opacity = '0';
+        preloader.style.visibility = 'hidden';
+        setTimeout(function () {
+            if (preloader.parentNode) preloader.parentNode.removeChild(preloader);
+        }, 650);
+    }
+    // Hide once the page has fully loaded, with a minimum display time for a smooth splash.
+    var started = Date.now();
+    var minDelay = 1200;
+    function finish() {
+        var elapsed = Date.now() - started;
+        if (elapsed < minDelay) {
+            setTimeout(hide, minDelay - elapsed);
+        } else {
+            hide();
+        }
+    }
+    if (document.readyState === 'complete') {
+        finish();
+    } else {
+        window.addEventListener('load', finish);
+    }
+    // Safety fallback: never leave the preloader stuck.
+    setTimeout(hide, 4000);
+})();
+</script>

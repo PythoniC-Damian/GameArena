@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify Email - GameArena</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="relative min-h-screen overflow-y-auto bg-slate-950 text-white">
+{% include '_preloader.html' %}
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.15),_transparent_20%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),_transparent_18%)]"></div>
+    <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1400&q=80')] bg-cover bg-center opacity-20"></div>
+    <div class="relative mx-auto flex min-h-screen items-center justify-center px-6 py-12">
+        <div class="w-full max-w-4xl rounded-[40px] border border-white/10 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/40 backdrop-blur-xl">
+            <div class="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
+                <div class="space-y-6">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-slate-950 font-bold shadow-xl shadow-cyan-500/20">G</div>
+                        <div>
+                            <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">GameArena</p>
+                            <p class="text-lg font-semibold text-white/90">Verify your email before you join the arena.</p>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Secure registration</p>
+                        <h1 class="text-4xl font-bold text-white">Enter your verification code</h1>
+                        <p class="max-w-xl text-slate-400">We sent a 6-digit verification code to your email. Confirm it to complete registration and unlock full account access.</p>
+                    </div>
+                    <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
+                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Need the code again?</p>
+                        <p class="mt-3 text-base">Click resend and check your inbox.</p>
+                        <a href="{{ url_for('verify_email', email=form.email.data, resend=1) }}" class="mt-4 inline-flex rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Resend Code</a>
+                    </div>
+                </div>
+                <div class="rounded-[32px] border border-white/10 bg-slate-950/90 p-8 shadow-xl shadow-slate-950/40">
+                    <h2 class="text-3xl font-semibold text-white mb-6">Verify Email</h2>
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                    <div class="space-y-3 mb-6">
+                    {% for category, message in messages %}
+                    <div class="rounded-2xl px-4 py-3 text-sm font-medium {{ 'bg-red-500 text-white' if category == 'error' else 'bg-emerald-500 text-slate-950' }}">
+                        {{ message }}
+                    </div>
+                    {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% endwith %}
+
+                    <form method="POST" class="space-y-5">
+                        {{ form.hidden_tag() }}
+                        <div>
+                            {{ form.email.label(class="block text-sm font-medium text-slate-300 mb-2") }}
+                            {{ form.email(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
+                            {% if form.email.errors %}
+                            <p class="mt-2 text-sm text-red-400">{{ form.email.errors[0] }}</p>
+                            {% endif %}
+                        </div>
+                        <div>
+                            {{ form.code.label(class="block text-sm font-medium text-slate-300 mb-2") }}
+                            {{ form.code(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
+                            {% if form.code.errors %}
+                            <p class="mt-2 text-sm text-red-400">{{ form.code.errors[0] }}</p>
+                            {% endif %}
+                        </div>
+                        {{ form.submit(class="w-full rounded-3xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400") }}
+                    </form>
+                    <p class="mt-6 text-center text-sm text-slate-400">Already verified? <a href="{{ url_for('login') }}" class="font-semibold text-emerald-300 hover:text-emerald-200">Login</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

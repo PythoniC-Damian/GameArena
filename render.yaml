@@ -1,0 +1,40 @@
+# Render Blueprint for GameArena
+# This file lets you deploy the app + a free Postgres DB with one click/command.
+# See: https://render.com/docs/blueprint-spec
+
+databases:
+  - name: gamearena-db
+    plan: free
+    databaseName: gamearena
+    user: gamearena
+
+services:
+  - type: web
+    name: gamearena
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --worker-class eventlet -w 1 --timeout 120 --bind 0.0.0.0:$PORT"
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gamearena-db
+          property: connectionString

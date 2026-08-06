@@ -1,0 +1,16 @@
+Flask==3.0.0
+Flask-SQLAlchemy==3.0.0
+Flask-Login==0.6.3
+Flask-WTF==1.2.1
+Werkzeug==3.0.1
+WTForms==3.1.2
+email-validator==2.1.2
+requests==2.31.0
+python-dotenv==1.0.0
+gunicorn==23.2.1
+SQLAlchemy==1.4.53
+Flask-SocketIO==5.6.1
+python-socketio==5.16.3
+eventlet==0.36.0
+psycopg2-binary==2.9.9
+resend==0.3.0

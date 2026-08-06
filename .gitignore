@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+instance/
+.env
+database.db
+.DS_Store
+.pytest_cache/
+.vscode/
+templates_backup_*/
+*.sqlite
+*.db

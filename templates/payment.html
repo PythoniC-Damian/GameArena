@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment - GameArena</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+</head>
+
+<body class="min-h-screen bg-slate-950 text-white pb-24 md:pb-0">
+{% include '_preloader.html' %}
+n<div class="relative overflow-hidden">
+    <div class="absolute inset-x-0 top-0 h-[28vh] sm:h-[36vh] bg-[radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_35%),radial-gradient(circle_at_bottom_left,_rgba(14,165,233,0.14),_transparent_30%)]"></div>
+    <div class="absolute inset-0 bg-slate-950/55"></div>
+</div>
+
+<nav class="relative mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+    <div class="flex items-center gap-3">
+        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 shadow-2xl shadow-cyan-500/20">
+            <span class="text-lg font-bold text-slate-950">G</span>
+        </div>
+        <div>
+            <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">GameArena</p>
+            <p class="text-base font-semibold text-white/90">Mobile esports hub</p>
+        </div>
+    </div>
+
+    <div class="hidden items-center gap-8 text-sm text-slate-200 md:flex">
+        <a href="{{ url_for('home') }}" class="hover:text-white transition">Home</a>
+        <a href="{{ url_for('leaderboard') }}" class="hover:text-white transition">Leaderboard</a>
+        <a href="{{ url_for('dashboard') }}" class="hover:text-white transition">Dashboard</a>
+    </div>
+
+    <div class="hidden md:flex items-center gap-3">
+        <a href="{{ url_for('dashboard') }}" class="rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition">My Arena</a>
+        <a href="{{ url_for('logout') }}" class="rounded-full bg-slate-800 px-5 py-2 text-sm hover:bg-slate-700 transition">Logout</a>
+    </div>
+</nav>
+
+<main class="relative mx-auto max-w-7xl px-6">
+    <section class="mx-auto mt-10 max-w-2xl">
+        <div class="rounded-[40px] border border-white/10 bg-slate-900/90 p-8 shadow-2xl shadow-emerald-500/10 backdrop-blur-xl">
+
+n
+            <div class="space-y-2 mb-8">
+                <p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Secure Payment</p>
+                <h2 class="text-3xl font-bold text-white">Complete Your Entry</h2>
+            </div>
+
+n            <!-- TOURNAMENT INFO -->
+            <div class="rounded-[28px] border border-white/10 bg-slate-950/70 p-6 mb-8">
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm text-slate-400">Tournament</p>
+                        <p class="text-lg font-semibold text-emerald-300">{{ tournament.game }}</p>
+                    </div>
+                    <div class="border-t border-white/10 pt-3">
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-slate-400">Entry Fee:</span>
+                            <span class="text-emerald-400 font-semibold">₦{{ tournament.entry_fee }}</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-slate-400">Prize Pool:</span>
+                            <span class="text-cyan-400 font-semibold">₦{{ tournament.prize_pool }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+n            <!-- PAYMENT FORM -->
+            <form id="paymentForm" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                
+                <div>
+                    <label class="block text-sm font-semibold text-emerald-300 mb-2">Email Address</label>
+                    <input
+                        type="email"
+                        id="email"
+                        value="{{ current_user.email }}"
+                        readonly
+                        class="w-full p-4 rounded_[20px] bg-slate-950/50 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
+                    />
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-emerald-300 mb-2">Amount to Pay</label>
+                    <input
+                        type="text"
+                        id="amount"
+                        value="₦{{ tournament.entry_fee }}"
+                        readonly
+                        class="w-full p-4 rounded-[20px] bg-slate-950/50 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 font-semibold"
+                    />
+                </div>
+
+                <!-- FLASH MESSAGES -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="rounded_[20px] border {% if category == 'error' %}border-red-500/30 bg-red-500/15{% else %}border-emerald-500/30 bg-emerald-500/15{% endif %} p-4 text-center">
+                        <p class="{% if category == 'error' %}text-red-200{% else %}text-emerald-200{% endif %} text-sm">{{ message }}</p>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                <button
+                    type="button"
+                    onclick="payWithPaystack()"
+                    class="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 p-4 rounded-full hover:from-emerald-400 hover:to-cyan-400 font-bold text-slate-950 transition shadow-lg shadow-emerald-500/20"
+                >
+                    Pay ₦{{ tournament.entry_fee }} Now
+                </button>
+            </form>
+
+            <div class="mt-8 text-center">
+                <a href="{{ url_for('tournament_details', tournament_id=tournament.id) }}" class="text-slate-400 hover:text-white transition text-sm">
+                    ← Back to Tournament Details
+                </a>
+            </div>
+
+n        </div>
+    </section>
+</main>
+
+<script>
+
+nfunction payWithPaystack() {
+    // Get CSRF token 
+    const csrfTokenElement = document.querySelector('input[name="csrf_token"]');
+    const csrfToken = csrfTokenElement ? csrfTokenElement.value : '';
+    
+    // First, initialize payment on backend to create UserTournament record
+    fetch('/initialize-payment/{{ tournament.id }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Now open Paystack with the initialized reference
+            const handler = PaystackPop.setup({
+                key: '{{ paystack_public_key }}',
+                email: document.getElementById('email').value,
+                amount: {{ tournament.entry_fee * 100 }}, // Amount in kobo
+                currency: 'NGN',
+                ref: data.reference,
+                metadata: {
+                    tournament_id: {{ tournament.id }},
+                    user_id: {{ current_user.id }}
+                },
+                callback: function(response) {
+                    // Payment successful, redirect to verification
+                    window.location.href = '/verify-payment?reference=' + response.reference;
+                },
+                onClose: function() {
+                    alert('Payment cancelled');
+                }
+            });
+            
+            handler.openIframe();
+        } else {
+            alert('Payment initialization failed: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Error initializing payment: ' + error);
+        console.error('Error:', error);
+    });
+}
+</script>
+
+</body>
+</html>

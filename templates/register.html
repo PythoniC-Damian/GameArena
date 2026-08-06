@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Register - GameArena</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+.bg-slide {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center center;
+  opacity: 0;
+  transition: opacity .75s ease-in-out;
+}
+.bg-slide.active {
+  opacity: 1;
+}
+</style>
+</head>
+<body class="relative min-h-screen overflow-y-auto bg-slate-950 text-white">
+{% include '_preloader.html' %}
+    <div class="absolute inset-0 overflow-hidden">
+        <div class="bg-slide active bg-[url('{{ url_for('static', filename='images/call_of_duty.jpg') }}')]"></div>
+        <div class="bg-slide bg-[url('https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1400&q=80')]"></div>
+        <div class="bg-slide bg-[url('https://images.unsplash.com/photo-1500534314209-a57faa8aee5b?auto=format&fit=crop&w=1400&q=80')]"></div>
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.15),_transparent_20%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),_transparent_18%)]"></div>
+    </div>
+    <div class="relative mx-auto flex min-h-screen items-center justify-center px-6 py-12">
+        <div class="grid w-full max-w-6xl gap-10 rounded-[40px] border border-white/10 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/40 backdrop-blur-xl lg:grid-cols-[1.2fr_0.8fr]">
+            <div class="space-y-8">
+                <div class="flex items-center gap-3">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-slate-950 font-bold shadow-xl shadow-cyan-500/20">G</div>
+                    <div>
+                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">GameArena</p>
+                        <p class="text-lg font-semibold text-white/90">Create your tournament profile.</p>
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Welcome to the arena</p>
+                    <h1 class="text-4xl font-bold text-white">Register for GameArena</h1>
+                    <p class="max-w-xl text-slate-400">Sign up to join tournaments, manage payments, and unlock match room credentials after verification.</p>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
+                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Secure signup</p>
+                        <p class="mt-3 text-base">All passwords are hashed and protected with secure authentication.</p>
+                    </div>
+                    <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
+                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Instant access</p>
+                        <p class="mt-3 text-base">Start joining tournaments and following leaderboards once your account is created.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="rounded-[32px] border border-white/10 bg-slate-950/90 p-8 shadow-xl shadow-slate-950/40">
+                <h2 class="text-3xl font-semibold text-white mb-3">Create Account</h2>
+                <p class="text-sm text-slate-400 mb-6">A verification code will be sent to your email after registration.</p>
+
+n                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                <div class="space-y-3 mb-6">
+                {% for category, message in messages %}
+                <div class="rounded-2xl px-4 py-3 text-sm font-medium {{ 'bg-red-500 text-white' if category == 'error' else 'bg-emerald-500 text-slate-950' }}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+                </div>
+                {% endif %}
+                {% endwith %}
+
+n                <form method="POST" class="space-y-5">
+                    {{ form.hidden_tag() }}
+                    <div>
+                        {{ form.username.label(class="block text-sm font-medium text-slate-300 mb-2") }}
+                        {{ form.username(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
+                        {% if form.username.errors %}
+                        <p class="mt-2 text-sm text-red-400">{{ form.username.errors[0] }}</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        {{ form.email.label(class="block text-sm font-medium text-slate-300 mb-2") }}
+                        {{ form.email(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
+                        {% if form.email.errors %}
+                        <p class="mt-2 text-sm text-red-400">{{ form.email.errors[0] }}</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        {{ form.password.label(class="block text-sm font-medium text-slate-300 mb-2") }}
+                        {{ form.password(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
+                        {% if form.password.errors %}
+                        <p class="mt-2 text-sm text-red-400">{{ form.password.errors[0] }}</p>
+                        {% endif %}
+                    </div>
+{{ form.submit(class="w-full rounded-3xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400") }}
+                </form>
+                <script>
+                    (function () {
+                        var form = document.querySelector('form[method="POST"]');
+                        if (form) {
+                            form.addEventListener('submit', function () {
+                                try { sessionStorage.setItem('gamearenaShowSplash', '1'); } catch (e) {}
+                            });
+                        }
+                    })();
+                </script>
+                <p class="mt-6 text-center text-sm text-slate-400">Already have an account? <a href="{{ url_for('login') }}" class="font-semibold text-emerald-300 hover:text-emerald-200">Login</a></p>
+            </div>
+        </div>
+    </div>
+<script>
+const bgSlides = document.querySelectorAll('.bg-slide');
+let bgIndex = 0;
+setInterval(() => {
+  if (!bgSlides.length) return;
+  bgSlides[bgIndex].classList.remove('active');
+  bgIndex = (bgIndex + 1) % bgSlides.length;
+  bgSlides[bgIndex].classList.add('active');
+}, 5000);
+</script>
+</body>
+</html>
