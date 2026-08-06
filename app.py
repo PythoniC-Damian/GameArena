@@ -15,7 +15,6 @@ from urllib.parse import quote_plus
 import random
 import smtplib
 import ssl
-import importlib
 try:
     import requests
     REQUESTS_AVAILABLE = True 
@@ -23,17 +22,6 @@ except ImportError:
     REQUESTS_AVAILABLE = False
     print("Warning: requests module not available, payment features will not work")
 from dotenv import load_dotenv
-
-# Resend email (real provider; avoids Gmail SMTP login issues)
-Resend = None
-EmailParams = None
-try:
-    resend_module = importlib.import_module('resend')
-    Resend = getattr(resend_module, 'Resend', None)
-    EmailParams = getattr(getattr(resend_module, 'emails', None), 'EmailParams', None)
-except ImportError:
-    Resend = None
-    EmailParams = None
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -195,24 +183,28 @@ def send_email(subject, recipient, body):
     """Send email synchronously."""
     email_from = os.environ.get('EMAIL_FROM') or os.environ.get('SMTP_USERNAME') or 'noreply@gamearena.com'
 
-    # --- Resend (preferred) ---
+# --- Resend (preferred) ---
 
     resend_api_key = os.environ.get('RESEND_API_KEY')
-    if Resend is not None and resend_api_key:
+    if resend_api_key and REQUESTS_AVAILABLE:
         try:
-            resend = Resend(resend_api_key)
-            params = {
+            payload = {
                 "from": email_from,
                 "to": recipient,
                 "subject": subject,
                 "text": body,
             }
-            if EmailParams is not None:
-                resend.emails.send(EmailParams(**params))
+            resp = requests.post(
+                'https://api.resend.com/emails',
+                json=payload,
+                headers={'Authorization': f'Bearer {resend_api_key}'},
+                timeout=15,
+            )
+            if resp.status_code < 300:
+                app.logger.info(f"Resend email sent to {recipient}")
+                return True
             else:
-                resend.emails.send(params)
-            app.logger.info(f"Resend email sent to {recipient}")
-            return True
+                app.logger.warning(f"Resend email failed for {recipient}: {resp.status_code} {resp.text}")
         except Exception as e:
             app.logger.warning(f"Resend email failed for {recipient}: {e}")
 

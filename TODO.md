@@ -6,7 +6,9 @@
 - [x] 3. Add `psycopg2-binary` to `requirements.txt` (Postgres)
 - [x] 4. Create `render.yaml` Render Blueprint (web service + free Postgres)
 - [x] 4b. Fix `gunicorn==23.2.1` → `23.0.0` (23.2.1 never existed)
-- [x] 4c. Fix `requests==2.31.0` → `requests>=2.23.0` (resend 0.3.0 needs requests==2.23.0)
+- [x] 4c. Pin `requests==2.32.3` (modern, Python 3.12-compatible)
+- [x] 4d. Remove `resend==0.3.0` (hard-pinned broken `requests==2.23.0`); replaced SDK with direct Resend REST API call via `requests`
+- [x] 4e. Pin Python 3.12 via `runtime.txt` (`python-3.12.0`) + `PYTHON_VERSION` in `render.yaml` (fixes eventlet 0.36.0 crash on Python 3.14)
 
 ## Step 2 — Git setup & push to GitHub
 - [x] 5. Install GitHub CLI (`gh`) via winget
