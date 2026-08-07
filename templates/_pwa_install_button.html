@@ -1,0 +1,45 @@
+<!-- PWA Install App button (appears only when installable) -->
+<div id="pwaInstallContainer" class="fixed bottom-24 right-4 z-50 hidden md:bottom-6">
+  <button id="pwaInstallBtn" class="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 shadow-2xl shadow-emerald-500/30 transition hover:bg-emerald-400">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+    Install App
+  </button>
+</div>
+<script>
+(function () {
+  var deferredPrompt = null;
+  var container = document.getElementById('pwaInstallContainer');
+  var btn = document.getElementById('pwaInstallBtn');
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (container) container.classList.remove('hidden');
+  });
+
+  if (btn) {
+    btn.addEventListener('click', function () {
+      if (!deferredPrompt) {
+        // Fallback: guide user to browser's Add to Home Screen
+        alert('Tap your browser menu (⋮ or Share) and choose "Add to Home Screen" / "Install App".');
+        return;
+      }
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function (choiceResult) {
+        if (choiceResult.outcome === 'accepted') {
+          if (container) container.classList.add('hidden');
+        }
+        deferredPrompt = null;
+      });
+    });
+  }
+
+  // Hide button if already installed in standalone mode
+  window.addEventListener('appinstalled', function () {
+    if (container) container.classList.add('hidden');
+  });
+  if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+    if (container) container.classList.add('hidden');
+  }
+})();
+</script>

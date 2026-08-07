@@ -1,0 +1,10 @@
+<script>
+// PWA: register the service worker for installability + offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/static/sw.js').catch(function (err) {
+      console.error('SW registration failed:', err);
+    });
+  });
+}
+</script>

@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Register - GameArena</title>
+
+{% include '_pwa_meta.html' %}
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 .bg-slide {
@@ -118,5 +120,6 @@ setInterval(() => {
   bgSlides[bgIndex].classList.add('active');
 }, 5000);
 </script>
+{% include '_pwa_register.html' %}
 </body>
 </html>

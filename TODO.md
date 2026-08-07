@@ -9,10 +9,11 @@ Postgres DB and providing the admin env vars to Render.
 - [x] 1. Edit `render.yaml` to add `ADMIN_EMAIL` and `ADMIN_PASSWORD` env vars
 - [x] 2. Create `migrate_to_postgres.py` migration script (reads local SQLite, inserts into Postgres)
 - [x] 3. Fix `app.py` admin bootstrap to avoid UNIQUE username crash on Postgres
-- [ ] 4. User runs the migration locally with their private Postgres URL
-- [ ] 5. User sets `ADMIN_EMAIL` and `ADMIN_PASSWORD` in Render dashboard
-- [ ] 6. Redeploy on Render + push render.yaml/app.py changes
-- [ ] 7. Verify login for admin and existing users on the live site
+- [x] 4. Commit and push changes to GitHub (origin/main) - triggers Render auto-deploy
+- [x] 5. Admin login works on production (admin env vars set)
+- [x] 6. Migration to Postgres completed successfully (all data copied)
+- [x] 7. Done: Admin login works on production
+- [x] 8. Add Admin Panel link to dashboard navigation (visible to admins)
 
 ## Notes
 - Migration script must NOT store or log the database URL.
