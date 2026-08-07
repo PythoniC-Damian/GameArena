@@ -23,6 +23,7 @@ How it works:
 import os
 import sys
 import sqlite3
+from datetime import datetime
 
 # The Postgres URL MUST come from the environment. Never hardcode it.
 DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
@@ -44,7 +45,36 @@ from app import (
     TournamentMatchDispute,
 )
 
+# IMPORTANT: app.py calls load_dotenv(override=True), which would replace the
+# DATABASE_URL we got from the shell with the .env SQLite value. Force the app
+# to use the Postgres URL we were invoked with, then rebind the engine so the
+# migration writes to Postgres (not local SQLite).
+flask_app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+with flask_app.app_context():
+    if db.engine:
+        db.engine.dispose()
+
 SQLITE_PATH = os.path.join('instance', 'database.db')
+
+
+def parse_dt(value):
+    """Convert a SQLite datetime string (or None) into a Python datetime."""
+    if value is None or value == '':
+        return None
+    if isinstance(value, datetime):
+        return value
+    s = str(value).replace('T', ' ').strip()
+    for fmt in (
+        '%Y-%m-%d %H:%M:%S.%f',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d %H:%M',
+        '%Y-%m-%d',
+    ):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def load_sqlite_data():
@@ -95,9 +125,9 @@ def migrate():
                 suspended=bool(row.get('suspended')),
                 email_verified=bool(row.get('email_verified')),
                 verification_code=row.get('verification_code'),
-                verification_expires_at=row.get('verification_expires_at'),
+                verification_expires_at=parse_dt(row.get('verification_expires_at')),
                 reset_code=row.get('reset_code'),
-                reset_expires_at=row.get('reset_expires_at'),
+                reset_expires_at=parse_dt(row.get('reset_expires_at')),
                 avatar_url=row.get('avatar_url'),
                 bio=row.get('bio'),
                 payout_bank=row.get('payout_bank'),
@@ -129,11 +159,11 @@ def migrate():
                 prize=row.get('prize'),
                 max_participants=row.get('max_participants'),
                 description=row.get('description'),
-                created_at=row.get('created_at'),
+                created_at=parse_dt(row.get('created_at')),
                 status=row.get('status'),
                 room_id=row.get('room_id'),
                 room_password=row.get('room_password'),
-                match_time=row.get('match_time'),
+                match_time=parse_dt(row.get('match_time')),
                 first_place=row.get('first_place'),
                 second_place=row.get('second_place'),
                 third_place=row.get('third_place'),
@@ -161,7 +191,7 @@ def migrate():
             ut = UserTournament(
                 user_id=uid,
                 tournament_id=tid,
-                joined_at=row.get('joined_at'),
+                joined_at=parse_dt(row.get('joined_at')),
                 payment_status=row.get('payment_status'),
                 transaction_ref=row.get('transaction_ref'),
                 amount_paid=row.get('amount_paid'),
@@ -187,7 +217,7 @@ def migrate():
                 bank_name=row.get('bank_name'),
                 account_number=row.get('account_number'),
                 account_name=row.get('account_name'),
-                created_at=row.get('created_at'),
+                created_at=parse_dt(row.get('created_at')),
             )
             db.session.add(wt)
         db.session.commit()
@@ -201,8 +231,8 @@ def migrate():
             n = Notification(
                 user_id=uid,
                 message=row.get('message'),
-                read_at=row.get('read_at'),
-                created_at=row.get('created_at'),
+                read_at=parse_dt(row.get('read_at')),
+                created_at=parse_dt(row.get('created_at')),
             )
             db.session.add(n)
         db.session.commit()
@@ -216,7 +246,7 @@ def migrate():
             g = GlobalChatMessage(
                 user_id=uid,
                 message=row.get('message'),
-                created_at=row.get('created_at'),
+                created_at=parse_dt(row.get('created_at')),
             )
             db.session.add(g)
         db.session.commit()
@@ -242,8 +272,8 @@ def migrate():
                 winner_user_id=user_id_map.get(row.get('winner_user_id')),
                 proof_note=row.get('proof_note'),
                 submitted_by_user_id=user_id_map.get(row.get('submitted_by_user_id')),
-                created_at=row.get('created_at'),
-                updated_at=row.get('updated_at'),
+                created_at=parse_dt(row.get('created_at')),
+                updated_at=parse_dt(row.get('updated_at')),
             )
             db.session.add(m)
             db.session.flush()
@@ -261,7 +291,7 @@ def migrate():
                 match_id=mid,
                 user_id=uid,
                 message=row.get('message'),
-                created_at=row.get('created_at'),
+                created_at=parse_dt(row.get('created_at')),
             )
             db.session.add(mc)
         db.session.commit()
@@ -277,7 +307,7 @@ def migrate():
                 tournament_id=tid,
                 user_id=uid,
                 message=row.get('message'),
-                created_at=row.get('created_at'),
+                created_at=parse_dt(row.get('created_at')),
             )
             db.session.add(tc)
         db.session.commit()
@@ -297,10 +327,10 @@ def migrate():
                 points=row.get('points'),
                 rank=row.get('rank'),
                 prize_code=row.get('prize_code'),
-                prize_code_sent_at=row.get('prize_code_sent_at'),
+                prize_code_sent_at=parse_dt(row.get('prize_code_sent_at')),
                 prize_status=row.get('prize_status'),
                 paystack_transfer_ref=row.get('paystack_transfer_ref'),
-                prize_paid_at=row.get('prize_paid_at'),
+                prize_paid_at=parse_dt(row.get('prize_paid_at')),
             )
             db.session.add(ts)
         db.session.commit()
@@ -317,7 +347,7 @@ def migrate():
                 user_id=uid,
                 reason=row.get('reason'),
                 status=row.get('status'),
-                created_at=row.get('created_at'),
+                created_at=parse_dt(row.get('created_at')),
             )
             db.session.add(d)
         db.session.commit()
