@@ -1,21 +1,20 @@
-# GameArena Deployment To Do
+# TODO — Fix Production Login + Migrate Data to Render Postgres
 
-## Step 1 — Deployment config fixes (Render + WebSockets)
-- [x] 1. Update `Procfile` + `render.yaml` to run via `python app.py` (socketio.run) — avoids gunicorn eventlet worker "class uri invalid" error
-- [x] 2. Add `eventlet` to `requirements.txt`
-- [x] 3. Add `psycopg2-binary` to `requirements.txt` (Postgres)
-- [x] 4. Create `render.yaml` Render Blueprint (web service + free Postgres)
-- [x] 4b. Fix `gunicorn==23.2.1` → `23.0.0` (23.2.1 never existed)
-- [x] 4c. Pin `requests==2.32.3` (modern, Python 3.12-compatible)
-- [x] 4d. Remove `resend==0.3.0` (hard-pinned broken `requests==2.23.0`); replaced SDK with direct Resend REST API call via `requests`
-- [x] 4e. Pin Python 3.12 via `runtime.txt` (`python-3.12.0`) + `PYTHON_VERSION` in `render.yaml` (fixes eventlet 0.36.0 crash on Python 3.14)
+## Goal
+Get the admin AND all existing users able to log in on the live Render site
+(https://gamearena-p8en.onrender.com) by migrating local SQLite data to Render's
+Postgres DB and providing the admin env vars to Render.
 
-## Step 2 — Git setup & push to GitHub
-- [x] 5. Install GitHub CLI (`gh`) via winget
-- [x] 6. Authenticate `gh`
-- [x] 7. `git init` + add files + initial commit
-- [x] 8. Create `GameArena` repo on GitHub via `gh repo create`
-- [x] 9. Push to `main`
+## Steps
+- [x] 1. Edit `render.yaml` to add `ADMIN_EMAIL` and `ADMIN_PASSWORD` env vars
+- [x] 2. Create `migrate_to_postgres.py` migration script (reads local SQLite, inserts into Postgres)
+- [x] 3. Fix `app.py` admin bootstrap to avoid UNIQUE username crash on Postgres
+- [ ] 4. User runs the migration locally with their private Postgres URL
+- [ ] 5. User sets `ADMIN_EMAIL` and `ADMIN_PASSWORD` in Render dashboard
+- [ ] 6. Redeploy on Render + push render.yaml/app.py changes
+- [ ] 7. Verify login for admin and existing users on the live site
 
-## Step 3 — Render deployment
-- [ ] 10. Connect repo to Render (Blueprint) with env vars
+## Notes
+- Migration script must NOT store or log the database URL.
+- `.env` and `*.db` are already gitignored — secrets stay local.
+

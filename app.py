@@ -2053,23 +2053,25 @@ with app.app_context():
         except Exception as e:
             app.logger.warning(f"Database schema upgrade warning: {e}")
 
-    # Create admin user if no users exist
-    if User.query.count() == 0:
-        admin_user = User(
+# --- Ensure expected admin credentials exist (fixes admin login issues) ---
+    # Credentials are read from the environment (gitignored) so secrets stay out of source.
+    expected_admin_email = (os.environ.get('ADMIN_EMAIL', '') or '').strip().lower()
+    expected_admin_password = os.environ.get('ADMIN_PASSWORD', '') or ''
+
+    # Only create the fallback default admin if there are no users at all AND
+    # no explicit admin credentials were provided. This avoids creating it on
+    # a fresh production DB where a real admin is configured below.
+    if User.query.count() == 0 and not (expected_admin_email and expected_admin_password):
+        fallback_admin = User(
             username="admin",
             email="admin@gamearena.com",
             password=generate_password_hash("admin123"),
             is_admin=True,
             email_verified=True,
         )
-        db.session.add(admin_user)
+        db.session.add(fallback_admin)
         db.session.commit()
-        print("Admin user created: admin@gamearena.com / admin123")
-
-    # --- Ensure expected admin credentials exist (fixes admin login issues) ---
-    # Credentials are read from the .env file (gitignored) so secrets stay out of source.
-    expected_admin_email = (os.environ.get('ADMIN_EMAIL', '') or '').strip().lower()
-    expected_admin_password = os.environ.get('ADMIN_PASSWORD', '')
+        print("Fallback admin user created: admin@gamearena.com / admin123")
 
     if expected_admin_email and expected_admin_password:
         admin_user = User.query.filter(db.func.lower(User.email) == expected_admin_email).first()
@@ -2078,10 +2080,21 @@ with app.app_context():
             admin_user.email_verified = True
             admin_user.suspended = False
             admin_user.password = generate_password_hash(expected_admin_password)
-            # Keep username as-is
+            if not admin_user.username:
+                admin_user.username = "admin"
         else:
+            # Generate a username that is guaranteed unique to avoid a
+            # UNIQUE constraint violation on user.username (e.g. when the
+            # fallback "admin" username already exists).
+            base_username = "admin"
+            candidate = base_username
+            counter = 1
+            existing_usernames = {u.username.lower() for u in User.query.all()}
+            while candidate.lower() in existing_usernames:
+                candidate = f"{base_username}{counter}"
+                counter += 1
             admin_user = User(
-                username="admin",
+                username=candidate,
                 email=expected_admin_email,
                 password=generate_password_hash(expected_admin_password),
                 is_admin=True,
