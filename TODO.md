@@ -1,5 +1,14 @@
 # TODO — Fix Production Login + Migrate Data to Render Postgres
 
+## PWA Installability (Completed)
+- [x] Added `static/manifest.json` (PWA manifest)
+- [x] Added `static/sw.js` (service worker for offline + installability)
+- [x] Added `static/icons/` (192px, 512px, maskable, apple-touch icons)
+- [x] Added `templates/_pwa_meta.html` and `templates/_pwa_register.html` includes
+- [x] Added `templates/_pwa_install_button.html` (Install App button)
+- [x] Injected PWA meta + SW registration + install button into all templates
+- [x] Committed and pushed to main (triggers Render deploy)
+
 ## Goal
 Get the admin AND all existing users able to log in on the live Render site
 (https://gamearena-p8en.onrender.com) by migrating local SQLite data to Render's
