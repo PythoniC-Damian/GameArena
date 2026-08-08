@@ -39,7 +39,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 instance_dir = os.path.join(base_dir, 'instance')
 os.makedirs(instance_dir, exist_ok=True)
-database_path = os.path.join(instance_dir, 'gamearena.db')
+database_path = os.path.join(instance_dir, 'database.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or f'sqlite:///{database_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -738,8 +738,36 @@ def wallet():
 @app.route('/chat')
 @login_required
 def chat():
-    messages = GlobalChatMessage.query.order_by(GlobalChatMessage.created_at.asc()).limit(50).all()
-    chat_partners = [msg.user for msg in GlobalChatMessage.query.order_by(GlobalChatMessage.created_at.desc()).distinct(GlobalChatMessage.user_id).limit(10).all()]
+    all_messages = GlobalChatMessage.query.order_by(GlobalChatMessage.created_at.asc()).limit(50).all()
+
+    # Defensively drop any messages whose user relationship is missing (orphaned
+    # rows, e.g. a chat message referencing a user that no longer exists). This
+    # prevents an AttributeError -> HTTP 500 when rendering the template.
+    messages = [m for m in all_messages if m.user is not None]
+
+    # Most recent 10 distinct chatting users.
+    # NOTE: SQLite allows SELECT DISTINCT x ORDER BY y, but Postgres does NOT
+    # (ORDER BY column must appear in the DISTINCT select list). Use a subquery
+    # that works on both engines: get the max created_at per user, order by it,
+# then fetch the most recent 10 user ids and load those users.
+    from sqlalchemy import func
+    # Select user_id first, then the aggregated last_seen (row[0] = user_id).
+    distinct_user_ids = [
+        row[0] for row in db.session.query(
+            GlobalChatMessage.user_id,
+            func.max(GlobalChatMessage.created_at).label('last_seen'),
+        )
+        .group_by(GlobalChatMessage.user_id)
+        .order_by(func.max(GlobalChatMessage.created_at).desc())
+        .limit(10).all()
+    ]
+    # Preserve order of most-recent first
+    chat_partners = []
+    if distinct_user_ids:
+        partners = User.query.filter(User.id.in_(distinct_user_ids)).all()
+        partner_map = {u.id: u for u in partners}
+        chat_partners = [partner_map[uid] for uid in distinct_user_ids if uid in partner_map]
+
     return render_template('chat.html', messages=messages, chat_partners=chat_partners)
 
 
