@@ -30,6 +30,18 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
+      - key: SMTP_SERVER
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_USE_TLS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -44,4 +56,3 @@ services:
         fromDatabase:
           name: gamearena-db
           property: connectionString
-
