@@ -45,9 +45,18 @@ def _resolve_database_url():
 def cleanup():
     from app import app, db, GlobalChatMessage, User, TournamentChatMessage, TournamentMatchChatMessage
 
-    _resolve_database_url()
-
     with app.app_context():
+        # Force the app to use the DATABASE_URL we were invoked with. app.py calls
+        # load_dotenv('.env', override=True), which would otherwise replace the
+        # shell's DATABASE_URL with the .env SQLite value. Rebind the engine so the
+        # cleanup runs against the target DB (Postgres in production).
+        if DATABASE_URL:
+            app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+            if db.engine:
+                db.engine.dispose()
+
+        _resolve_database_url()
+
         valid_user_ids = set(r[0] for r in db.session.query(User.id).all())
         print(f"Valid users found: {len(valid_user_ids)}")
 
