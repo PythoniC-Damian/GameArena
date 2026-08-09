@@ -1,4 +1,6 @@
 import os
+import http.client
+import json
 import urllib.parse
 from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -190,10 +192,9 @@ def send_email(subject, recipient, body):
     """Send email synchronously."""
     email_from = os.environ.get('EMAIL_FROM') or os.environ.get('SMTP_USERNAME') or 'noreply@gamearena.com'
 
-# --- Resend (preferred) ---
-
+    # --- Resend (preferred) ---
     resend_api_key = os.environ.get('RESEND_API_KEY')
-    if resend_api_key and REQUESTS_AVAILABLE:
+    if resend_api_key:
         try:
             payload = {
                 "from": email_from,
@@ -201,17 +202,33 @@ def send_email(subject, recipient, body):
                 "subject": subject,
                 "text": body,
             }
-            resp = requests.post(
-                'https://api.resend.com/emails',
-                json=payload,
-                headers={'Authorization': f'Bearer {resend_api_key}'},
-                timeout=15,
+            # Use the standard library http.client instead of requests/urllib3.
+            # On Render the app runs under a gunicorn "gevent" worker, which
+            # monkey-patches Python's ssl/socket layer. urllib3's HTTPS handling
+            # recurses infinitely under that patch ("maximum recursion depth
+            # exceeded"). http.client talks to the TLS socket directly and is
+            # not affected by the recursion, so verification emails actually get
+            # sent through Resend here.
+            body_bytes = json.dumps(payload).encode('utf-8')
+            conn = http.client.HTTPSConnection('api.resend.com', timeout=15)
+            conn.request(
+                'POST',
+                '/emails',
+                body=body_bytes,
+                headers={
+                    'Authorization': f'Bearer {resend_api_key}',
+                    'Content-Type': 'application/json',
+                    'Content-Length': str(len(body_bytes)),
+                },
             )
-            if resp.status_code < 300:
+            resp = conn.getresponse()
+            resp.read()
+            conn.close()
+            if resp.status < 300:
                 app.logger.info(f"Resend email sent to {recipient}")
                 return True
             else:
-                app.logger.warning(f"Resend email failed for {recipient}: {resp.status_code} {resp.text}")
+                app.logger.warning(f"Resend email failed for {recipient}: {resp.status} {resp.reason}")
         except Exception as e:
             app.logger.warning(f"Resend email failed for {recipient}: {e}")
 
@@ -1552,12 +1569,12 @@ def submit_match_result_route(match_id):
     winner_id = int(winner_user_id)
 
     # IMPORTANT ANTI-LIE VALIDATION:
-    # Winner must be one of the two assigned players for this match.
+    #Note Winner must be one of the two assigned players for this match.
     if winner_id not in {match.player_one_user_id, match.player_two_user_id}:
         flash('Invalid winner selected for this match.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
-    # Submit for confirmation
+    # Mtach Submission Submit for confirmation
     submit_match_result(
         match=match,
         user=current_user,
@@ -1637,7 +1654,6 @@ def dispute_match_result(match_id):
     return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
 
-# -------------------------
 # PAYMENT ROUTES
 # -------------------------
 @app.route("/pay/<int:tournament_id>")
@@ -1671,7 +1687,8 @@ def initialize_payment(tournament_id):
         
     try:
         tournament = Tournament.query.get_or_404(tournament_id)
-
+        
+        # This line is to:
         # Check if the user already has a registration for this tournament.
         # Allow a retry if the prior join is still pending payment so the user can
         # continue the payment flow without getting stuck.
@@ -1827,7 +1844,7 @@ def verify_payment():
 
 
 # -------------------------
-# WALLET DEPOSIT / WITHDRAWAL ROUTES (JSON API for frontend)
+# WALLET DEPOSIT / WITHDRAWAL ROUTES (JSON API for frontend) AI did initialized this for me 
 # -------------------------
 @app.route("/wallet/initialize-deposit", methods=['POST'])
 @login_required
@@ -1976,7 +1993,7 @@ def wallet_withdraw():
     import uuid
     transaction_ref = str(uuid.uuid4())
 
-    # Deduct from wallet and create withdrawal record
+    #Remember Jegede This code is to Deduct from wallet and create withdrawal record
     current_user.wallet_balance = balance - amount
 
     wt = WalletTransaction(
@@ -1994,10 +2011,7 @@ def wallet_withdraw():
 
     return jsonify({'status': 'success', 'message': f'₦{amount:,} withdrawn successfully to {account_name} ({bank_name} - {account_number}).'})
 
-
-# -------------------------
 # LOGOUT
-# -------------------------
 @app.route("/logout")
 @login_required
 def logout():
@@ -2005,9 +2019,7 @@ def logout():
     return redirect(url_for("home"))
 
 
-# -------------------------
 # CREATE TEST DATA & ADMIN USER
-# -------------------------
 with app.app_context():
     db.create_all()
 
@@ -2026,7 +2038,7 @@ with app.app_context():
             ensure_column('user', 'reset_code', 'TEXT')
             ensure_column('user', 'reset_expires_at', 'TEXT')
             # NOTE: existing SQLite schema may not include these columns.
-            # We only ADD columns if they do not exist (see PRAGMA check below).
+            # I only add columns if they do not exist (see PRAGMA check below).
             def ensure_column_if_missing(table, column, definition):
                 try:
                     existing_cols = db.session.execute(f"PRAGMA table_info({table})").mappings().fetchall()
@@ -2047,7 +2059,7 @@ with app.app_context():
             ensure_column_if_missing('user', 'payout_account_number', "TEXT")
             ensure_column_if_missing('user', 'payout_account_name', "TEXT")
 
-            # Prize tracking fields for existing SQLite databases created before this feature.
+            # Prize tracking fields for existing SQLite.
             ensure_column_if_missing('tournament_stat', 'prize_code', "TEXT")
             ensure_column_if_missing('tournament_stat', 'prize_code_sent_at', "TEXT")
             ensure_column_if_missing('tournament_stat', 'prize_status', "TEXT DEFAULT 'not_started'")
@@ -2088,7 +2100,7 @@ with app.app_context():
         except Exception as e:
             app.logger.warning(f"Database schema upgrade warning: {e}")
 
-# --- Ensure expected admin credentials exist (fixes admin login issues) ---
+# Ensure expected admin credentials exist (fixes admin login issues)
     # Credentials are read from the environment (gitignored) so secrets stay out of source.
     expected_admin_email = (os.environ.get('ADMIN_EMAIL', '') or '').strip().lower()
     expected_admin_password = os.environ.get('ADMIN_PASSWORD', '') or ''
@@ -2119,7 +2131,7 @@ with app.app_context():
                 admin_user.username = "admin"
         else:
             # Generate a username that is guaranteed unique to avoid a
-            # UNIQUE constraint violation on user.username (e.g. when the
+            # UNIQUE constraint violation on user.username (e.g when the
             # fallback "admin" username already exists).
             base_username = "admin"
             candidate = base_username
@@ -2140,7 +2152,7 @@ with app.app_context():
 
         db.session.commit()
 
-    # --- Fix Free Fire tournament card title (fixes “Chat Tournament” showing) ---
+    # Free Fire tournament card title (fixes “Chat Tournament” showing)
     # The homepage uses tournament.name for the card title.
     ff_name = "Free Fire Championship"
     ff_game_match = "free fire"
@@ -2153,7 +2165,7 @@ with app.app_context():
         db.session.commit()
 
 
-    # Create sample tournaments (idempotent)
+    # Create sample tournaments
     # Only insert if a tournament with the same game does not exist.
     sample_tournaments = [
             Tournament(
