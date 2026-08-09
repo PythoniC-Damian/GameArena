@@ -11,6 +11,6 @@ gunicorn==23.0.0
 SQLAlchemy==1.4.53
 Flask-SocketIO==5.6.1
 python-socketio==5.16.3
-eventlet==0.36.0
+gevent==24.2.1
+gevent-websocket==0.10.1
 psycopg2-binary==2.9.9
-

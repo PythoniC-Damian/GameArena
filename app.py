@@ -6,6 +6,7 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from flask_socketio import SocketIO, join_room, leave_room, emit
+from sqlalchemy.pool import NullPool
 
 from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, validators
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -43,6 +44,12 @@ database_path = os.path.join(instance_dir, 'database.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or f'sqlite:///{database_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+# Use NullPool so SQLAlchemy does not rely on a queue-based connection pool.
+# The gunicorn/eventlet worker monkey-patches Python's threading, which breaks
+# QueuePool's condition lock at runtime ("cannot wait on un-acquired lock"),
+# causing a 500 on every DB query. NullPool opens a fresh connection per check
+# out and avoids the threading lock entirely.
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'poolclass': NullPool}
 
 # Paystack Configuration
 PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY')

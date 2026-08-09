@@ -10,7 +10,7 @@ and harden the code against future orphaned data.
 - [x] 2. Harden `templates/chat.html` loop to never crash on a None user (safe fallback)
 - [x] 3. Add cleanup script (`cleanup_orphaned_chat.py`) to delete orphaned chat rows
 - [x] 4. Verify with test_chat_fix.py (no regression) and syntax checks (SYNTAX_OK)
-- [ ] 5. Commit and push to main (triggers Render auto-deploy)
+- [x] 5. Commit and push to main (commit b1faba6, triggers Render auto-deploy)
 - [ ] 6. Run cleanup_orphaned_chat.py against the production Postgres DB (with DATABASE_URL set)
 - [ ] 7. Confirm /chat returns HTTP 200 after deploy
 

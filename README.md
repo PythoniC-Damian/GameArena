@@ -1,81 +1,84 @@
-# GameArena Flask App
+# GameArena
 
-This is the GameArena Flask application.
+GameArena is a Flask-based gaming tournament platform I'm currently building.
 
-## Deployment Setup
+The idea is to give gamers a place to join and compete in tournaments for games such as eFootball, COD, Free Fire, PUBG, Blood Strike, and others.
 
-The app is ready for deployment with a production web server.
+# Current Features
 
-### Required files
-- `requirements.txt`
-- `Procfile`
-- `app.py`
-- `.gitignore`
+ User registration and login
+ Gaming tournaments
+ Tournament registration
+ Entry fees and prize pools
+ User profiles
+ Wallet system
+ Real-time chat and notifications
+ Payment integration
+ Tournament participant tracking
 
-### `Procfile`
+# Tech Stack
 
-```text
-web: gunicorn app:app --worker-class eventlet -w 1 --timeout 120 --bind 0.0.0.0:$PORT
-```
+ Python
+ Flask
+ Flask-SQLAlchemy
+ Flask-SocketIO
+ HTML
+ CSS
+ JavaScript
+ Tailwind CSS
+ PostgreSQL / SQLite
+ Gunicorn
 
-> The `eventlet` worker class is **required** for Flask-SocketIO (real-time chat & notifications) to work in production. Do not use the default `gunicorn` worker.
+# Running Locally
 
-### Local development
-
-Run locally with:
+Create and activate a virtual environment, install the required packages, and run:
 
 ```powershell
 $env:FLASK_DEBUG = "true"
 python app.py
 ```
 
-Or use `gunicorn`:
+The app should then be available locally through the address shown in the terminal.
 
-```powershell
-gunicorn app:app --worker-class eventlet -w 1 --timeout 120 --bind 0.0.0.0:5000
+# Production
+
+The application is set up to run with Gunicorn and Flask-SocketIO.
+
+The current `Procfile` uses:
+
+```text
+web: gunicorn app:app --worker-class gevent -w 1 --timeout 120 --bind 0.0.0.0:$PORT
 ```
 
-### Render deployment (recommended)
+The Gevent worker is used for the real-time features such as chat and notifications.
 
-The repo includes a `render.yaml` **Blueprint** that provisions the web service + a free Postgres database automatically.
+# Deployment
 
-**Option A — Blueprint (recommended):**
-1. Push this repo to GitHub.
-2. In the Render dashboard, click **New → Blueprint**.
-3. Select the `GameArena` repo. Render reads `render.yaml` and creates the web service + free Postgres.
-4. Set the secret env vars (marked `sync: false` in `render.yaml`):
-   - `SECRET_KEY`
-   - `PAYSTACK_SECRET_KEY`
-   - `PAYSTACK_PUBLIC_KEY`
-   - `RESEND_API_KEY`
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
-   - `GOOGLE_REDIRECT_URI` (set to `https://<your-app>.onrender.com/auth/google/callback`)
-5. `DATABASE_URL` is auto-wired from the provisioned Postgres DB.
-6. Deploy and open the public URL.
+The project includes a `render.yaml` file for deployment on Render.
 
-**Option B — Manual:**
-1. Push this repo to GitHub.
-2. In Render, create a **New Web Service** and connect the repo.
-3. Add a **PostgreSQL** database from the Render dashboard and copy its Internal Database URL.
-4. Set the same env vars above, including `DATABASE_URL`.
-5. Deploy.
+For deployment, the required environment variables include:
 
-### Git setup
+ `SECRET_KEY`
+ `PAYSTACK_SECRET_KEY`
+ `PAYSTACK_PUBLIC_KEY`
+ `RESEND_API_KEY`
+ `GOOGLE_CLIENT_ID`
+ `GOOGLE_CLIENT_SECRET`
+ `GOOGLE_REDIRECT_URI`
+ `DATABASE_URL`
 
-If you have git installed locally, run:
+Sensitive keys and `.env` files should not be committed to the repository.
+
+## Project Status
+
+GameArena is still under development. I'm continuing to work on the tournament system, payments, real-time features, user experience, and deployment.
+
+## Git
+
+To push the project to GitHub:
 
 ```powershell
-git init
 git add .
-git commit -m "Initial GameArena app"
-git remote add origin https://github.com/<yourname>/<repo>.git
-git branch -M main
-git push -u origin main
+git commit -m "Update GameArena"
+git push
 ```
-
-## Notes
-
-- The app currently uses `gunicorn` for production.
-- The Flask `app.run()` block uses `FLASK_DEBUG` and `PORT`.
-- Keep `.env` local and do not commit it.
