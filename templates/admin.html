@@ -89,11 +89,20 @@ Manage tournaments and system settings
             <a href="{{ url_for('edit_tournament', tournament_id=tournament.id) }}" class="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600 text-sm">Setup</a>
             <a href="{{ url_for('admin_tournament_leaderboard', tournament_id=tournament.id) }}" class="bg-purple-500 px-4 py-2 rounded hover:bg-purple-600 text-sm">Leaderboard</a>
             {% if tournament.status == 'open' %}
-            <a href="{{ url_for('start_tournament', tournament_id=tournament.id) }}" class="bg-green-500 px-4 py-2 rounded hover:bg-green-600 text-sm">Start</a>
+            <form method="POST" action="{{ url_for('start_tournament', tournament_id=tournament.id) }}" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="bg-green-500 px-4 py-2 rounded hover:bg-green-600 text-sm">Start</button>
+            </form>
             {% elif tournament.status == 'ongoing' %}
-            <a href="{{ url_for('end_tournament', tournament_id=tournament.id) }}" class="bg-yellow-500 px-4 py-2 rounded hover:bg-yellow-600 text-sm">Finish</a>
+            <form method="POST" action="{{ url_for('end_tournament', tournament_id=tournament.id) }}" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="bg-yellow-500 px-4 py-2 rounded hover:bg-yellow-600 text-sm">Finish</button>
+            </form>
             {% endif %}
-            <a href="{{ url_for('cancel_tournament', tournament_id=tournament.id) }}" class="bg-red-500 px-4 py-2 rounded hover:bg-red-600 text-sm">Cancel</a>
+            <form method="POST" action="{{ url_for('cancel_tournament', tournament_id=tournament.id) }}" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="bg-red-500 px-4 py-2 rounded hover:bg-red-600 text-sm">Cancel</button>
+            </form>
         </div>
 
         <p class="text-sm text-gray-500">Created: {{ tournament.id }}</p>

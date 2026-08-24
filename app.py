@@ -1,8 +1,12 @@
 import os
 import http.client
 import json
+import hmac
+import hashlib
+import secrets
+import re
 import urllib.parse
-from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify
+from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_wtf import FlaskForm
@@ -14,7 +18,7 @@ from wtforms import StringField, PasswordField, SubmitField, SelectField, Intege
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from email.message import EmailMessage
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 import random
 import smtplib
 import ssl
@@ -34,16 +38,102 @@ load_dotenv(os.path.join(base_dir, '.env'), override=True)
 app = Flask(__name__)
 
 # Configuration
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+secret_key = (os.environ.get('SECRET_KEY') or '').strip()
+environment = (os.environ.get('FLASK_ENV') or '').strip().lower()
+is_production = environment == 'production' or bool(os.environ.get('RENDER'))
+if not secret_key:
+    if is_production:
+        raise RuntimeError('SECRET_KEY must be configured in production.')
+    # Keep local development usable, but never use this value in production.
+    secret_key = secrets.token_hex(32)
+    app.logger.warning('SECRET_KEY is not configured; using an ephemeral development key.')
+elif secret_key == 'dev-secret-key-change-in-production' and is_production:
+    raise RuntimeError('A non-default SECRET_KEY must be configured in production.')
+
+app.config['SECRET_KEY'] = secret_key
+app.config['SESSION_COOKIE_SECURE'] = is_production
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+CONTENT_SECURITY_POLICY = "; ".join([
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.socket.io https://js.paystack.co",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https://images.unsplash.com https://source.unsplash.com",
+    "connect-src 'self' https://api.paystack.co https://accounts.google.com https://oauth2.googleapis.com wss:",
+    "frame-src https://checkout.paystack.com",
+    "font-src 'self' data:",
+])
+SENSITIVE_CACHE_PATHS = (
+    '/dashboard',
+    '/wallet',
+    '/profile',
+    '/notifications',
+    '/admin',
+    '/pay/',
+    '/verify-payment',
+    '/wallet/verify-deposit',
+)
+database_url = (os.environ.get('DATABASE_URL') or '').strip()
+if is_production:
+    if not database_url:
+        raise RuntimeError('DATABASE_URL must be configured in production.')
+    if not database_url.lower().startswith(('postgresql://', 'postgres://', 'postgresql+')):
+        raise RuntimeError('DATABASE_URL must point to PostgreSQL in production.')
+RATE_LIMITS = {
+    'login_ip': (10, 15 * 60),
+    'login_account': (5, 15 * 60),
+    'register_ip': (8, 60 * 60),
+    'password_reset_ip': (5, 60 * 60),
+    'verification_ip': (10, 15 * 60),
+    'verification_resend': (3, 15 * 60),
+    'payment_user': (10, 10 * 60),
+    'payment_verification': (20, 10 * 60),
+}
+RATE_LIMIT_CLEANUP_INTERVAL = 100
+RATE_LIMIT_RETENTION_SECONDS = max(window for _, window in RATE_LIMITS.values()) + 60 * 60
+rate_limit_requests_since_cleanup = 0
+
+
+@app.after_request
+def add_response_security_headers(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Content-Security-Policy', CONTENT_SECURITY_POLICY)
+    response.headers.setdefault(
+        'Permissions-Policy',
+        'camera=(), microphone=(), geolocation=(), payment=(self "https://checkout.paystack.com")',
+    )
+
+    forwarded_proto = request.headers.get('X-Forwarded-Proto', '').split(',')[0].strip().lower()
+    if is_production and (request.is_secure or forwarded_proto == 'https'):
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000')
+
+    if current_user.is_authenticated and request.path.startswith(SENSITIVE_CACHE_PATHS):
+        response.headers['Cache-Control'] = 'private, no-store, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 
 # Socket.IO (WebSockets)
 # Note: for production you may want a message queue (Redis) to support multi-worker.
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio_cors_origins = [
+    origin.strip()
+    for origin in (os.environ.get('SOCKETIO_CORS_ALLOWED_ORIGINS') or '').split(',')
+    if origin.strip()
+]
+socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins or None)
 
 instance_dir = os.path.join(base_dir, 'instance')
 os.makedirs(instance_dir, exist_ok=True)
 database_path = os.path.join(instance_dir, 'database.db')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or f'sqlite:///{database_path}'
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url or f'sqlite:///{database_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 # Use NullPool so SQLAlchemy does not rely on a queue-based connection pool.
@@ -57,6 +147,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'poolclass': NullPool}
 PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY')
 PAYSTACK_PUBLIC_KEY = os.environ.get('PAYSTACK_PUBLIC_KEY')
 PAYSTACK_BASE_URL = 'https://api.paystack.co'
+PAYSTACK_CURRENCY = 'NGN'
+PAYSTACK_REFERENCE_PATTERN = re.compile(r'^[A-Za-z0-9._-]{1,100}$')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
@@ -71,6 +163,58 @@ def get_google_oauth_config():
         'client_secret': os.environ.get('GOOGLE_CLIENT_SECRET') or GOOGLE_CLIENT_SECRET,
         'redirect_uri': os.environ.get('GOOGLE_REDIRECT_URI') or GOOGLE_REDIRECT_URI,
     }
+
+
+def is_safe_local_redirect(target):
+    """Allow only relative redirects or URLs on this application's host."""
+    if not target:
+        return False
+    parsed = urlparse(target)
+    return not parsed.scheme and not parsed.netloc and target.startswith('/') and not target.startswith('//')
+
+
+def safe_next_url(target):
+    return target if is_safe_local_redirect(target) else None
+
+
+MAX_CHAT_MESSAGE_LENGTH = 1000
+MAX_MATCH_PROOF_LENGTH = 2000
+
+
+def is_admin_user(user=None):
+    user = user or current_user
+    return bool(user and user.is_authenticated and user.is_admin and not user.suspended)
+
+
+def get_tournament_membership(user_id, tournament_id):
+    return UserTournament.query.filter_by(
+        user_id=user_id,
+        tournament_id=tournament_id,
+    ).first()
+
+
+def can_access_tournament_chat(user_id, tournament_id):
+    if is_admin_user():
+        return True
+    membership = get_tournament_membership(user_id, tournament_id)
+    return bool(membership and membership.payment_status in {'paid', 'free'})
+
+
+def can_access_match(user_id, match):
+    return bool(
+        match and (
+            is_admin_user() or
+            user_id in {match.player_one_user_id, match.player_two_user_id}
+        )
+    )
+
+
+def active_participant_count(tournament):
+    """Count only memberships that represent an actual participant."""
+    return sum(
+        1 for membership in tournament.participants
+        if membership.payment_status in {'paid', 'free'}
+    )
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -207,30 +351,46 @@ def send_email(subject, recipient, body):
             # monkey-patches Python's ssl/socket layer. urllib3's HTTPS handling
             # recurses infinitely under that patch ("maximum recursion depth
             # exceeded"). http.client talks to the TLS socket directly and is
-            # not affected by the recursion, so verification emails actually get
+# not affected by the recursion, so verification emails actually get
             # sent through Resend here.
             body_bytes = json.dumps(payload).encode('utf-8')
             conn = http.client.HTTPSConnection('api.resend.com', timeout=15)
-            conn.request(
-                'POST',
-                '/emails',
-                body=body_bytes,
-                headers={
-                    'Authorization': f'Bearer {resend_api_key}',
-                    'Content-Type': 'application/json',
-                    'Content-Length': str(len(body_bytes)),
-                },
-            )
-            resp = conn.getresponse()
-            resp.read()
-            conn.close()
-            if resp.status < 300:
+            resp = None
+            resp_body = b''
+            try:
+                conn.request(
+                    'POST',
+                    '/emails',
+                    body=body_bytes,
+                    headers={
+                        'Authorization': f'Bearer {resend_api_key}',
+                        'Content-Type': 'application/json',
+                        'Content-Length': str(len(body_bytes)),
+                    },
+                )
+                resp = conn.getresponse()
+                resp_body = resp.read()
+            except Exception as inner_e:
+                # Even if reading the response raises (e.g. under the gevent
+                # worker), capture whatever status/body we already have AND the
+                # underlying error, so the actual reason is never hidden. The
+                # API key is never written to the log.
+                status = getattr(resp, 'status', None) or 'N/A'
+                reason = getattr(resp, 'reason', None) or 'N/A'
+                detail = resp_body.decode('utf-8', 'replace').strip() if resp_body else ''
+                app.logger.warning(
+                    f"Resend email failed for {recipient}: {status} {reason} (error: {type(inner_e).__name__})"
+                )
+            finally:
+                conn.close()
+
+            if resp is not None and resp.status < 300:
                 app.logger.info(f"Resend email sent to {recipient}")
                 return True
-            else:
+            if resp is not None:
                 app.logger.warning(f"Resend email failed for {recipient}: {resp.status} {resp.reason}")
         except Exception as e:
-            app.logger.warning(f"Resend email failed for {recipient}: {e}")
+            app.logger.warning(f"Resend email failed for {recipient}: {type(e).__name__}")
 
     smtp_server = os.environ.get('SMTP_SERVER')
     smtp_port = os.environ.get('SMTP_PORT')
@@ -249,21 +409,21 @@ def send_email(subject, recipient, body):
         try:
             if smtp_use_tls:
                 context = ssl.create_default_context()
-                with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
+                with smtplib.SMTP(smtp_server, int(smtp_port), timeout=15) as server:
                     server.starttls(context=context)
                     server.login(smtp_username, smtp_password)
                     server.send_message(msg)
             else:
                 context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(smtp_server, int(smtp_port), context=context) as server:
+                with smtplib.SMTP_SSL(smtp_server, int(smtp_port), context=context, timeout=15) as server:
                     server.login(smtp_username, smtp_password)
                     server.send_message(msg)
             app.logger.info(f"Email sent to {recipient}")
             return True
         except Exception as e:
-            app.logger.warning(f"Could not send email to {recipient}: {e}")
+            app.logger.warning(f"SMTP email failed for {recipient}: {type(e).__name__}")
 
-    app.logger.info(f"Email fallback for {recipient}: SUBJECT={subject}\n{body}")
+    app.logger.warning(f"Email delivery unavailable for {recipient}")
     return False
 
 
@@ -557,6 +717,10 @@ class UserTournament(db.Model):
     user = db.relationship('User', back_populates='tournaments_joined')
     tournament = db.relationship('Tournament', back_populates='participants')
 
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'tournament_id', name='unique_user_tournament_registration'),
+    )
+
 
 # -------------------------
 # WALLET TRANSACTIONS MODEL
@@ -574,6 +738,108 @@ class WalletTransaction(db.Model):
     created_at = db.Column(db.DateTime, default=db.func.now())
 
     user = db.relationship('User', backref=db.backref('wallet_transactions', lazy=True))
+
+
+class RateLimitBucket(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    bucket_key = db.Column(db.String(255), unique=True, nullable=False)
+    window_started = db.Column(db.DateTime, nullable=False)
+    count = db.Column(db.Integer, nullable=False, default=0)
+
+
+def client_rate_limit_key():
+    return request.remote_addr or 'unknown-client'
+
+
+def rate_limit_response(retry_after):
+    response = jsonify({'status': 'error', 'message': 'Too many requests. Please try again later.'})
+    response.status_code = 429
+    response.headers['Retry-After'] = str(max(1, int(retry_after)))
+    return response
+
+
+def consume_rate_limit(bucket_key, limit, window_seconds):
+    global rate_limit_requests_since_cleanup
+    rate_limit_requests_since_cleanup += 1
+    if rate_limit_requests_since_cleanup >= RATE_LIMIT_CLEANUP_INTERVAL:
+        cleanup_rate_limit_buckets()
+        rate_limit_requests_since_cleanup = 0
+
+    now = datetime.utcnow()
+    bucket = RateLimitBucket.query.filter_by(bucket_key=bucket_key).with_for_update().first()
+    if bucket is None:
+        bucket = RateLimitBucket(bucket_key=bucket_key, window_started=now, count=1)
+        db.session.add(bucket)
+        try:
+            db.session.commit()
+            return None
+        except Exception:
+            db.session.rollback()
+            bucket = RateLimitBucket.query.filter_by(bucket_key=bucket_key).with_for_update().first()
+            if bucket is None:
+                return window_seconds
+
+    elapsed = (now - bucket.window_started).total_seconds()
+    if elapsed >= window_seconds:
+        bucket.window_started = now
+        bucket.count = 1
+        db.session.commit()
+        return None
+    if bucket.count >= limit:
+        db.session.rollback()
+        return max(1, int(window_seconds - elapsed))
+
+    bucket.count += 1
+    db.session.commit()
+    return None
+
+
+def cleanup_rate_limit_buckets():
+    cutoff = datetime.utcnow() - timedelta(seconds=RATE_LIMIT_RETENTION_SECONDS)
+    RateLimitBucket.query.filter(RateLimitBucket.window_started < cutoff).delete(synchronize_session=False)
+    db.session.commit()
+
+
+def enforce_rate_limits():
+    if request.method not in {'POST', 'GET'}:
+        return None
+
+    path = request.path
+    client_key = client_rate_limit_key()
+    checks = []
+    if path == '/login' and request.method == 'POST':
+        email = (request.form.get('email') or '').strip().lower()
+        checks = [('login_ip:' + client_key, 'login_ip'),
+                  ('login_account:' + (email or 'unknown'), 'login_account')]
+    elif path == '/register' and request.method == 'POST':
+        checks = [('register_ip:' + client_key, 'register_ip')]
+    elif path == '/forgot-password' and request.method == 'POST':
+        checks = [('password_reset_ip:' + client_key, 'password_reset_ip')]
+    elif path == '/verify-email':
+        if request.method == 'GET' and request.args.get('resend') == '1':
+            email = (request.args.get('email') or '').strip().lower()
+            checks = [
+                ('verification_resend_ip:' + client_key, 'verification_resend'),
+                ('verification_resend_email:' + (email or 'unknown'), 'verification_resend'),
+            ]
+        elif request.method == 'POST':
+            checks = [('verification_ip:' + client_key, 'verification_ip')]
+    elif (path.startswith('/initialize-payment/') or path == '/wallet/initialize-deposit'):
+        checks = [('payment_user:' + str(current_user.get_id()), 'payment_user')]
+    elif path in {'/verify-payment', '/wallet/verify-deposit'}:
+        checks = [('payment_verification:' + str(current_user.get_id()), 'payment_verification')]
+
+    for bucket_key, limit_name in checks:
+        limit, window = RATE_LIMITS[limit_name]
+        retry_after = consume_rate_limit(bucket_key, limit, window)
+        if retry_after is not None:
+            return rate_limit_response(retry_after)
+    return None
+
+
+@app.before_request
+def apply_rate_limits():
+    return enforce_rate_limits()
 
 
 # -------------------------
@@ -727,6 +993,17 @@ def home():
     return render_template("index.html", tournaments=tournaments)
 
 
+@app.route('/health')
+def health():
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        return jsonify({'status': 'ok'}), 200
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Health check database query failed')
+        return jsonify({'status': 'unavailable'}), 503
+
+
 # -------------------------
 # PUBLIC LEADERBOARD
 # -------------------------
@@ -816,6 +1093,7 @@ def profile():
 def tournament_details(tournament_id):
     tournament = Tournament.query.get_or_404(tournament_id)
     joined_paid = False
+    can_view_match_rooms = is_admin_user()
 
     if current_user.is_authenticated:
         join = UserTournament.query.filter_by(
@@ -824,6 +1102,7 @@ def tournament_details(tournament_id):
         ).first()
         if join and join.payment_status == 'paid':
             joined_paid = True
+            can_view_match_rooms = True
 
     matches = []
     if tournament.id:
@@ -834,6 +1113,7 @@ def tournament_details(tournament_id):
         tournament=tournament,
         joined_paid=joined_paid,
         matches=matches,
+        can_view_match_rooms=can_view_match_rooms,
     )
 
 
@@ -911,8 +1191,8 @@ def login():
                 db.session.commit()
 
             login_user(user)
-            next_page = request.args.get('next')
-            return redirect(next_page) if next_page else redirect(url_for("dashboard"))
+            next_page = safe_next_url(request.args.get('next'))
+            return redirect(next_page or url_for("dashboard"))
 
         flash("Invalid email or password", "error")
 
@@ -936,6 +1216,9 @@ def login_google():
         'access_type': 'offline',
         'prompt': 'consent',
     }
+    oauth_state = secrets.token_urlsafe(32)
+    session['google_oauth_state'] = oauth_state
+    params['state'] = oauth_state
     auth_url = f"{GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
     return redirect(auth_url)
 
@@ -953,6 +1236,12 @@ def google_callback():
     code = request.args.get('code')
     if not code:
         flash('Google sign-in was cancelled.', 'error')
+        return redirect(url_for('login'))
+
+    returned_state = request.args.get('state')
+    expected_state = session.pop('google_oauth_state', None)
+    if not expected_state or not returned_state or not hmac.compare_digest(expected_state, returned_state):
+        flash('Google sign-in could not be verified. Please try again.', 'error')
         return redirect(url_for('login'))
 
     token_response = requests.post(
@@ -988,8 +1277,15 @@ def google_callback():
 
     user = User.query.filter_by(email=email).first()
     if not user:
+        base_username = ''.join(char for char in name.replace(' ', '_') if char.isalnum() or char == '_') or 'google_user'
+        candidate = base_username[:150]
+        counter = 1
+        while User.query.filter_by(username=candidate).first():
+            suffix = f'_{counter}'
+            candidate = f'{base_username[:150 - len(suffix)]}{suffix}'
+            counter += 1
         user = User(
-            username=name.replace(' ', '_') or 'google_user',
+            username=candidate,
             email=email,
             password=generate_password_hash(os.urandom(24).hex()),
             email_verified=True,
@@ -1184,7 +1480,7 @@ def admin_users():
     users = User.query.all()
     return render_template("admin_users.html", users=users)
 
-@app.route("/admin/users/suspend/<int:user_id>")
+@app.route("/admin/users/suspend/<int:user_id>", methods=['POST'])
 @login_required
 def suspend_user(user_id):
     if not current_user.is_admin:
@@ -1196,7 +1492,7 @@ def suspend_user(user_id):
     flash(f"User {user.username} suspended.", "success")
     return redirect(url_for("admin_users"))
 
-@app.route("/admin/users/unsuspend/<int:user_id>")
+@app.route("/admin/users/unsuspend/<int:user_id>", methods=['POST'])
 @login_required
 def unsuspend_user(user_id):
     if not current_user.is_admin:
@@ -1208,7 +1504,7 @@ def unsuspend_user(user_id):
     flash(f"User {user.username} unsuspended.", "success")
     return redirect(url_for("admin_users"))
 
-@app.route("/admin/users/delete/<int:user_id>")
+@app.route("/admin/users/delete/<int:user_id>", methods=['POST'])
 @login_required
 def delete_user(user_id):
     if not current_user.is_admin:
@@ -1220,7 +1516,7 @@ def delete_user(user_id):
     flash(f"User {user.username} deleted.", "success")
     return redirect(url_for("admin_users"))
 
-@app.route("/admin/tournaments/start/<int:tournament_id>")
+@app.route("/admin/tournaments/start/<int:tournament_id>", methods=['POST'])
 @login_required
 def start_tournament(tournament_id):
     if not current_user.is_admin:
@@ -1232,7 +1528,7 @@ def start_tournament(tournament_id):
     flash(f"Tournament {tournament.name} started.", "success")
     return redirect(url_for("admin"))
 
-@app.route("/admin/tournaments/end/<int:tournament_id>")
+@app.route("/admin/tournaments/end/<int:tournament_id>", methods=['POST'])
 @login_required
 def end_tournament(tournament_id):
     if not current_user.is_admin:
@@ -1244,7 +1540,7 @@ def end_tournament(tournament_id):
     flash(f"Tournament {tournament.name} finished.", "success")
     return redirect(url_for("admin"))
 
-@app.route("/admin/tournaments/cancel/<int:tournament_id>")
+@app.route("/admin/tournaments/cancel/<int:tournament_id>", methods=['POST'])
 @login_required
 def cancel_tournament(tournament_id):
     if not current_user.is_admin:
@@ -1328,7 +1624,7 @@ def admin_tournament_leaderboard(tournament_id):
     return render_template('admin_leaderboard.html', tournament=tournament, form=form, leaderboard=leaderboard)
 
 
-@app.route('/admin/tournaments/<int:tournament_id>/leaderboard/delete/<int:stat_id>')
+@app.route('/admin/tournaments/<int:tournament_id>/leaderboard/delete/<int:stat_id>', methods=['POST'])
 @login_required
 def delete_leaderboard_entry(tournament_id, stat_id):
     if not current_user.is_admin:
@@ -1385,7 +1681,7 @@ def create_tournament():
 
 
 # -------------------------  # JOIN TOURNAMENT
-# -------------------------
+# ------------------
 @app.route("/join-tournament/<int:tournament_id>")
 @login_required
 def join_tournament(tournament_id):
@@ -1400,7 +1696,7 @@ def join_tournament(tournament_id):
         flash(f"You've already joined {tournament.game}!", "warning")
         return redirect(url_for("dashboard"))
 
-    if len(tournament.participants) >= tournament.max_participants:
+    if active_participant_count(tournament) >= tournament.max_participants:
         flash(f"{tournament.game} is FULL!", "error")
         return redirect(url_for("home"))
 
@@ -1422,14 +1718,13 @@ def join_tournament(tournament_id):
     return redirect(url_for("dashboard"))
 
 
-# -------------------------
 # MATCH ROUTES
 # -------------------------
 @app.route('/tournament/<int:tournament_id>/create-matches', methods=['POST'])
 @login_required
 def create_matches(tournament_id):
     tournament = Tournament.query.get_or_404(tournament_id)
-    if not current_user.is_admin:
+    if not is_admin_user():
         flash('Only admins can create match pairings.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament_id))
 
@@ -1482,7 +1777,6 @@ def _get_paid_participants_not_in_assigned_match(tournament_id: int, exclude_use
 
 @app.route('/tournament/<int:tournament_id>/matchmake', methods=['POST'])
 @login_required
-@csrf.exempt
 def matchmake_player_pair(tournament_id):
 
 
@@ -1503,7 +1797,7 @@ def matchmake_player_pair(tournament_id):
         flash('Only paid participants can matchmake.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament_id))
 
-    # Prevent making multiple assignments for the same user
+    #This here is to prevent making multiple assignments for the same user
     active_statuses = {'scheduled', 'ongoing', 'pending_confirmation', 'confirmed'}
     existing = TournamentMatch.query.filter(
         TournamentMatch.tournament_id == tournament_id,
@@ -1549,10 +1843,8 @@ def submit_match_result_route(match_id):
     match = TournamentMatch.query.get_or_404(match_id)
     tournament = match.tournament
 
-    # Only paid tournament participants can interact
-    participant_ids = {entry.user_id for entry in tournament.participants if entry.payment_status == 'paid'}
-    if current_user.id not in participant_ids:
-        flash('Only active participants can submit match results.', 'error')
+    if not can_access_match(current_user.id, match):
+        flash('Only the assigned players or an admin can submit match results.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
     room_code = request.form.get('room_code', '').strip()
@@ -1562,11 +1854,19 @@ def submit_match_result_route(match_id):
     winner_user_id = request.form.get('winner_user_id', '').strip()
     proof_note = request.form.get('proof_note', '').strip()
 
+    if len(room_code) > 100 or len(room_password) > 100 or len(player_profile_id) > 150 or len(opponent_profile_id) > 150 or len(proof_note) > MAX_MATCH_PROOF_LENGTH:
+        flash('One or more match fields are too long.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+
     if not room_code or not player_profile_id or not opponent_profile_id or not winner_user_id:
         flash('Please fill in the room details, profile IDs and winner before submitting.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
-    winner_id = int(winner_user_id)
+    try:
+        winner_id = int(winner_user_id)
+    except (TypeError, ValueError):
+        flash('Invalid winner selected for this match.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
     # IMPORTANT ANTI-LIE VALIDATION:
     #Note Winner must be one of the two assigned players for this match.
@@ -1596,12 +1896,11 @@ def confirm_match_result(match_id):
     match = TournamentMatch.query.get_or_404(match_id)
     tournament = match.tournament
 
-    participant_ids = {entry.user_id for entry in tournament.participants if entry.payment_status == 'paid'}
-    if current_user.id not in participant_ids:
-        flash('Only active participants can confirm match results.', 'error')
+    if not can_access_match(current_user.id, match):
+        flash('Only the assigned players or an admin can confirm match results.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
-    if current_user.id in {match.player_one_user_id, match.player_two_user_id}:
+    if is_admin_user() or current_user.id in {match.player_one_user_id, match.player_two_user_id}:
         match.status = 'confirmed'
         db.session.commit()
         flash('Match result confirmed.', 'success')
@@ -1616,12 +1915,14 @@ def send_match_chat_message(match_id):
     match = TournamentMatch.query.get_or_404(match_id)
     tournament = match.tournament
 
-    participant_ids = {entry.user_id for entry in tournament.participants if entry.payment_status == 'paid'}
-    if current_user.id not in participant_ids:
-        flash('Only active participants can chat in this match.', 'error')
+    if not can_access_match(current_user.id, match):
+        flash('Only the assigned players or an admin can chat in this match.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
     message = request.form.get('message', '').strip()
+    if len(message) > MAX_CHAT_MESSAGE_LENGTH:
+        flash('Message is too long.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
     if message:
         chat_message = TournamentMatchChatMessage(match_id=match.id, user_id=current_user.id, message=message)
         db.session.add(chat_message)
@@ -1638,12 +1939,14 @@ def dispute_match_result(match_id):
     match = TournamentMatch.query.get_or_404(match_id)
     tournament = match.tournament
 
-    participant_ids = {entry.user_id for entry in tournament.participants if entry.payment_status == 'paid'}
-    if current_user.id not in participant_ids:
-        flash('Only active participants can dispute a match result.', 'error')
+    if not can_access_match(current_user.id, match):
+        flash('Only the assigned players or an admin can dispute a match result.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
     reason = request.form.get('reason', '').strip()
+    if len(reason) > MAX_MATCH_PROOF_LENGTH:
+        flash('Dispute reason is too long.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
     if reason:
         dispute = TournamentMatchDispute(match_id=match.id, user_id=current_user.id, reason=reason)
         db.session.add(dispute)
@@ -1656,6 +1959,109 @@ def dispute_match_result(match_id):
 
 # PAYMENT ROUTES
 # -------------------------
+def is_valid_paystack_reference(reference):
+    return bool(reference and PAYSTACK_REFERENCE_PATTERN.fullmatch(reference))
+
+
+def paystack_transaction_matches(transaction, expected_amount, expected_reference,
+                                 expected_user_id=None, expected_tournament_id=None,
+                                 expected_type=None):
+    if not isinstance(transaction, dict):
+        return False
+    if transaction.get('reference') != expected_reference:
+        return False
+    try:
+        if int(transaction.get('amount')) != int(expected_amount) * 100:
+            return False
+    except (TypeError, ValueError):
+        return False
+    if str(transaction.get('currency', '')).upper() != PAYSTACK_CURRENCY:
+        return False
+
+    metadata = transaction.get('metadata') or {}
+    if expected_user_id is not None and str(metadata.get('user_id')) != str(expected_user_id):
+        return False
+    if expected_tournament_id is not None and str(metadata.get('tournament_id')) != str(expected_tournament_id):
+        return False
+    if expected_type is not None and metadata.get('type') != expected_type:
+        return False
+    return True
+
+
+def verify_paystack_reference(reference):
+    if not REQUESTS_AVAILABLE or not PAYSTACK_SECRET_KEY:
+        return None
+    try:
+        response = requests.get(
+            f'{PAYSTACK_BASE_URL}/transaction/verify/{urllib.parse.quote(reference, safe="")}',
+            headers={'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}'},
+            timeout=15,
+        )
+        response_data = response.json()
+    except (requests.RequestException, ValueError, TypeError):
+        return None
+    if not response_data.get('status') or not isinstance(response_data.get('data'), dict):
+        return None
+    return response_data['data']
+
+
+def apply_tournament_payment(user_tournament, transaction):
+    tournament = user_tournament.tournament
+    if not paystack_transaction_matches(
+        transaction,
+        tournament.entry_fee,
+        user_tournament.transaction_ref,
+        expected_user_id=user_tournament.user_id,
+        expected_tournament_id=tournament.id,
+    ):
+        return False, 'Payment details could not be verified.'
+
+    if user_tournament.payment_status == 'paid':
+        return True, 'already_processed'
+    if user_tournament.payment_status != 'pending':
+        return False, 'This payment is no longer pending.'
+
+    updated = UserTournament.query.filter_by(
+        id=user_tournament.id,
+        payment_status='pending',
+    ).update({'payment_status': 'paid'}, synchronize_session=False)
+    if not updated:
+        db.session.rollback()
+        return True, 'already_processed'
+    db.session.commit()
+    return True, 'processed'
+
+
+def apply_wallet_deposit(wallet_transaction, transaction):
+    if not paystack_transaction_matches(
+        transaction,
+        wallet_transaction.amount,
+        wallet_transaction.transaction_ref,
+        expected_user_id=wallet_transaction.user_id,
+        expected_type='wallet_deposit',
+    ):
+        return False, 'Payment details could not be verified.'
+
+    if wallet_transaction.status == 'completed':
+        return True, 'already_processed'
+    if wallet_transaction.status != 'pending':
+        return False, 'This deposit is no longer pending.'
+
+    updated = WalletTransaction.query.filter_by(
+        id=wallet_transaction.id,
+        status='pending',
+    ).update({'status': 'completed'}, synchronize_session=False)
+    if not updated:
+        db.session.rollback()
+        return True, 'already_processed'
+    User.query.filter_by(id=wallet_transaction.user_id).update(
+        {User.wallet_balance: db.func.coalesce(User.wallet_balance, 0) + wallet_transaction.amount},
+        synchronize_session=False,
+    )
+    db.session.commit()
+    return True, 'processed'
+
+
 @app.route("/pay/<int:tournament_id>")
 @login_required
 def pay_for_tournament(tournament_id):
@@ -1671,7 +2077,7 @@ def pay_for_tournament(tournament_id):
         flash("You've already joined this tournament!", "warning")
         return redirect(url_for("dashboard"))
 
-    if len(tournament.participants) >= tournament.max_participants:
+    if active_participant_count(tournament) >= tournament.max_participants:
         flash("Tournament is full!", "error")
         return redirect(url_for("home"))
 
@@ -1680,7 +2086,6 @@ def pay_for_tournament(tournament_id):
 
 @app.route("/initialize-payment/<int:tournament_id>", methods=['POST'])
 @login_required
-@csrf.exempt
 def initialize_payment(tournament_id):
     if not REQUESTS_AVAILABLE:
         return jsonify({'status': 'error', 'message': 'Payment system not available'})
@@ -1716,6 +2121,7 @@ def initialize_payment(tournament_id):
             data = {
                 'email': current_user.email,
                 'amount': tournament.entry_fee * 100,
+                'currency': PAYSTACK_CURRENCY,
                 'reference': transaction_ref,
                 'callback_url': url_for('verify_payment', _external=True),
                 'metadata': {
@@ -1735,7 +2141,7 @@ def initialize_payment(tournament_id):
                 })
             return jsonify({'status': 'error', 'message': 'Payment initialization failed'})
 
-        if len(tournament.participants) >= tournament.max_participants:
+        if active_participant_count(tournament) >= tournament.max_participants:
             return jsonify({'status': 'error', 'message': 'Tournament is full'})
 
         # Generate unique transaction reference
@@ -1754,6 +2160,7 @@ def initialize_payment(tournament_id):
         data = {
             'email': current_user.email,
             'amount': amount_kobo,
+            'currency': PAYSTACK_CURRENCY,
             'reference': transaction_ref,
             'callback_url': url_for('verify_payment', _external=True),
             'metadata': {
@@ -1785,9 +2192,10 @@ def initialize_payment(tournament_id):
         else:
             return jsonify({'status': 'error', 'message': 'Payment initialization failed'})
 
-    except Exception as e:
-        print(f"Payment initialization error: {str(e)}")
-        return jsonify({'status': 'error', 'message': f'Server error: {str(e)}'})
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Payment initialization failed')
+        return jsonify({'status': 'error', 'message': 'Unable to initialize payment.'}), 502
 
 
 @app.route("/verify-payment")
@@ -1797,8 +2205,10 @@ def verify_payment():
         flash("Payment verification not available", "error")
         return redirect(url_for("home"))
 
-    reference = request.args.get('reference')
-
+    reference = (request.args.get('reference') or '').strip()
+    if not is_valid_paystack_reference(reference):
+        flash("Invalid payment reference", "error")
+        return redirect(url_for("home"))
 
     if not reference:
         flash("Payment reference missing", "error")
@@ -1814,33 +2224,69 @@ def verify_payment():
         flash("Payment record not found", "error")
         return redirect(url_for("home"))
 
-    # Verify payment with Paystack
-    headers = {
-        'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}'
-    }
+    # Verify payment with Paystack.
+    transaction = verify_paystack_reference(reference)
+    if not transaction or transaction.get('status') != 'success':
+        flash("Payment verification failed. Please try again.", "error")
+        return redirect(url_for("pay_for_tournament", tournament_id=user_tournament.tournament_id))
 
     try:
-        response = requests.get(f'{PAYSTACK_BASE_URL}/transaction/verify/{reference}', headers=headers)
-        response_data = response.json()
+        verified, result = apply_tournament_payment(user_tournament, transaction)
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Tournament payment application failed')
+        verified, result = False, 'Payment could not be applied.'
+    if not verified:
+        flash(result, "error")
+        return redirect(url_for("pay_for_tournament", tournament_id=user_tournament.tournament_id))
 
-        if response_data['status'] and response_data['data']['status'] == 'success':
-            # Payment successful - update status
-            user_tournament.payment_status = 'paid'
-            db.session.commit()
+    flash(f"Payment successful! You've joined {user_tournament.tournament.game}", "success")
+    return redirect(url_for("dashboard"))
 
-            flash(f"Payment successful! You've joined {user_tournament.tournament.game}", "success")
-            return redirect(url_for("dashboard"))
+
+@app.route('/paystack/webhook', methods=['POST'])
+@csrf.exempt
+def paystack_webhook():
+    if not PAYSTACK_SECRET_KEY:
+        return jsonify({'status': 'error', 'message': 'Webhook unavailable'}), 503
+
+    payload = request.get_data()
+    signature = request.headers.get('x-paystack-signature', '')
+    expected_signature = hmac.new(PAYSTACK_SECRET_KEY.encode(), payload, hashlib.sha512).hexdigest()
+    if not signature or not hmac.compare_digest(signature, expected_signature):
+        return jsonify({'status': 'error', 'message': 'Invalid webhook signature'}), 401
+
+    try:
+        event = request.get_json(silent=True) or {}
+        transaction = event.get('data') or {}
+        reference = transaction.get('reference')
+        if event.get('event') != 'charge.success' or not is_valid_paystack_reference(reference):
+            return jsonify({'status': 'ignored'}), 200
+
+        tournament_join = UserTournament.query.filter_by(transaction_ref=reference).first()
+        wallet_deposit = WalletTransaction.query.filter_by(
+            transaction_ref=reference,
+            type='deposit',
+        ).first()
+        if tournament_join and wallet_deposit:
+            app.logger.error('Paystack reference is assigned to multiple payment records: %s', reference)
+            return jsonify({'status': 'error', 'message': 'Payment record conflict'}), 409
+        if tournament_join:
+            verified, result = apply_tournament_payment(tournament_join, transaction)
+        elif wallet_deposit:
+            verified, result = apply_wallet_deposit(wallet_deposit, transaction)
         else:
-            # Payment failed
-            user_tournament.payment_status = 'failed'
-            db.session.commit()
-
-            flash("Payment failed. Please try again.", "error")
-            return redirect(url_for("pay_for_tournament", tournament_id=user_tournament.tournament_id))
-
-    except Exception as e:
-        flash("Payment verification failed. Please contact support.", "error")
-        return redirect(url_for("home"))
+            return jsonify({'status': 'ignored'}), 200
+        if not verified:
+            return jsonify({'status': 'error', 'message': result}), 400
+        return jsonify({'status': 'ok'}), 200
+    except (TypeError, ValueError):
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': 'Invalid webhook payload'}), 400
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Paystack webhook processing failed')
+        return jsonify({'status': 'error', 'message': 'Webhook processing failed'}), 500
 
 
 # -------------------------
@@ -1848,7 +2294,6 @@ def verify_payment():
 # -------------------------
 @app.route("/wallet/initialize-deposit", methods=['POST'])
 @login_required
-@csrf.exempt
 def wallet_initialize_deposit():
     if not REQUESTS_AVAILABLE:
         return jsonify({'status': 'error', 'message': 'Payment system not available'})
@@ -1875,6 +2320,7 @@ def wallet_initialize_deposit():
     payload = {
         'email': current_user.email,
         'amount': amount * 100,  # Paystack uses kobo
+        'currency': PAYSTACK_CURRENCY,
         'reference': transaction_ref,
         'callback_url': url_for('wallet_verify_deposit', _external=True),
         'metadata': {
@@ -1906,8 +2352,10 @@ def wallet_initialize_deposit():
             })
         else:
             return jsonify({'status': 'error', 'message': 'Payment initialization failed.'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': f'Deposit initialization error: {str(e)}'})
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Wallet deposit initialization failed')
+        return jsonify({'status': 'error', 'message': 'Unable to initialize deposit.'}), 502
 
 
 @app.route("/wallet/verify-deposit")
@@ -1917,8 +2365,8 @@ def wallet_verify_deposit():
         flash("Payment verification not available", "error")
         return redirect(url_for("wallet"))
 
-    reference = request.args.get('reference')
-    if not reference:
+    reference = (request.args.get('reference') or '').strip()
+    if not is_valid_paystack_reference(reference):
         flash("Payment reference missing", "error")
         return redirect(url_for("wallet"))
 
@@ -1937,37 +2385,27 @@ def wallet_verify_deposit():
         flash("This deposit has already been processed.", "success")
         return redirect(url_for("wallet"))
 
-    # Verify with Paystack
-    headers = {
-        'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}'
-    }
+    transaction = verify_paystack_reference(reference)
+    if not transaction or transaction.get('status') != 'success':
+        flash('Deposit verification failed. Please try again.', 'error')
+        return redirect(url_for('wallet'))
 
     try:
-        response = requests.get(f'{PAYSTACK_BASE_URL}/transaction/verify/{reference}', headers=headers)
-        response_data = response.json()
-
-        if response_data['status'] and response_data['data']['status'] == 'success':
-            # Credit the user's wallet
-            wt.status = 'completed'
-            current_user.wallet_balance = (current_user.wallet_balance or 0) + wt.amount
-            db.session.commit()
-
-            flash(f'₦{wt.amount:,} deposited successfully!', 'success')
-            return redirect(url_for('wallet'))
-        else:
-            wt.status = 'failed'
-            db.session.commit()
-            flash('Deposit verification failed. Please try again.', 'error')
-            return redirect(url_for('wallet'))
-
-    except Exception as e:
-        flash('Deposit verification error. Please contact support.', 'error')
+        verified, result = apply_wallet_deposit(wt, transaction)
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Wallet deposit application failed')
+        verified, result = False, 'Deposit could not be applied.'
+    if not verified:
+        flash(result, 'error')
         return redirect(url_for('wallet'))
+
+    flash(f'₦{wt.amount:,} deposited successfully!', 'success')
+    return redirect(url_for('wallet'))
 
 
 @app.route("/wallet/withdraw", methods=['POST'])
 @login_required
-@csrf.exempt
 def wallet_withdraw():
     req_data = request.get_json(silent=True)
     if not req_data:
@@ -2100,25 +2538,11 @@ with app.app_context():
         except Exception as e:
             app.logger.warning(f"Database schema upgrade warning: {e}")
 
-# Ensure expected admin credentials exist (fixes admin login issues)
-    # Credentials are read from the environment (gitignored) so secrets stay out of source.
+# Ensure explicitly configured admin credentials exist. This updates or creates
+# only the admin identified by environment variables; it never changes an
+# existing legitimate admin merely because configuration is absent.
     expected_admin_email = (os.environ.get('ADMIN_EMAIL', '') or '').strip().lower()
     expected_admin_password = os.environ.get('ADMIN_PASSWORD', '') or ''
-
-    # Only create the fallback default admin if there are no users at all AND
-    # no explicit admin credentials were provided. This avoids creating it on
-    # a fresh production DB where a real admin is configured below.
-    if User.query.count() == 0 and not (expected_admin_email and expected_admin_password):
-        fallback_admin = User(
-            username="admin",
-            email="admin@gamearena.com",
-            password=generate_password_hash("admin123"),
-            is_admin=True,
-            email_verified=True,
-        )
-        db.session.add(fallback_admin)
-        db.session.commit()
-        print("Fallback admin user created: admin@gamearena.com / admin123")
 
     if expected_admin_email and expected_admin_password:
         admin_user = User.query.filter(db.func.lower(User.email) == expected_admin_email).first()
@@ -2130,9 +2554,7 @@ with app.app_context():
             if not admin_user.username:
                 admin_user.username = "admin"
         else:
-            # Generate a username that is guaranteed unique to avoid a
-            # UNIQUE constraint violation on user.username (e.g when the
-            # fallback "admin" username already exists).
+            # Generate a username that is guaranteed unique.
             base_username = "admin"
             candidate = base_username
             counter = 1
@@ -2221,26 +2643,42 @@ def on_connect():
 @socketio.on('join_user')
 def on_join_user(data):
     """Client data: {"user_id": 123}"""
-    user_id = int(data.get('user_id'))
-    join_room(f"user:{user_id}")
+    if not current_user.is_authenticated:
+        return
+    try:
+        user_id = int((data or {}).get('user_id'))
+    except (TypeError, ValueError):
+        return
+    if user_id == current_user.id:
+        join_room(f"user:{current_user.id}")
 
 
 @socketio.on('join_tournament')
 def on_join_tournament(data):
     """Client data: {"tournament_id": 1}"""
-    tournament_id = int(data.get('tournament_id'))
-    join_room(f"tournament:{tournament_id}")
+    if not current_user.is_authenticated:
+        return
+    try:
+        tournament_id = int((data or {}).get('tournament_id'))
+    except (TypeError, ValueError):
+        return
+    tournament = db.session.get(Tournament, tournament_id)
+    if tournament and can_access_tournament_chat(current_user.id, tournament_id):
+        join_room(f"tournament:{tournament_id}")
 
 
 @socketio.on('join_global_chat')
 def on_join_global_chat(data):
-    join_room('global_chat')
+    if current_user.is_authenticated:
+        join_room('global_chat')
 
 
 @socketio.on('send_global_chat_message')
 def on_send_global_chat_message(data):
-    message = (data.get('message') or '').strip()
+    message = ((data or {}).get('message') or '').strip()
     if not message or not current_user.is_authenticated:
+        return
+    if len(message) > MAX_CHAT_MESSAGE_LENGTH:
         return
 
     new_message = GlobalChatMessage(user_id=current_user.id, message=message)
@@ -2278,19 +2716,28 @@ def on_mark_notification_read(data):
 
 @socketio.on('leave_tournament')
 def on_leave_tournament(data):
-    tournament_id = int(data.get('tournament_id'))
+    if not current_user.is_authenticated:
+        return
+    try:
+        tournament_id = int((data or {}).get('tournament_id'))
+    except (TypeError, ValueError):
+        return
     leave_room(f"tournament:{tournament_id}")
 
 
 @socketio.on('send_chat_message')
 def on_send_chat_message(data):
-    tournament_id = int(data.get('tournament_id'))
-    message = (data.get('message') or '').strip()
-    if not message:
-        return
-
-    # If user isn’t authenticated, ignore
+    data = data or {}
     if not current_user.is_authenticated:
+        return
+    try:
+        tournament_id = int(data.get('tournament_id'))
+    except (TypeError, ValueError):
+        return
+    message = (data.get('message') or '').strip()
+    if not message or len(message) > MAX_CHAT_MESSAGE_LENGTH:
+        return
+    if not can_access_tournament_chat(current_user.id, tournament_id):
         return
 
     msg = TournamentChatMessage(

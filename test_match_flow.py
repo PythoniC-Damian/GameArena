@@ -1,4 +1,5 @@
 import importlib
+import re
 
 app_module = importlib.import_module('app')
 
@@ -121,9 +122,12 @@ def test_admin_can_login_without_email_verification():
             app_module.db.session.add(admin_user)
             app_module.db.session.commit()
 
+        login_page = client.get('/login')
+        csrf_token = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', login_page.text).group(1)
         response = client.post('/login', data={
             'email': 'admin_test@example.com',
             'password': 'secure123',
+            'csrf_token': csrf_token,
         }, follow_redirects=False)
 
         assert response.status_code == 302
