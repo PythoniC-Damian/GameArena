@@ -59,7 +59,7 @@
     </div>
 </nav>
 
-<main class="mx-auto max-w-7xl px-6 py-10">
+<main class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
     <div class="mb-8 space-y-3">
@@ -71,7 +71,7 @@
     {% endwith %}
 
     <div class="grid gap-6 xl:grid-cols-[0.9fr_0.5fr]">
-        <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-2xl shadow-slate-950/20">
+        <section class="min-w-0 rounded-[36px] border border-slate-800 bg-slate-900/90 p-4 shadow-2xl shadow-slate-950/20 sm:p-6">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Global chat</p>
@@ -82,11 +82,11 @@
                     <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/60 px-3 py-2">Online</span>
                 </div>
             </div>
-            <div id="chatWindow" class="mt-6 flex h-[66vh] flex-col overflow-hidden rounded-[32px] border border-slate-800 bg-slate-950/80 p-4">
-                <div id="messages" class="flex-1 space-y-3 overflow-y-auto pr-2">
+            <div id="chatWindow" class="mt-6 flex h-[66vh] min-w-0 flex-col overflow-hidden rounded-[32px] border border-slate-800 bg-slate-950/80 p-3 sm:p-4">
+                <div id="messages" class="min-w-0 flex-1 space-y-3 overflow-y-auto pr-1 sm:pr-2">
 {% for message in messages %}
                     {% if message.user %}
-                    <div class="{{ 'ml-auto bg-emerald-500/10 text-emerald-200 border-emerald-500/10' if message.user_id == current_user.id else 'bg-slate-900/80 text-slate-300 border-slate-800' }} max-w-[75%] w-fit rounded-[32px] p-4 shadow-sm border">
+                    <div class="{{ 'ml-auto bg-emerald-500/10 text-emerald-200 border-emerald-500/10' if message.user_id == current_user.id else 'bg-slate-900/80 text-slate-300 border-slate-800' }} w-fit max-w-[75%] break-words rounded-[32px] border p-4 shadow-sm">
                         <div class="flex items-center justify-between gap-3">
                             <span class="text-sm font-semibold text-white">{{ message.user.username }}</span>
                             <span class="text-xs text-slate-500">{{ message.created_at.strftime('%H:%M') if message.created_at else '' }}</span>
@@ -96,9 +96,9 @@
                     {% endif %}
                     {% endfor %}
                 </div>
-                <form id="chatForm" class="mt-4 flex gap-3 rounded-[32px] border border-slate-800 bg-slate-900/90 p-3">
-                    <input id="chatInput" type="text" placeholder="Type your message..." autocomplete="off" class="flex-1 rounded-[28px] border border-slate-800 bg-slate-950/80 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none" />
-                    <button type="submit" class="rounded-full bg-emerald-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Send</button>
+                <form id="chatForm" class="mt-4 flex min-w-0 gap-2 rounded-[32px] border border-slate-800 bg-slate-900/90 p-2 sm:gap-3 sm:p-3">
+                    <input id="chatInput" type="text" placeholder="Type your message..." autocomplete="off" class="min-w-0 flex-1 rounded-[28px] border border-slate-800 bg-slate-950/80 px-3 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none sm:px-4" />
+                    <button type="submit" class="shrink-0 rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold leading-5 text-slate-950 hover:bg-emerald-400 sm:px-6">Send</button>
                 </form>
             </div>
         </section>
@@ -130,27 +130,7 @@
     </div>
 </main>
 
-<!-- Mobile bottom navigation (visible only on mobile) -->
-<nav class="fixed inset-x-0 bottom-0 z-50 border-t border-slate-800/80 bg-slate-950/95 px-2 pb-2 pt-1 backdrop-blur-sm md:hidden">
-    <div class="mx-auto grid max-w-lg grid-cols-4 gap-1">
-        <a href="{{ url_for('home') }}" class="flex flex-col items-center gap-0.5 rounded-2xl px-2 py-2 text-[11px] font-semibold text-emerald-300">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10.5L12 3l9 7.5V21a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1v-10.5z"/></svg>
-            Home
-        </a>
-        <a href="{{ url_for('tournaments_page') }}" class="flex flex-col items-center gap-0.5 rounded-2xl px-2 py-2 text-[11px] text-slate-300">
-<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3a1 1 0 000 2h6a1 1 0 100-2H9zM8 5a1 1 0 011-1h6a1 1 0 011 1v1a4 4 0 01-1.5 3.15A5 5 0 0118 13a5 5 0 01-1.5 3.65A5 5 0 0112 18a5 5 0 01-4.5-1.35A5 5 0 016 13a5 5 0 011.5-3.15A4 4 0 018 6V5zM5.5 13a3.5 3.5 0 00.65 2.03A5.5 5.5 0 0010 12.84V15a3.5 3.5 0 01-3.5-3.5H5.5zM11 14.84V15a3.5 3.5 0 003.5-3.5h-1.5a3.5 3.5 0 01-2 2.02z"/></svg>
-            Tournament
-        </a>
-        <a href="{{ url_for('wallet') }}" class="flex flex-col items-center gap-0.5 rounded-2xl px-2 py-2 text-[11px] text-slate-300">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7zm4 2h2m4 0h6M5 12h14"/></svg>
-            Wallet
-        </a>
-        <a href="{{ url_for('profile') }}" class="flex flex-col items-center gap-0.5 rounded-2xl px-2 py-2 text-[11px] text-slate-300">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-            Profile
-        </a>
-    </div>
-</nav>
+{% include '_mobile_nav.html' %}
 
 <footer class="border-t border-slate-800/70 bg-slate-950/80 p-8 text-center text-sm text-slate-500" pb-28 md:pb-8>
     <p>© 2026 GameArena. Compete. Win. Earn.</p>

@@ -1,0 +1,22 @@
+{% set current_path = request.path %}
+{% set tournaments_active = current_path == url_for('tournaments_page') or current_path.startswith('/tournament/') or current_path.startswith('/join-tournament/') %}
+<nav class="fixed inset-x-0 bottom-0 z-50 border-t border-slate-800/80 bg-slate-950/95 px-2 pb-2 pt-1 backdrop-blur-sm md:hidden" aria-label="Mobile navigation">
+    <div class="mx-auto grid max-w-lg grid-cols-4 gap-1">
+        <a href="{{ url_for('home') }}" class="flex flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-2 text-[11px] {{ 'font-semibold text-emerald-300' if current_path == url_for('home') else 'text-slate-300' }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10.5L12 3l9 7.5V21a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1v-10.5z"/></svg>
+            Home
+        </a>
+        <a href="{{ url_for('tournaments_page') }}" class="flex flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-2 text-[11px] {{ 'font-semibold text-emerald-300' if tournaments_active else 'text-slate-300' }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 4h8M7 4v3a5 5 0 005 5 5 5 0 005-5V4M7 7H5a3 3 0 003 3M17 7h2a3 3 0 01-3 3M12 12v4M8 20h8M9 16h6"/></svg>
+            Tournaments
+        </a>
+        <a href="{{ url_for('wallet') }}" class="flex flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-2 text-[11px] {{ 'font-semibold text-emerald-300' if current_path == url_for('wallet') else 'text-slate-300' }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7zm4 2h2m4 0h6M5 12h14"/></svg>
+            Wallet
+        </a>
+        <a href="{{ url_for('profile') }}" class="flex flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-2 text-[11px] {{ 'font-semibold text-emerald-300' if current_path == url_for('profile') else 'text-slate-300' }}">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            Profile
+        </a>
+    </div>
+</nav>
