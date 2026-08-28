@@ -41,22 +41,7 @@
             <a href="{{ url_for('register') }}" class="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Register</a>
         {% endif %}
     </div>
-    <div id="mobileMenu" class="hidden md:hidden mt-4 flex flex-col gap-2 rounded-[28px] border border-slate-800 bg-slate-900/95 p-4">
-        <a href="{{ url_for('home') }}" class="rounded-2xl px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800">Home</a>
-        <a href="{{ url_for('tournaments_page') }}" class="rounded-2xl px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 hover:text-white">Tournaments</a>
-        <a href="{{ url_for('leaderboard') }}" class="rounded-2xl px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 hover:text-white">Leaderboard</a>
-        <a href="{{ url_for('notifications') }}" class="rounded-2xl px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 hover:text-white">Notifications</a>
-        <a href="{{ url_for('chat') }}" class="rounded-2xl px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 hover:text-white">Chat</a>
-        {% if current_user.is_authenticated %}
-            <a href="{{ url_for('dashboard') }}" class="rounded-2xl px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 hover:text-white">Dashboard</a>
-            <a href="{{ url_for('wallet') }}" class="rounded-2xl px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 hover:text-white">Wallet</a>
-            <a href="{{ url_for('profile') }}" class="rounded-2xl px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 hover:text-white">Profile</a>
-            <a href="{{ url_for('logout') }}" class="rounded-2xl bg-red-500 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-red-600">Logout</a>
-        {% else %}
-            <a href="{{ url_for('login') }}" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-center text-sm text-white hover:border-emerald-400">Login</a>
-            <a href="{{ url_for('register') }}" class="rounded-2xl bg-emerald-500 px-4 py-3 text-center text-sm font-semibold text-slate-950 hover:bg-emerald-400">Register</a>
-        {% endif %}
-    </div>
+    {% include '_mobile_menu.html' %}
 </nav>
 
 <main class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">

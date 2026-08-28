@@ -1,0 +1,16 @@
+<div id="mobileMenu" class="hidden md:hidden mt-4 flex max-h-[calc(100vh-7rem)] flex-col gap-2 overflow-y-auto rounded-[28px] border border-slate-800 bg-slate-900/95 p-4" role="menu">
+    <p class="px-4 pb-1 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300">Menu</p>
+    <a href="{{ url_for('notifications') }}" class="rounded-2xl px-4 py-3 text-sm {{ 'font-semibold text-emerald-300' if request.path == url_for('notifications') else 'text-slate-300' }} hover:bg-slate-800 hover:text-white" role="menuitem">Notifications</a>
+    <a href="{{ url_for('chat') }}" class="rounded-2xl px-4 py-3 text-sm {{ 'font-semibold text-emerald-300' if request.path == url_for('chat') else 'text-slate-300' }} hover:bg-slate-800 hover:text-white" role="menuitem">Chat</a>
+    {% if current_user.is_authenticated %}
+        <a href="{{ url_for('wallet') }}" class="rounded-2xl px-4 py-3 text-sm {{ 'font-semibold text-emerald-300' if request.path == url_for('wallet') else 'text-slate-300' }} hover:bg-slate-800 hover:text-white" role="menuitem">Wallet</a>
+        <a href="{{ url_for('dashboard') }}" class="rounded-2xl px-4 py-3 text-sm {{ 'font-semibold text-emerald-300' if request.path == url_for('dashboard') else 'text-slate-300' }} hover:bg-slate-800 hover:text-white" role="menuitem">Dashboard</a>
+        {% if current_user.is_admin %}
+            <a href="{{ url_for('admin') }}" class="rounded-2xl border border-emerald-500/50 bg-emerald-500/10 px-4 py-3 text-center text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20" role="menuitem">Admin Panel</a>
+        {% endif %}
+        <a href="{{ url_for('logout') }}" class="rounded-2xl bg-red-500 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-red-600" role="menuitem">Logout</a>
+    {% else %}
+        <a href="{{ url_for('login') }}" class="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-center text-sm text-white hover:border-emerald-400" role="menuitem">Login</a>
+        <a href="{{ url_for('register') }}" class="rounded-2xl bg-emerald-500 px-4 py-3 text-center text-sm font-semibold text-slate-950 hover:bg-emerald-400" role="menuitem">Register</a>
+    {% endif %}
+</div>
