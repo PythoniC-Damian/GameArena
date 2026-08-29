@@ -278,29 +278,35 @@ csrf = CSRFProtect(app)
 GAME_IMAGE_MAP = {
     'call of duty mobile': 'images/call_of_duty.jpg',
     'call of duty': 'images/call_of_duty.jpg',
+    'cod mobile': 'images/call_of_duty.jpg',
+    'cod': 'images/call_of_duty.jpg',
     'free fire': 'images/free fire.jpg',
     'pubg mobile': 'images/PUBG.jpg',
     'pubg': 'images/PUBG.jpg',
-    'efootball': 'images/efootball_3.jpg',
-    'fifa': 'images/efootball_3.jpg',
+    'efootball': 'images/efootball-messi.jpg',
+    'efootball mobile': 'images/efootball-messi.jpg',
+    'fifa': 'images/efootball-messi.jpg',
 }
 
 GAME_IMAGE_CAROUSEL_MAP = {
-    'call of duty mobile': ['images/call_of_duty.jpg', 'images/call of duty 2.webp', 'images/call of duty 3.jpg'],
-    'call of duty': ['images/call_of_duty.jpg', 'images/call of duty 2.webp', 'images/call of duty 3.jpg'],
-    'free fire': ['images/free fire.jpg', 'images/free fire 2.webp', 'images/free fire 3.jpg'],
-    'pubg mobile': ['images/PUBG.jpg', 'images/PUBG 2.jpg'],
-    'pubg': ['images/PUBG.jpg', 'images/PUBG 2.jpg'],
-    'efootball': ['images/efootball-messi.jpg', 'images/efootball_2.jpg', 'images/efootball_3.jpg'],
-    'fifa': ['images/efootball-messi.jpg', 'images/efootball_2.jpg', 'images/efootball_3.jpg'],
+    'call of duty mobile': ['images/call_of_duty.jpg'],
+    'call of duty': ['images/call_of_duty.jpg'],
+    'cod mobile': ['images/call_of_duty.jpg'],
+    'cod': ['images/call_of_duty.jpg'],
+    'free fire': ['images/free fire.jpg'],
+    'pubg mobile': ['images/PUBG.jpg'],
+    'pubg': ['images/PUBG.jpg'],
+    'efootball': ['images/efootball-messi.jpg'],
+    'efootball mobile': ['images/efootball-messi.jpg'],
+    'fifa': ['images/efootball-messi.jpg'],
 }
 
 FEATURED_GAME_PRIORITY = ['pubg', 'free fire', 'call of duty', 'efootball']
 FEATURED_GAME_ALIASES = {
     'pubg': {'pubg', 'pubg mobile'},
     'free fire': {'free fire'},
-    'call of duty': {'call of duty', 'call of duty mobile'},
-    'efootball': {'efootball', 'fifa'},
+    'call of duty': {'call of duty', 'call of duty mobile', 'cod mobile', 'cod'},
+    'efootball': {'efootball', 'efootball mobile', 'fifa'},
 }
 
 
