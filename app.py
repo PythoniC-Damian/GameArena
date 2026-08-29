@@ -295,12 +295,51 @@ GAME_IMAGE_CAROUSEL_MAP = {
     'fifa': ['images/efootball-messi.jpg', 'images/efootball_2.jpg', 'images/efootball_3.jpg'],
 }
 
+FEATURED_GAME_PRIORITY = ['pubg', 'free fire', 'call of duty', 'efootball']
+FEATURED_GAME_ALIASES = {
+    'pubg': {'pubg', 'pubg mobile'},
+    'free fire': {'free fire'},
+    'call of duty': {'call of duty', 'call of duty mobile'},
+    'efootball': {'efootball', 'fifa'},
+}
+
+
 @app.context_processor
 def utility_processor():
+    def normalize_game_key(game_name):
+        if not game_name:
+            return ''
+        return game_name.strip().lower()
+
+    def game_group_key(game_name):
+        normalized = normalize_game_key(game_name)
+        for canonical, aliases in FEATURED_GAME_ALIASES.items():
+            if normalized in aliases:
+                return canonical
+        return None
+
+    def featured_tournaments(tournaments):
+        if not tournaments:
+            return []
+
+        ordered = []
+        seen = set()
+
+        for game_key in FEATURED_GAME_PRIORITY:
+            for tournament in tournaments:
+                if tournament is None:
+                    continue
+                group_key = game_group_key(getattr(tournament, 'game', ''))
+                if group_key == game_key and group_key not in seen:
+                    ordered.append(tournament)
+                    seen.add(group_key)
+                    break
+        return ordered
+
     def tournament_image(game_name):
         if not game_name:
             return 'https://source.unsplash.com/1200x800/?gaming'
-        key = game_name.strip().lower()
+        key = normalize_game_key(game_name)
         if key in GAME_IMAGE_MAP:
             value = GAME_IMAGE_MAP[key]
             return value if value.startswith('http') else url_for('static', filename=value)
@@ -309,7 +348,7 @@ def utility_processor():
     def game_image_carousel(game_name):
         if not game_name:
             return []
-        key = game_name.strip().lower()
+        key = normalize_game_key(game_name)
         if key in GAME_IMAGE_CAROUSEL_MAP:
             return [url_for('static', filename=image) for image in GAME_IMAGE_CAROUSEL_MAP[key]]
         fallback = tournament_image(game_name)
@@ -325,7 +364,12 @@ def utility_processor():
                     images.append(url_for('static', filename=f'images/{filename}'))
         return images
 
-    return dict(tournament_image=tournament_image, game_image_carousel=game_image_carousel, carousel_images=carousel_images())
+    return dict(
+        tournament_image=tournament_image,
+        game_image_carousel=game_image_carousel,
+        carousel_images=carousel_images(),
+        featured_tournaments=featured_tournaments,
+    )
 
 
 def generate_code(length=6):

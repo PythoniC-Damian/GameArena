@@ -16,29 +16,140 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
     .featured-cube-stage {
-        perspective: 1100px;
+        perspective: 1500px;
         touch-action: pan-y;
+        min-height: clamp(320px, 48vw, 520px);
     }
     .featured-cube {
-        --cube-depth: min(50%, 210px);
-        height: clamp(260px, 34vw, 360px);
+        --cube-depth: min(48%, 230px);
         position: relative;
+        width: 100%;
+        height: clamp(330px, 46vw, 520px);
         transform-style: preserve-3d;
         transition: transform 850ms cubic-bezier(0.22, 0.61, 0.36, 1);
         will-change: transform;
     }
     .featured-cube-face {
-        backface-visibility: hidden;
-        inset: 0;
         position: absolute;
+        inset: 0;
+        border-radius: 28px;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        background: rgba(15, 23, 42, 0.9);
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.65);
+        backface-visibility: hidden;
         transform-style: preserve-3d;
     }
     .featured-cube-face:nth-child(1) { transform: rotateY(0deg) translateZ(var(--cube-depth)); }
     .featured-cube-face:nth-child(2) { transform: rotateY(90deg) translateZ(var(--cube-depth)); }
     .featured-cube-face:nth-child(3) { transform: rotateY(180deg) translateZ(var(--cube-depth)); }
     .featured-cube-face:nth-child(4) { transform: rotateY(270deg) translateZ(var(--cube-depth)); }
+    .featured-poster-link {
+        display: block;
+        height: 100%;
+        width: 100%;
+    }
+    .featured-poster-wrap {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        border-radius: 28px;
+        background: #020617;
+    }
+    .featured-poster-visual {
+        position: absolute;
+        inset: 0;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: contain;
+        transform: scale(1.02);
+        filter: saturate(1.15) contrast(1.08);
+    }
+    .featured-poster-overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(2,6,23,0.12) 0%, rgba(2,6,23,0.24) 28%, rgba(2,6,23,0.88) 100%);
+    }
+    .featured-poster-content {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 18px 18px 16px;
+        text-shadow: 0 2px 10px rgba(15, 23, 42, 0.8);
+    }
+    .featured-poster-topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .featured-poster-tag,
+    .featured-poster-status {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 9999px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(15, 23, 42, 0.72);
+        padding: 0.38rem 0.7rem;
+        font-size: 0.62rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: rgba(240, 249, 255, 0.9);
+        backdrop-filter: blur(4px);
+    }
+    .featured-poster-status {
+        color: #a7f3d0;
+        border-color: rgba(52, 211, 153, 0.4);
+        background: rgba(6, 78, 59, 0.45);
+    }
+    .featured-poster-name {
+        max-width: 72%;
+        font-size: clamp(1.2rem, 2vw, 2.1rem);
+        line-height: 1.02;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        color: #f8fafc;
+    }
+    .featured-poster-pricing {
+        display: flex;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .featured-poster-pricing span {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 0.22rem;
+        padding: 0.6rem 0.8rem;
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(15, 23, 42, 0.7);
+        font-size: 0.56rem;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: rgba(191, 219, 254, 0.8);
+        backdrop-filter: blur(4px);
+    }
+    .featured-poster-pricing strong {
+        font-size: 0.82rem;
+        letter-spacing: 0.04em;
+        color: #f8fafc;
+    }
     @media (max-width: 640px) {
-        .featured-cube { --cube-depth: min(50%, 160px); height: clamp(220px, 65vw, 300px); }
+        .featured-cube {
+            --cube-depth: min(48%, 180px);
+            height: clamp(290px, 72vw, 360px);
+        }
+        .featured-poster-content { padding: 14px 14px 12px; }
+        .featured-poster-tag, .featured-poster-status { letter-spacing: 0.12em; font-size: 0.52rem; }
+        .featured-poster-name { max-width: 82%; font-size: clamp(1.05rem, 5vw, 1.7rem); }
+        .featured-poster-pricing { gap: 0.4rem; }
+        .featured-poster-pricing span { padding: 0.45rem 0.55rem; letter-spacing: 0.18em; }
     }
     @media (prefers-reduced-motion: reduce) {
         .featured-cube { transition-duration: 1ms; }
@@ -126,21 +237,33 @@
                         <div class="rounded-[28px] border border-white/10 bg-slate-950/80 p-5 text-center"><p class="text-3xl font-semibold text-white">97%</p><p class="mt-2 text-xs uppercase tracking-[0.35em] text-slate-400">Player satisfaction</p></div>
                     </div>
                 </div>
-                {% set featured = namespace(items=[], categories=[]) %}
-                {% for category in ['pubg', 'efootball', 'call of duty', 'free fire'] %}
-                    {% for item in tournaments %}
-                        {% set game_key = item.game.strip().lower() if item.game else '' %}
-                        {% set matches_category = (category == 'pubg' and game_key in ['pubg', 'pubg mobile']) or (category == 'efootball' and game_key in ['efootball', 'fifa']) or (category == 'call of duty' and game_key in ['call of duty', 'call of duty mobile']) or (category == 'free fire' and game_key == 'free fire') %}
-                        {% if matches_category and category not in featured.categories %}{% set _ = featured.items.append(item) %}{% set _ = featured.categories.append(category) %}{% endif %}
-                    {% endfor %}
-                {% endfor %}
-                <div class="rounded-[36px] border border-white/10 bg-slate-950/80 p-6 shadow-2xl shadow-slate-950/30">
-                    <div class="mb-6 flex items-center justify-between gap-3"><p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Featured match</p><span class="rounded-full bg-emerald-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-emerald-200">{{ featured.items[0].status|capitalize if featured.items else 'Open' }}</span></div>
-                    {% if featured.items %}
-                    <div id="featuredCubeStage" class="featured-cube-stage relative mx-auto w-full max-w-[420px]" aria-label="Featured matches carousel">
+                {% set featured = featured_tournaments(tournaments) %}
+                <div class="rounded-[36px] border border-white/10 bg-slate-950/80 p-4 shadow-2xl shadow-slate-950/30 sm:p-6">
+                    <div class="mb-5 flex items-center justify-between gap-3"><p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Featured match</p></div>
+                    {% if featured %}
+                    <div id="featuredCubeStage" class="featured-cube-stage relative mx-auto w-full max-w-[460px]" aria-label="Featured matches carousel">
                         <div id="featuredCube" class="featured-cube">
-                            {% for item in featured.items %}
-                            <article class="featured-cube-face overflow-hidden rounded-[28px] bg-slate-900/80" data-title="{{ item.name }}" aria-hidden="{{ 'false' if loop.first else 'true' }}"><a href="{{ url_for('tournament_details', tournament_id=item.id) }}" class="block h-full w-full focus:outline-none focus:ring-2 focus:ring-emerald-400"><img src="{{ game_image_carousel(item.game)[0] }}" alt="{{ item.game }} artwork for {{ item.name }}" class="h-full w-full object-contain" /></a></article>
+                            {% for item in featured %}
+                            {% set poster_image = game_image_carousel(item.game)[0] if game_image_carousel(item.game) else tournament_image(item.game) %}
+                            <article class="featured-cube-face" data-title="{{ item.name }}" aria-hidden="{{ 'false' if loop.first else 'true' }}">
+                                <a href="{{ url_for('tournament_details', tournament_id=item.id) }}" class="featured-poster-link block h-full w-full focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                                    <div class="featured-poster-wrap">
+                                        <div class="featured-poster-visual" style="background-image: url('{{ poster_image }}');"></div>
+                                        <div class="featured-poster-overlay"></div>
+                                        <div class="featured-poster-content">
+                                            <div class="featured-poster-topline">
+                                                <span class="featured-poster-tag">{{ item.game|upper }}</span>
+                                                <span class="featured-poster-status">{{ item.status|capitalize }}</span>
+                                            </div>
+                                            <div class="featured-poster-name">{{ item.name }}</div>
+                                            <div class="featured-poster-pricing">
+                                                <span>ENTRY FEE <strong>₦{{ item.entry_fee }}</strong></span>
+                                                <span>PRIZE <strong>₦{{ item.prize }}</strong></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </a>
+                            </article>
                             {% endfor %}
                         </div>
                     </div>
