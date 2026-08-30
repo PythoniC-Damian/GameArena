@@ -165,7 +165,8 @@
                     <div id="featuredCubeStage" class="featured-cube-stage relative mx-auto w-full max-w-[460px]" aria-label="Featured matches carousel">
                         <div id="featuredCube" class="featured-cube">
                             {% for item in featured %}
-                            {% set poster_image = game_image_carousel(item.game)[0] if game_image_carousel(item.game) else tournament_image(item.game) %}
+                            {% set is_pubg_featured = (item.game and item.game|lower in ['pubg', 'pubg mobile']) or (item.name and 'pubg' in item.name|lower) %}
+                            {% set poster_image = url_for('static', filename='images/pubg_championship_featured.png') if is_pubg_featured else (game_image_carousel(item.game)[0] if game_image_carousel(item.game) else tournament_image(item.game)) %}
                             <article class="featured-cube-face" data-title="{{ item.name }}" data-tournament-id="{{ item.id }}" aria-hidden="{{ 'false' if loop.first else 'true' }}">
                                 <a href="{{ url_for('tournament_details', tournament_id=item.id) }}" class="featured-poster-link block h-full w-full focus:outline-none focus:ring-2 focus:ring-emerald-400">
                                     <div class="featured-poster-wrap">
