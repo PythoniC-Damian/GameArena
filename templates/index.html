@@ -61,6 +61,10 @@
         background-size: contain;
         filter: saturate(1.15) contrast(1.08);
     }
+    .featured-poster-fit-cover {
+        background-size: cover;
+        background-position: center center;
+    }
     @media (max-width: 640px) {
         .featured-cube {
             --cube-depth: 170px;
@@ -167,12 +171,13 @@
                             {% for item in featured %}
                             {% set game_key = (item.game or '')|lower %}
                             {% set is_free_fire_featured = game_key in ['free fire'] or 'free fire' in (item.name or '')|lower %}
+                            {% set is_cod_featured = game_key in ['call of duty', 'call of duty mobile', 'cod mobile', 'cod'] or 'call of duty' in (item.name or '')|lower or 'cod' in (item.name or '')|lower %}
                             {% set is_efootball_featured = game_key in ['efootball', 'efootball mobile', 'fifa'] or 'efootball' in (item.name or '')|lower or 'legend' in (item.name or '')|lower %}
-                            {% set poster_image = url_for('static', filename='images/free_fire_featured.png') if is_free_fire_featured else (url_for('static', filename='images/efootball_featured.png') if is_efootball_featured else (game_image_carousel(item.game)[0] if game_image_carousel(item.game) else tournament_image(item.game))) %}
+                            {% set poster_image = url_for('static', filename='images/free_fire_featured.png') if is_free_fire_featured else (url_for('static', filename='images/call_of_duty_featured.png') if is_cod_featured else (url_for('static', filename='images/efootball_featured.png') if is_efootball_featured else (game_image_carousel(item.game)[0] if game_image_carousel(item.game) else tournament_image(item.game)))) %}
                             <article class="featured-cube-face" data-title="{{ item.name }}" data-tournament-id="{{ item.id }}" aria-hidden="{{ 'false' if loop.first else 'true' }}">
                                 <a href="{{ url_for('tournament_details', tournament_id=item.id) }}" class="featured-poster-link block h-full w-full focus:outline-none focus:ring-2 focus:ring-emerald-400">
                                     <div class="featured-poster-wrap">
-                                        <div class="featured-poster-visual" style="background-image: url('{{ poster_image }}');"></div>
+                                        <div class="featured-poster-visual{% if is_efootball_featured or is_cod_featured %} featured-poster-fit-cover{% endif %}" style="background-image: url('{{ poster_image }}');"></div>
                                     </div>
                                 </a>
                             </article>
