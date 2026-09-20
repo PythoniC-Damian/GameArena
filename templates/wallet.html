@@ -178,6 +178,10 @@
                 <input id="bankName" type="text" placeholder="GTBank" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
             </div>
             <div>
+                <label class="block text-sm font-semibold text-cyan-300 mb-2">Paystack bank code</label>
+                <input id="bankCode" type="text" placeholder="058" maxlength="20" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
+            </div>
+            <div>
                 <label class="block text-sm font-semibold text-cyan-300 mb-2">Account number</label>
                 <input id="accountNumber" type="text" maxlength="10" placeholder="0123456789" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
             </div>
@@ -247,18 +251,21 @@ function processDeposit() {
 function processWithdraw() {
   const amount = document.getElementById('withdrawAmount').value;
   const bankName = document.getElementById('bankName').value.trim();
+  const bankCode = document.getElementById('bankCode').value.trim();
   const accountNumber = document.getElementById('accountNumber').value.trim();
-  const accountName = document.getElementById('accountName').value.trim();
   const csrfToken = document.querySelector('#withdrawForm input[name="csrf_token"]').value;
   if (!amount || parseInt(amount) < 100) { alert('Minimum withdrawal is ₦100'); return; }
-  if (!bankName || !accountNumber || !accountName) { alert('Please fill in all bank details'); return; }
+  if (!bankName || !bankCode || !accountNumber) { alert('Please fill in all bank details'); return; }
   if (accountNumber.length !== 10) { alert('Account number must be 10 digits'); return; }
+  const storedKey = sessionStorage.getItem('gamearena-withdrawal-idempotency-key');
+  const idempotencyKey = storedKey || ((window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID().replace(/-/g, '') : 'wd' + Date.now() + Math.random().toString(36).slice(2));
+  sessionStorage.setItem('gamearena-withdrawal-idempotency-key', idempotencyKey);
   fetch('/wallet/withdraw', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-    body: JSON.stringify({ amount: parseInt(amount), bank_name: bankName, account_number: accountNumber, account_name: accountName })
+    body: JSON.stringify({ amount: parseInt(amount), bank_name: bankName, bank_code: bankCode, account_number: accountNumber, idempotency_key: idempotencyKey })
   }).then(response => response.json()).then(data => {
-    if (data.status === 'success') { alert(data.message); window.location.reload(); }
+    if (data.status === 'success') { sessionStorage.removeItem('gamearena-withdrawal-idempotency-key'); alert(data.message); window.location.reload(); }
     else { alert(data.message || 'Withdrawal failed'); }
   }).catch(error => { alert('Error: ' + error); });
 }

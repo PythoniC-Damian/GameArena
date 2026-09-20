@@ -28,6 +28,8 @@ services:
         sync: false
       - key: PAYSTACK_PUBLIC_KEY
         sync: false
+      # Paystack Transfers uses the existing PAYSTACK_SECRET_KEY. Configure
+      # /paystack/webhook in the Paystack dashboard for transfer events.
       - key: RESEND_API_KEY
         sync: false
       - key: SMTP_SERVER

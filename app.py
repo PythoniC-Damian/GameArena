@@ -5,14 +5,17 @@ import hmac
 import hashlib
 import secrets
 import re
+import time
 import urllib.parse
-from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify, session
+from collections import defaultdict, deque
+from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify, session, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from sqlalchemy.pool import NullPool
+from sqlalchemy.orm import selectinload, joinedload
 
 from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, validators
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -79,11 +82,10 @@ SENSITIVE_CACHE_PATHS = (
     '/wallet/verify-deposit',
 )
 database_url = (os.environ.get('DATABASE_URL') or '').strip()
-if is_production:
-    if not database_url:
-        raise RuntimeError('DATABASE_URL must be configured in production.')
-    if not database_url.lower().startswith(('postgresql://', 'postgres://', 'postgresql+')):
-        raise RuntimeError('DATABASE_URL must point to PostgreSQL in production.')
+if not database_url:
+    raise RuntimeError('DATABASE_URL must be configured for local and production PostgreSQL use.')
+if not database_url.lower().startswith(('postgresql://', 'postgres://', 'postgresql+')):
+    raise RuntimeError('DATABASE_URL must point to PostgreSQL.')
 RATE_LIMITS = {
     'login_ip': (10, 15 * 60),
     'login_account': (5, 15 * 60),
@@ -121,6 +123,27 @@ def add_response_security_headers(response):
     return response
 
 
+@app.before_request
+def begin_request_timing():
+    """Capture a request duration without recording query strings or request bodies."""
+    g.request_started_at = time.perf_counter()
+    g.request_id = request.headers.get('X-Request-ID', '').strip()[:64] or secrets.token_hex(8)
+
+
+@app.after_request
+def log_completed_request(response):
+    """Emit a compact, non-sensitive production log entry for dynamic requests."""
+    started_at = getattr(g, 'request_started_at', None)
+    if started_at is not None and not request.path.startswith('/static/'):
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        app.logger.info(
+            'request_completed request_id=%s method=%s path=%s status=%s duration_ms=%s',
+            getattr(g, 'request_id', '-'), request.method, request.path, response.status_code, duration_ms,
+        )
+    response.headers.setdefault('X-Request-ID', getattr(g, 'request_id', secrets.token_hex(8)))
+    return response
+
+
 # Socket.IO (WebSockets)
 # Note: for production you may want a message queue (Redis) to support multi-worker.
 socketio_cors_origins = [
@@ -130,10 +153,7 @@ socketio_cors_origins = [
 ]
 socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins or None)
 
-instance_dir = os.path.join(base_dir, 'instance')
-os.makedirs(instance_dir, exist_ok=True)
-database_path = os.path.join(instance_dir, 'database.db')
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url or f'sqlite:///{database_path}'
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 # Use NullPool so SQLAlchemy does not rely on a queue-based connection pool.
@@ -179,6 +199,40 @@ def safe_next_url(target):
 
 MAX_CHAT_MESSAGE_LENGTH = 1000
 MAX_MATCH_PROOF_LENGTH = 2000
+
+# Socket events are authenticated, but a connected browser can otherwise send
+# mutation events as quickly as its network allows. This lightweight guard is
+# deliberately process-local: it protects a single worker without making Redis
+# a required development dependency. A future Redis adapter can replace this
+# implementation when Socket.IO is deployed across multiple workers.
+SOCKET_EVENT_LIMITS = {
+    'join_user': (12, 60),
+    'join_tournament': (20, 60),
+    'join_global_chat': (12, 60),
+    'send_global_chat_message': (6, 10),
+    'send_chat_message': (6, 10),
+    'mark_notification_read': (15, 10),
+}
+socket_event_windows = defaultdict(deque)
+
+
+def socket_event_allowed(event_name):
+    """Return whether the current Socket.IO connection may emit an event."""
+    limit, window_seconds = SOCKET_EVENT_LIMITS.get(event_name, (20, 60))
+    key = (getattr(request, 'sid', 'unknown'), event_name)
+    now = time.monotonic()
+    events = socket_event_windows[key]
+    cutoff = now - window_seconds
+    while events and events[0] <= cutoff:
+        events.popleft()
+    if len(events) >= limit:
+        return False
+    events.append(now)
+    return True
+
+
+def socket_rate_limit_error():
+    emit('socket_error', {'message': 'Too many requests. Please wait and try again.'})
 
 
 def is_admin_user(user=None):
@@ -703,6 +757,10 @@ class Tournament(db.Model):
     participants = db.relationship('UserTournament', back_populates='tournament')
     leaderboard = db.relationship('TournamentStat', back_populates='tournament', cascade='all, delete-orphan', order_by='TournamentStat.rank')
 
+    __table_args__ = (
+        db.Index('ix_tournament_status_match_time', 'status', 'match_time'),
+    )
+
     @property
     def prize_pool(self):
         return self.prize
@@ -732,6 +790,8 @@ class TournamentStat(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('user_id', 'tournament_id', name='unique_user_tournament_stat'),
+        db.Index('ix_tournament_stat_tournament_rank', 'tournament_id', 'rank'),
+        db.Index('ix_tournament_stat_user_id', 'user_id'),
     )
 
 
@@ -755,6 +815,8 @@ class UserTournament(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('user_id', 'tournament_id', name='unique_user_tournament_registration'),
+        db.Index('ix_user_tournament_user_joined_at', 'user_id', 'joined_at'),
+        db.Index('ix_user_tournament_tournament_payment_status', 'tournament_id', 'payment_status'),
     )
 
 
@@ -766,14 +828,31 @@ class WalletTransaction(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     type = db.Column(db.String(20), nullable=False)  # 'deposit' or 'withdrawal'
     amount = db.Column(db.Integer, nullable=False, default=0)
-    status = db.Column(db.String(20), default='completed')  # completed, pending, failed
+    # Deposits retain their existing pending/completed/failed lifecycle.
+    # Withdrawals use pending -> processing -> completed, with failed for a
+    # definitive provider failure after the reserved funds have been released.
+    status = db.Column(db.String(20), default='completed')
     transaction_ref = db.Column(db.String(100), unique=True, nullable=True)
     bank_name = db.Column(db.String(120), nullable=True)
+    bank_code = db.Column(db.String(20), nullable=True)
     account_number = db.Column(db.String(40), nullable=True)
     account_name = db.Column(db.String(200), nullable=True)
+    idempotency_key = db.Column(db.String(100), unique=True, nullable=True)
+    provider_recipient_code = db.Column(db.String(100), nullable=True)
+    provider_transfer_code = db.Column(db.String(100), unique=True, nullable=True)
+    failure_reason = db.Column(db.String(500), nullable=True)
+    processing_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    failed_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.now())
 
     user = db.relationship('User', backref=db.backref('wallet_transactions', lazy=True))
+
+    __table_args__ = (
+        db.Index('ix_wallet_transaction_user_created_at', 'user_id', 'created_at'),
+        db.Index('ix_wallet_transaction_user_status', 'user_id', 'status'),
+        db.Index('ix_wallet_transaction_withdrawal_state', 'type', 'status', 'created_at'),
+    )
 
 
 class RateLimitBucket(db.Model):
@@ -890,6 +969,10 @@ class Notification(db.Model):
 
     user = db.relationship('User', backref=db.backref('notifications', lazy=True))
 
+    __table_args__ = (
+        db.Index('ix_notification_user_read_created_at', 'user_id', 'read_at', 'created_at'),
+    )
+
 
 # -------------------------
 # TOURNAMENT CHAT (Phase 1)
@@ -904,6 +987,10 @@ class TournamentChatMessage(db.Model):
     user = db.relationship('User')
     tournament = db.relationship('Tournament', backref=db.backref('chat_messages', lazy=True))
 
+    __table_args__ = (
+        db.Index('ix_tournament_chat_message_tournament_created_at', 'tournament_id', 'created_at'),
+    )
+
 
 class GlobalChatMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -912,6 +999,11 @@ class GlobalChatMessage(db.Model):
     created_at = db.Column(db.DateTime, default=db.func.now())
 
     user = db.relationship('User')
+
+    __table_args__ = (
+        db.Index('ix_global_chat_message_created_at', 'created_at'),
+        db.Index('ix_global_chat_message_user_created_at', 'user_id', 'created_at'),
+    )
 
 
 class TournamentMatch(db.Model):
@@ -936,6 +1028,12 @@ class TournamentMatch(db.Model):
     winner = db.relationship('User', foreign_keys=[winner_user_id])
     submitted_by = db.relationship('User', foreign_keys=[submitted_by_user_id])
 
+    __table_args__ = (
+        db.Index('ix_tournament_match_tournament_status', 'tournament_id', 'status'),
+        db.Index('ix_tournament_match_player_one_status', 'player_one_user_id', 'status'),
+        db.Index('ix_tournament_match_player_two_status', 'player_two_user_id', 'status'),
+    )
+
 
 class TournamentMatchChatMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -946,6 +1044,10 @@ class TournamentMatchChatMessage(db.Model):
 
     user = db.relationship('User')
     match = db.relationship('TournamentMatch', backref=db.backref('chat_messages', lazy=True))
+
+    __table_args__ = (
+        db.Index('ix_match_chat_message_match_created_at', 'match_id', 'created_at'),
+    )
 
 
 class TournamentMatchDispute(db.Model):
@@ -958,6 +1060,10 @@ class TournamentMatchDispute(db.Model):
 
     user = db.relationship('User')
     match = db.relationship('TournamentMatch', backref=db.backref('disputes', lazy=True))
+
+    __table_args__ = (
+        db.Index('ix_match_dispute_match_status', 'match_id', 'status'),
+    )
 
 
 def create_tournament_matches(tournament):
@@ -1025,7 +1131,7 @@ def load_user(user_id):
 # -------------------------
 @app.route("/")
 def home():
-    tournaments = Tournament.query.all()
+    tournaments = Tournament.query.options(selectinload(Tournament.participants)).all()
     return render_template("index.html", tournaments=tournaments)
 
 
@@ -1041,11 +1147,146 @@ def health():
 
 
 # -------------------------
+# PUBLIC JSON API (migration-ready frontend boundary)
+# -------------------------
+API_MAX_PAGE_SIZE = 50
+PUBLIC_TOURNAMENT_STATUSES = {'open', 'ongoing', 'live', 'finished', 'cancelled'}
+
+
+def api_error(message, status_code=400):
+    return jsonify({'error': {'message': message, 'status': status_code}}), status_code
+
+
+def api_pagination(page, per_page, total):
+    return {
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'total_pages': (total + per_page - 1) // per_page if total else 0,
+    }
+
+
+def tournament_image_url(game_name):
+    key = (game_name or '').strip().lower()
+    image = GAME_IMAGE_MAP.get(key)
+    return url_for('static', filename=image) if image else None
+
+
+def serialize_tournament(tournament, include_description=True):
+    participant_count = sum(
+        1 for membership in tournament.participants
+        if membership.payment_status in {'paid', 'free'}
+    )
+    payload = {
+        'id': tournament.id,
+        'name': tournament.name,
+        'game': tournament.game,
+        'entry_fee': tournament.entry_fee,
+        'prize': tournament.prize,
+        'max_participants': tournament.max_participants,
+        'participant_count': participant_count,
+        'status': tournament.status,
+        'match_time': tournament.match_time.isoformat() if tournament.match_time else None,
+        'created_at': tournament.created_at.isoformat() if tournament.created_at else None,
+        'image_url': tournament_image_url(tournament.game),
+    }
+    if include_description:
+        payload['description'] = tournament.description
+    return payload
+
+
+def public_api_response(payload, status_code=200):
+    response = jsonify(payload)
+    response.status_code = status_code
+    # This data is public and changes infrequently; keep browser caching brief
+    # while allowing a CDN to absorb repeated listing requests.
+    response.headers['Cache-Control'] = 'public, max-age=30, s-maxage=60, stale-while-revalidate=60'
+    response.headers['Vary'] = 'Accept'
+    return response
+
+
+@app.route('/api/v1/tournaments')
+def api_tournaments():
+    page = max(request.args.get('page', 1, type=int) or 1, 1)
+    per_page = min(max(request.args.get('per_page', 20, type=int) or 20, 1), API_MAX_PAGE_SIZE)
+    status = (request.args.get('status') or '').strip().lower()
+    if status and status not in PUBLIC_TOURNAMENT_STATUSES:
+        return api_error('Unsupported tournament status.')
+
+    query = Tournament.query.options(selectinload(Tournament.participants))
+    if status:
+        query = query.filter(Tournament.status == status)
+    pagination = query.order_by(Tournament.match_time.asc().nullslast(), Tournament.id.desc()).paginate(
+        page=page, per_page=per_page, error_out=False,
+    )
+    return public_api_response({
+        'data': [serialize_tournament(tournament) for tournament in pagination.items],
+        'pagination': api_pagination(page, per_page, pagination.total),
+    })
+
+
+@app.route('/api/v1/tournaments/<int:tournament_id>')
+def api_tournament_detail(tournament_id):
+    tournament = Tournament.query.options(
+        selectinload(Tournament.participants),
+        selectinload(Tournament.leaderboard).joinedload(TournamentStat.user),
+        selectinload(Tournament.matches).joinedload(TournamentMatch.player_one),
+        selectinload(Tournament.matches).joinedload(TournamentMatch.player_two),
+    ).filter_by(id=tournament_id).first()
+    if not tournament:
+        return api_error('Tournament not found.', 404)
+
+    payload = serialize_tournament(tournament)
+    payload['leaderboard'] = [
+        {
+            'rank': entry.rank, 'points': entry.points, 'wins': entry.wins, 'kills': entry.kills,
+            'player': {'id': entry.user.id, 'username': entry.user.username} if entry.user else None,
+        }
+        for entry in tournament.leaderboard
+    ]
+    # Room credentials, proof, and disputes deliberately remain private.
+    payload['matches'] = [
+        {
+            'id': match.id, 'status': match.status,
+            'player_one': {'id': match.player_one.id, 'username': match.player_one.username} if match.player_one else None,
+            'player_two': {'id': match.player_two.id, 'username': match.player_two.username} if match.player_two else None,
+            'winner_user_id': match.winner_user_id if match.status == 'confirmed' else None,
+        }
+        for match in tournament.matches
+    ]
+    return public_api_response({'data': payload})
+
+
+@app.route('/api/v1/leaderboard')
+def api_leaderboard():
+    page = max(request.args.get('page', 1, type=int) or 1, 1)
+    per_page = min(max(request.args.get('per_page', 20, type=int) or 20, 1), API_MAX_PAGE_SIZE)
+    query = TournamentStat.query.options(
+        joinedload(TournamentStat.user), joinedload(TournamentStat.tournament),
+    ).order_by(TournamentStat.rank.asc(), TournamentStat.points.desc(), TournamentStat.id.asc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    return public_api_response({
+        'data': [
+            {
+                'id': entry.id, 'rank': entry.rank, 'points': entry.points,
+                'wins': entry.wins, 'kills': entry.kills,
+                'player': {'id': entry.user.id, 'username': entry.user.username} if entry.user else None,
+                'tournament': {'id': entry.tournament.id, 'name': entry.tournament.name, 'game': entry.tournament.game} if entry.tournament else None,
+            }
+            for entry in pagination.items
+        ],
+        'pagination': api_pagination(page, per_page, pagination.total),
+    })
+
+
+# -------------------------
 # PUBLIC LEADERBOARD
 # -------------------------
 @app.route("/leaderboard")
 def leaderboard():
-    tournaments = Tournament.query.order_by(Tournament.match_time.desc()).all()
+    tournaments = Tournament.query.options(
+        selectinload(Tournament.leaderboard).joinedload(TournamentStat.user),
+    ).order_by(Tournament.match_time.desc()).all()
     return render_template("leaderboard.html", tournaments=tournaments)
 
 
@@ -1054,7 +1295,7 @@ def leaderboard():
 # -------------------------
 @app.route("/tournaments")
 def tournaments_page():
-    tournaments = Tournament.query.all()
+    tournaments = Tournament.query.options(selectinload(Tournament.participants)).all()
     return render_template("tournaments.html", tournaments=tournaments)
 
 
@@ -1083,10 +1324,7 @@ def chat():
     messages = [m for m in all_messages if m.user is not None]
 
     # Most recent 10 distinct chatting users.
-    # NOTE: SQLite allows SELECT DISTINCT x ORDER BY y, but Postgres does NOT
-    # (ORDER BY column must appear in the DISTINCT select list). Use a subquery
-    # that works on both engines: get the max created_at per user, order by it,
-# then fetch the most recent 10 user ids and load those users.
+    # Use a grouped aggregate query so the ordering is valid on PostgreSQL.
     from sqlalchemy import func
     # Select user_id first, then the aggregated last_seen (row[0] = user_id).
     distinct_user_ids = [
@@ -2296,7 +2534,35 @@ def paystack_webhook():
         event = request.get_json(silent=True) or {}
         transaction = event.get('data') or {}
         reference = transaction.get('reference')
-        if event.get('event') != 'charge.success' or not is_valid_paystack_reference(reference):
+        event_name = event.get('event')
+        if not is_valid_paystack_reference(reference):
+            return jsonify({'status': 'ignored'}), 200
+
+        if event_name in {'transfer.success', 'transfer.failed', 'transfer.reversed'}:
+            withdrawal = WalletTransaction.query.filter_by(
+                type='withdrawal', transaction_ref=reference,
+            ).with_for_update().first()
+            if not withdrawal:
+                return jsonify({'status': 'ignored'}), 200
+            transfer_code = str(transaction.get('transfer_code') or '').strip() or None
+            try:
+                if int(transaction.get('amount')) != withdrawal.amount * 100:
+                    return jsonify({'status': 'error', 'message': 'Transfer amount mismatch'}), 400
+            except (TypeError, ValueError):
+                return jsonify({'status': 'error', 'message': 'Invalid transfer amount'}), 400
+            if str(transaction.get('currency', '')).upper() != PAYSTACK_CURRENCY:
+                return jsonify({'status': 'error', 'message': 'Transfer currency mismatch'}), 400
+            if event_name == 'transfer.success':
+                complete_withdrawal(withdrawal.id, transfer_code)
+            else:
+                release_failed_withdrawal(
+                    withdrawal.id,
+                    'Paystack reported that the transfer was not completed.',
+                    transfer_code,
+                )
+            return jsonify({'status': 'ok'}), 200
+
+        if event_name != 'charge.success':
             return jsonify({'status': 'ignored'}), 200
 
         tournament_join = UserTournament.query.filter_by(transaction_ref=reference).first()
@@ -2440,12 +2706,184 @@ def wallet_verify_deposit():
     return redirect(url_for('wallet'))
 
 
+WITHDRAWAL_FINAL_STATUSES = {'completed', 'failed'}
+
+
+def withdrawal_response(withdrawal):
+    return {
+        'status': 'success' if withdrawal.status != 'failed' else 'error',
+        'withdrawal_status': withdrawal.status,
+        'reference': withdrawal.transaction_ref,
+        'message': (
+            'Withdrawal completed successfully.' if withdrawal.status == 'completed'
+            else 'Withdrawal could not be completed; reserved funds have been returned.' if withdrawal.status == 'failed'
+            else 'Withdrawal request received and is being processed.'
+        ),
+    }
+
+
+def paystack_transfer_request(method, path, **kwargs):
+    if not REQUESTS_AVAILABLE or not PAYSTACK_SECRET_KEY:
+        raise RuntimeError('Paystack transfers are not configured.')
+    headers = {'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}', 'Content-Type': 'application/json'}
+    response = requests.request(method, f'{PAYSTACK_BASE_URL}{path}', headers=headers, timeout=15, **kwargs)
+    payload = response.json()
+    if not response.ok or not payload.get('status'):
+        raise ValueError((payload.get('message') if isinstance(payload, dict) else None) or 'Paystack request failed.')
+    return payload.get('data') or {}
+
+
+def release_failed_withdrawal(withdrawal_id, reason, provider_transfer_code=None):
+    """Release a reserved balance exactly once after a conclusive payout failure."""
+    withdrawal = WalletTransaction.query.filter_by(id=withdrawal_id, type='withdrawal').with_for_update().first()
+    if not withdrawal or withdrawal.status in WITHDRAWAL_FINAL_STATUSES:
+        db.session.commit()
+        return withdrawal
+    owner = User.query.filter_by(id=withdrawal.user_id).with_for_update().first()
+    if not owner:
+        raise RuntimeError('Withdrawal wallet owner was not found.')
+    owner.wallet_balance = (owner.wallet_balance or 0) + withdrawal.amount
+    withdrawal.status = 'failed'
+    withdrawal.failure_reason = (reason or 'Transfer failed.')[:500]
+    withdrawal.failed_at = datetime.utcnow()
+    if provider_transfer_code:
+        withdrawal.provider_transfer_code = provider_transfer_code[:100]
+    db.session.commit()
+    return withdrawal
+
+
+def complete_withdrawal(withdrawal_id, provider_transfer_code=None):
+    withdrawal = WalletTransaction.query.filter_by(id=withdrawal_id, type='withdrawal').with_for_update().first()
+    if not withdrawal or withdrawal.status in WITHDRAWAL_FINAL_STATUSES:
+        db.session.commit()
+        return withdrawal
+    withdrawal.status = 'completed'
+    withdrawal.completed_at = datetime.utcnow()
+    withdrawal.failure_reason = None
+    if provider_transfer_code:
+        withdrawal.provider_transfer_code = provider_transfer_code[:100]
+    db.session.commit()
+    return withdrawal
+
+
+def start_withdrawal_transfer(withdrawal_id):
+    """Submit one reserved withdrawal using its stable Paystack reference.
+
+    Network uncertainty deliberately leaves the reservation in ``processing``.
+    Retrying the same Paystack reference is safe; creating a new debit is not.
+    """
+    withdrawal = WalletTransaction.query.filter_by(id=withdrawal_id, type='withdrawal').with_for_update().first()
+    if not withdrawal or withdrawal.status in WITHDRAWAL_FINAL_STATUSES:
+        db.session.commit()
+        return withdrawal
+    withdrawal.status = 'processing'
+    withdrawal.processing_at = withdrawal.processing_at or datetime.utcnow()
+    db.session.commit()
+
+    try:
+        account = paystack_transfer_request(
+            'GET', '/bank/resolve', params={'account_number': withdrawal.account_number, 'bank_code': withdrawal.bank_code},
+        )
+        resolved_name = str(account.get('account_name') or '').strip()
+        if not resolved_name:
+            raise ValueError('Paystack could not verify the account details.')
+        withdrawal = WalletTransaction.query.filter_by(id=withdrawal_id).with_for_update().first()
+        withdrawal.account_name = resolved_name[:200]
+        db.session.commit()
+
+        recipient = paystack_transfer_request('POST', '/transferrecipient', json={
+            'type': 'nuban', 'name': resolved_name, 'account_number': withdrawal.account_number,
+            'bank_code': withdrawal.bank_code, 'currency': PAYSTACK_CURRENCY,
+        })
+        recipient_code = str(recipient.get('recipient_code') or '').strip()
+        if not recipient_code:
+            raise ValueError('Paystack did not return a transfer recipient.')
+        withdrawal = WalletTransaction.query.filter_by(id=withdrawal_id).with_for_update().first()
+        withdrawal.provider_recipient_code = recipient_code[:100]
+        db.session.commit()
+
+        transfer = paystack_transfer_request('POST', '/transfer', json={
+            'source': 'balance', 'amount': withdrawal.amount * 100, 'reference': withdrawal.transaction_ref,
+            'recipient': recipient_code, 'reason': f'GameArena wallet withdrawal {withdrawal.transaction_ref}',
+            'currency': PAYSTACK_CURRENCY,
+        })
+        transfer_code = str(transfer.get('transfer_code') or '').strip() or None
+        provider_status = str(transfer.get('status') or '').lower()
+        if provider_status == 'success':
+            return complete_withdrawal(withdrawal_id, transfer_code)
+        if provider_status in {'failed', 'reversed', 'abandoned', 'rejected'}:
+            return release_failed_withdrawal(withdrawal_id, 'Paystack declined the transfer.', transfer_code)
+        withdrawal = WalletTransaction.query.filter_by(id=withdrawal_id).with_for_update().first()
+        if withdrawal and withdrawal.status not in WITHDRAWAL_FINAL_STATUSES:
+            withdrawal.provider_transfer_code = transfer_code[:100] if transfer_code else withdrawal.provider_transfer_code
+            db.session.commit()
+        return withdrawal
+    except ValueError as error:
+        return release_failed_withdrawal(withdrawal_id, str(error))
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Withdrawal transfer submission is inconclusive reference=%s', withdrawal_id)
+        # Do not refund on an unknown network outcome: Paystack may have queued
+        # the transfer. The signed webhook is authoritative for final state.
+        return WalletTransaction.query.get(withdrawal_id)
+
+
+def request_wallet_withdrawal(req_data):
+    if not REQUESTS_AVAILABLE or not PAYSTACK_SECRET_KEY:
+        return jsonify({'status': 'error', 'message': 'Withdrawals are temporarily unavailable.'}), 503
+    amount_raw = str(req_data.get('amount', '')).strip()
+    bank_name = str(req_data.get('bank_name', '')).strip()
+    bank_code = str(req_data.get('bank_code', '')).strip()
+    account_number = str(req_data.get('account_number', '')).strip()
+    idempotency_key = str(req_data.get('idempotency_key', '')).strip()
+    if not amount_raw.isdigit() or int(amount_raw) <= 0:
+        return jsonify({'status': 'error', 'message': 'Please enter a valid withdrawal amount.'}), 400
+    if not bank_name or not re.fullmatch(r'[A-Za-z0-9_-]{2,20}', bank_code) or not re.fullmatch(r'\d{10}', account_number):
+        return jsonify({'status': 'error', 'message': 'Please provide valid bank details.'}), 400
+    if not re.fullmatch(r'[A-Za-z0-9_-]{16,100}', idempotency_key):
+        return jsonify({'status': 'error', 'message': 'Invalid withdrawal request identifier.'}), 400
+
+    existing = WalletTransaction.query.filter_by(user_id=current_user.id, type='withdrawal', idempotency_key=idempotency_key).with_for_update().first()
+    if existing:
+        db.session.commit()
+        return jsonify(withdrawal_response(existing))
+    amount = int(amount_raw)
+    owner = User.query.filter_by(id=current_user.id).with_for_update().populate_existing().first()
+    if not owner:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': 'Wallet owner was not found.'}), 404
+    if amount > (owner.wallet_balance or 0):
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': 'Insufficient wallet balance.'}), 400
+    import uuid
+    withdrawal = WalletTransaction(
+        user_id=owner.id, type='withdrawal', amount=amount, status='pending',
+        transaction_ref=f'wd_{uuid.uuid4().hex}', idempotency_key=idempotency_key,
+        bank_name=bank_name[:120], bank_code=bank_code, account_number=account_number,
+    )
+    owner.wallet_balance = (owner.wallet_balance or 0) - amount
+    db.session.add(withdrawal)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        existing = WalletTransaction.query.filter_by(user_id=current_user.id, type='withdrawal', idempotency_key=idempotency_key).first()
+        if existing:
+            return jsonify(withdrawal_response(existing))
+        app.logger.exception('Withdrawal reservation failed')
+        return jsonify({'status': 'error', 'message': 'Unable to create withdrawal request.'}), 500
+    start_withdrawal_transfer(withdrawal.id)
+    return jsonify(withdrawal_response(WalletTransaction.query.get(withdrawal.id))), 202
+
+
 @app.route("/wallet/withdraw", methods=['POST'])
 @login_required
 def wallet_withdraw():
     req_data = request.get_json(silent=True)
     if not req_data:
         return jsonify({'status': 'error', 'message': 'Invalid request data'})
+
+    return request_wallet_withdrawal(req_data)
 
     amount = str(req_data.get('amount', '')).strip()
     bank_name = str(req_data.get('bank_name', '')).strip()
@@ -2458,8 +2896,19 @@ def wallet_withdraw():
     if not bank_name or not account_number or not account_name:
         return jsonify({'status': 'error', 'message': 'Please fill in all bank details.'})
 
+    if len(bank_name) > 120 or len(account_number) > 40 or len(account_name) > 200:
+        return jsonify({'status': 'error', 'message': 'One or more bank details are too long.'}), 400
+    if not account_number.isdigit() or len(account_number) != 10:
+        return jsonify({'status': 'error', 'message': 'Account number must contain exactly 10 digits.'}), 400
+
     amount = int(amount)
-    balance = current_user.wallet_balance or 0
+    # Lock and refresh the wallet owner before checking funds. This serialises
+    # concurrent debit requests instead of trusting a potentially stale
+    # ``current_user`` identity-map value.
+    wallet_owner = User.query.filter_by(id=current_user.id).with_for_update().populate_existing().first()
+    if wallet_owner is None:
+        return jsonify({'status': 'error', 'message': 'Wallet owner was not found.'}), 404
+    balance = wallet_owner.wallet_balance or 0
 
     if amount > balance:
         return jsonify({'status': 'error', 'message': f'Insufficient balance. You have ₦{balance:,} in your wallet.'})
@@ -2468,10 +2917,10 @@ def wallet_withdraw():
     transaction_ref = str(uuid.uuid4())
 
     #Remember Jegede This code is to Deduct from wallet and create withdrawal record
-    current_user.wallet_balance = balance - amount
+    wallet_owner.wallet_balance = balance - amount
 
     wt = WalletTransaction(
-        user_id=current_user.id,
+        user_id=wallet_owner.id,
         type='withdrawal',
         amount=amount,
         status='completed',
@@ -2495,84 +2944,10 @@ def logout():
 
 # CREATE TEST DATA & ADMIN USER
 with app.app_context():
-    db.create_all()
-
-    if app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite'):
-        try:
-            def ensure_column(table, column, definition):
-                result = db.session.execute(f"PRAGMA table_info({table})").mappings().fetchall()
-                existing = [row['name'] for row in result]
-                if column not in existing:
-                    db.session.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-
-            ensure_column('user', 'suspended', "BOOLEAN DEFAULT 0")
-            ensure_column('user', 'email_verified', "BOOLEAN DEFAULT 0")
-            ensure_column('user', 'verification_code', 'TEXT')
-            ensure_column('user', 'verification_expires_at', 'TEXT')
-            ensure_column('user', 'reset_code', 'TEXT')
-            ensure_column('user', 'reset_expires_at', 'TEXT')
-            # NOTE: existing SQLite schema may not include these columns.
-            # I only add columns if they do not exist (see PRAGMA check below).
-            def ensure_column_if_missing(table, column, definition):
-                try:
-                    existing_cols = db.session.execute(f"PRAGMA table_info({table})").mappings().fetchall()
-                    if any(r['name'] == column for r in existing_cols):
-                        return
-                    db.session.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-                except Exception as e:
-                    app.logger.warning(f"ensure_column_if_missing failed for {table}.{column}: {e}")
-
-            ensure_column_if_missing('user', 'avatar_url', "TEXT")
-            ensure_column_if_missing('user', 'bio', "TEXT")
-
-            # Wallet balance
-            ensure_column_if_missing('user', 'wallet_balance', "INTEGER DEFAULT 0")
-
-            # Payout fields (needed for prize payouts)
-            ensure_column_if_missing('user', 'payout_bank', "TEXT")
-            ensure_column_if_missing('user', 'payout_account_number', "TEXT")
-            ensure_column_if_missing('user', 'payout_account_name', "TEXT")
-
-            # Prize tracking fields for existing SQLite.
-            ensure_column_if_missing('tournament_stat', 'prize_code', "TEXT")
-            ensure_column_if_missing('tournament_stat', 'prize_code_sent_at', "TEXT")
-            ensure_column_if_missing('tournament_stat', 'prize_status', "TEXT DEFAULT 'not_started'")
-            ensure_column_if_missing('tournament_stat', 'paystack_transfer_ref', "TEXT")
-            ensure_column_if_missing('tournament_stat', 'prize_paid_at', "TEXT")
-
-            ensure_column_if_missing('tournament_match', 'room_code', "TEXT")
-            ensure_column_if_missing('tournament_match', 'room_password', "TEXT")
-            ensure_column_if_missing('tournament_match', 'player_one_profile_id', "TEXT")
-            ensure_column_if_missing('tournament_match', 'player_two_profile_id', "TEXT")
-            ensure_column_if_missing('tournament_match', 'winner_user_id', "INTEGER")
-            ensure_column_if_missing('tournament_match', 'proof_note', "TEXT")
-            ensure_column_if_missing('tournament_match', 'submitted_by_user_id', "INTEGER")
-            ensure_column_if_missing('tournament_match', 'updated_at', "TEXT")
-
-            # Re-check/commit schema before any ORM queries.
-            db.session.commit()
-
-
-            # Ensure new tables/columns exist for Phase 1 features
-
-
-            # If DB was created with an older schema, ALTER TABLE is needed.
-            ensure_column('notification', 'user_id', "INTEGER")
-            ensure_column('notification', 'message', "TEXT")
-            ensure_column('notification', 'read_at', "TEXT")
-            ensure_column('notification', 'created_at', "TEXT")
-
-            ensure_column('tournament', 'status', "TEXT DEFAULT 'open'")
-
-            ensure_column('tournament', 'room_id', 'TEXT')
-            ensure_column('tournament', 'room_password', 'TEXT')
-            ensure_column('tournament', 'match_time', 'TEXT')
-            ensure_column('tournament', 'first_place', 'TEXT')
-            ensure_column('tournament', 'second_place', 'TEXT')
-            ensure_column('tournament', 'third_place', 'TEXT')
-            db.session.commit()
-        except Exception as e:
-            app.logger.warning(f"Database schema upgrade warning: {e}")
+    # Production schema ownership belongs to db_migrate.py. This escape hatch
+    # exists only for that migration bootstrap and explicit local development.
+    if os.environ.get('GAMEARENA_SCHEMA_BOOTSTRAP') == '1':
+        db.create_all()
 
 # Ensure explicitly configured admin credentials exist. This updates or creates
 # only the admin identified by environment variables; it never changes an
@@ -2672,8 +3047,10 @@ with app.app_context():
 
 @socketio.on('connect')
 def on_connect():
-    # Socket.IO client connected
-    pass
+    # Do not retain unauthenticated or suspended connections. Every existing
+    # mutation event already authorizes its own resource access as well.
+    if not current_user.is_authenticated or current_user.suspended:
+        return False
 
 
 @socketio.on('join_user')
@@ -2681,6 +3058,8 @@ def on_join_user(data):
     """Client data: {"user_id": 123}"""
     if not current_user.is_authenticated:
         return
+    if not socket_event_allowed('join_user'):
+        return socket_rate_limit_error()
     try:
         user_id = int((data or {}).get('user_id'))
     except (TypeError, ValueError):
@@ -2694,6 +3073,8 @@ def on_join_tournament(data):
     """Client data: {"tournament_id": 1}"""
     if not current_user.is_authenticated:
         return
+    if not socket_event_allowed('join_tournament'):
+        return socket_rate_limit_error()
     try:
         tournament_id = int((data or {}).get('tournament_id'))
     except (TypeError, ValueError):
@@ -2706,6 +3087,8 @@ def on_join_tournament(data):
 @socketio.on('join_global_chat')
 def on_join_global_chat(data):
     if current_user.is_authenticated:
+        if not socket_event_allowed('join_global_chat'):
+            return socket_rate_limit_error()
         join_room('global_chat')
 
 
@@ -2714,6 +3097,8 @@ def on_send_global_chat_message(data):
     message = ((data or {}).get('message') or '').strip()
     if not message or not current_user.is_authenticated:
         return
+    if not socket_event_allowed('send_global_chat_message'):
+        return socket_rate_limit_error()
     if len(message) > MAX_CHAT_MESSAGE_LENGTH:
         return
 
@@ -2734,6 +3119,8 @@ def on_mark_notification_read(data):
     """Return the unread count or mark notifications as read for the authenticated user."""
     if not current_user.is_authenticated:
         return
+    if not socket_event_allowed('mark_notification_read'):
+        return socket_rate_limit_error()
 
     data = data or {}
     only_count = data.get('only_count', False)
@@ -2766,6 +3153,8 @@ def on_send_chat_message(data):
     data = data or {}
     if not current_user.is_authenticated:
         return
+    if not socket_event_allowed('send_chat_message'):
+        return socket_rate_limit_error()
     try:
         tournament_id = int(data.get('tournament_id'))
     except (TypeError, ValueError):
@@ -2791,6 +3180,15 @@ def on_send_chat_message(data):
         'message': message,
         'created_at': msg.created_at.isoformat() if msg.created_at else None,
     }, room=f"tournament:{tournament_id}")
+
+
+@socketio.on('disconnect')
+def on_disconnect():
+    """Discard per-connection throttling state when the socket closes."""
+    sid = getattr(request, 'sid', None)
+    if sid:
+        for key in [key for key in socket_event_windows if key[0] == sid]:
+            socket_event_windows.pop(key, None)
 
 
 if __name__ == '__main__':

@@ -75,7 +75,7 @@
             <article class="group overflow-hidden rounded-[32px] border border-white/10 bg-slate-900/90 shadow-2xl shadow-emerald-500/10 transition duration-300 hover:-translate-y-1 hover:border-emerald-500/30">
                 <div class="relative h-56 overflow-hidden">
                     {% for image_url in game_image_carousel(tournament.game) %}
-<img src="{{ image_url }}" alt="{{ tournament.game }}" class="absolute inset-0 h-full w-full object-cover {% if not loop.first %}opacity-0{% endif %}" style="transition: opacity 4s ease-in-out;" />
+<img src="{{ image_url }}" alt="{{ tournament.game if loop.first else '' }}" {% if not loop.first %}aria-hidden="true"{% endif %} loading="lazy" decoding="async" class="absolute inset-0 h-full w-full object-cover {% if not loop.first %}opacity-0{% endif %}" style="transition: opacity 4s ease-in-out;" />
                     {% endfor %}
                     <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/95 via-slate-950/20 to-transparent p-4">
                         <p class="text-xs uppercase tracking-[0.3em] text-emerald-300">Entry ₦{{ tournament.entry_fee }}</p>
@@ -120,12 +120,28 @@
 document.querySelectorAll('article .relative.overflow-hidden').forEach(function (container) {
   const images = container.querySelectorAll('img.absolute');
   if (images.length < 2) return;
-let current = 0;
-  setInterval(function () {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let current = 0;
+  let timer = null;
+  let visible = true;
+  function rotate() {
     images[current].classList.add('opacity-0');
     current = (current + 1) % images.length;
     images[current].classList.remove('opacity-0');
-  }, 6000);
+  }
+  function restart() {
+    window.clearInterval(timer);
+    if (visible && !document.hidden && !reducedMotion.matches) timer = window.setInterval(rotate, 6000);
+  }
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      visible = entries[0].isIntersecting;
+      restart();
+    }, { threshold: 0.1 }).observe(container);
+  }
+  document.addEventListener('visibilitychange', restart);
+  reducedMotion.addEventListener('change', restart);
+  restart();
 });
 // Mobile hamburger menu toggle
   (function () {

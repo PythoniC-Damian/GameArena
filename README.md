@@ -26,17 +26,23 @@ The idea is to give gamers a place to join and compete in tournaments for games 
  CSS
  JavaScript
  Tailwind CSS
- PostgreSQL / SQLite
+ PostgreSQL
  Gunicorn
 
 # Running Locally
 
-Create and activate a virtual environment, install the required packages, and run:
+Create a PostgreSQL database, set `DATABASE_URL` to its connection string, create and activate a virtual environment, install dependencies, then run the migration command before starting the app:
 
 ```powershell
 $env:FLASK_DEBUG = "true"
+$env:DATABASE_URL = "postgresql://username:password@localhost:5432/gamearena"
+python db_migrate.py
 python app.py
 ```
+
+`db_migrate.py` can initialize an empty PostgreSQL database and is idempotent. The application process does not create production tables; Render runs the migration command before Gunicorn.
+
+For Paystack wallet withdrawals, enable Transfers on the Paystack integration and configure the signed `/paystack/webhook` endpoint for `transfer.success`, `transfer.failed`, and `transfer.reversed` events. Withdrawals require a Paystack bank code and remain in processing until Paystack confirms a final outcome.
 
 The app should then be available locally through the address shown in the terminal.
 
