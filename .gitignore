@@ -11,3 +11,5 @@ database.db
 templates_backup_*/
 *.sqlite
 *.db
+
+.env.local-postgres-backup
