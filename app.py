@@ -24,6 +24,7 @@ from email.message import EmailMessage
 from urllib.parse import quote_plus, urlparse
 import random
 import smtplib
+import socket
 import ssl
 try:
     import requests
@@ -35,10 +36,13 @@ from dotenv import load_dotenv
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
 
-# Load environment variables from the project .env file first
-load_dotenv(os.path.join(base_dir, '.env'), override=True)
+# Load environment variables from the project .env file first. Pytest supplies
+# its isolated PostgreSQL URL before this module is imported.
+test_mode = os.environ.get('GAMEARENA_TESTING') == '1'
+load_dotenv(os.path.join(base_dir, '.env'), override=not test_mode)
 
 app = Flask(__name__)
+app.config['TESTING'] = test_mode
 
 # Configuration
 secret_key = (os.environ.get('SECRET_KEY') or '').strip()
@@ -57,6 +61,10 @@ app.config['SECRET_KEY'] = secret_key
 app.config['SESSION_COOKIE_SECURE'] = is_production
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# Static filenames are not content-fingerprinted in the current Jinja setup.
+# Keep their cache lifetime useful but bounded so a deployment that replaces an
+# asset at the same URL can be picked up without a forced cache purge.
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = timedelta(days=1)
 
 CONTENT_SECURITY_POLICY = "; ".join([
     "default-src 'self'",
@@ -76,6 +84,7 @@ SENSITIVE_CACHE_PATHS = (
     '/wallet',
     '/profile',
     '/notifications',
+    '/chat',
     '/admin',
     '/pay/',
     '/verify-payment',
@@ -98,6 +107,7 @@ RATE_LIMITS = {
 }
 RATE_LIMIT_CLEANUP_INTERVAL = 100
 RATE_LIMIT_RETENTION_SECONDS = max(window for _, window in RATE_LIMITS.values()) + 60 * 60
+EMAIL_NETWORK_TIMEOUT_SECONDS = 8
 rate_limit_requests_since_cleanup = 0
 
 
@@ -116,10 +126,25 @@ def add_response_security_headers(response):
     if is_production and (request.is_secure or forwarded_proto == 'https'):
         response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000')
 
-    if current_user.is_authenticated and request.path.startswith(SENSITIVE_CACHE_PATHS):
+    if request.endpoint == 'static':
+        # The worker and manifest must be revalidated so PWA updates reach
+        # clients promptly. Other static files are safe for a bounded shared
+        # browser/CDN cache, but not immutable because URLs are unversioned.
+        if request.path.endswith(('/sw.js', '/manifest.json')):
+            response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
+        else:
+            response.headers['Cache-Control'] = (
+                'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600'
+            )
+    elif current_user.is_authenticated or request.path.startswith(SENSITIVE_CACHE_PATHS):
         response.headers['Cache-Control'] = 'private, no-store, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
+    elif 'Cache-Control' not in response.headers:
+        # Dynamic pages can vary by session (for example their navigation and
+        # tournament join state). Public JSON endpoints set their own short,
+        # explicit CDN policy in public_api_response().
+        response.headers['Cache-Control'] = 'private, no-store, max-age=0'
     return response
 
 
@@ -319,37 +344,38 @@ def create_and_emit_notification(user_id: int, message: str):
         room=f'user:{int(user_id)}'
     )
 
-
-def generate_code(length=8):
-    return ''.join(random.choice('0123456789') for _ in range(length))
-
-
-
 login_manager.login_view = "login"
 csrf = CSRFProtect(app)
 
 # Tournament images keyed by normalized game name
 GAME_IMAGE_MAP = {
-    'call of duty mobile': 'images/call_of_duty.jpg',
-    'call of duty': 'images/call_of_duty.jpg',
-    'free fire': 'images/free fire.jpg',
+    'call of duty mobile': 'images/call of duty 2.webp',
+    'call of duty': 'images/call of duty 2.webp',
+    'free fire': 'images/free fire 2.webp',
     'pubg mobile': 'images/PUBG.jpg',
     'pubg': 'images/PUBG.jpg',
-    'efootball': 'images/efootball_3.jpg',
-    'fifa': 'images/efootball_3.jpg',
+    'efootball': 'images/efootball_2.jpg',
+    'fifa': 'images/efootball_2.jpg',
 }
 
 GAME_IMAGE_CAROUSEL_MAP = {
-    'call of duty mobile': ['images/call_of_duty.jpg', 'images/call of duty 2.webp', 'images/call of duty 3.jpg'],
-    'call of duty': ['images/call_of_duty.jpg', 'images/call of duty 2.webp', 'images/call of duty 3.jpg'],
-    'free fire': ['images/free fire.jpg', 'images/free fire 2.webp', 'images/free fire 3.jpg'],
+    'call of duty mobile': ['images/call of duty 2.webp', 'images/call_of_duty.jpg', 'images/call of duty 3.jpg'],
+    'call of duty': ['images/call of duty 2.webp', 'images/call_of_duty.jpg', 'images/call of duty 3.jpg'],
+    'free fire': ['images/free fire 2.webp', 'images/free fire.jpg', 'images/free fire 3.jpg'],
     'pubg mobile': ['images/PUBG.jpg', 'images/PUBG 2.jpg'],
     'pubg': ['images/PUBG.jpg', 'images/PUBG 2.jpg'],
-    'efootball': ['images/efootball-messi.jpg', 'images/efootball_2.jpg', 'images/efootball_3.jpg'],
-    'fifa': ['images/efootball-messi.jpg', 'images/efootball_2.jpg', 'images/efootball_3.jpg'],
+    'efootball': ['images/efootball_2.jpg', 'images/efootball-messi.jpg', 'images/efootball_3.jpg'],
+    'fifa': ['images/efootball_2.jpg', 'images/efootball-messi.jpg', 'images/efootball_3.jpg'],
 }
 
-FEATURED_GAME_PRIORITY = ['pubg', 'free fire', 'call of duty', 'efootball']
+FEATURED_GAME_PRIORITY = ['pubg', 'free fire', 'call of duty mobile', 'efootball']
+HERO_IMAGE_FILENAMES = [
+    'images/free fire 2.webp',
+    'images/efootball_2.jpg',
+    'images/call of duty 2.webp',
+    'images/free fire 3.jpg',
+    'images/PUBG.jpg',
+]
 
 
 @app.context_processor
@@ -401,14 +427,14 @@ def utility_processor():
         return [fallback]
 
     def carousel_images():
-        image_dir = os.path.join(app.root_path, 'static', 'images')
-        allowed_ext = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
-        images = []
-        if os.path.isdir(image_dir):
-            for filename in sorted(os.listdir(image_dir)):
-                if os.path.splitext(filename)[1].lower() in allowed_ext:
-                    images.append(url_for('static', filename=f'images/{filename}'))
-        return images
+        # These existing, smaller files are intentionally curated for the
+        # above-the-fold hero. Do not enumerate the directory here: that had
+        # selected multi-megabyte originals before optimized WebP/JPEG assets.
+        return [
+            url_for('static', filename=filename)
+            for filename in HERO_IMAGE_FILENAMES
+            if os.path.isfile(os.path.join(app.root_path, 'static', filename))
+        ]
 
     return dict(
         tournament_image=tournament_image,
@@ -419,68 +445,72 @@ def utility_processor():
 
 
 def generate_code(length=6):
-    return ''.join(random.choice('0123456789') for _ in range(length))
+    return ''.join(secrets.choice('0123456789') for _ in range(length))
 
 
 def send_email(subject, recipient, body):
-    """Send email synchronously."""
+    """Send email synchronously and report only provider-accepted delivery."""
     email_from = os.environ.get('EMAIL_FROM') or os.environ.get('SMTP_USERNAME') or 'noreply@gamearena.com'
+    recipient_domain = recipient.rsplit('@', 1)[-1].lower() if '@' in recipient else 'unknown'
+    if not re.fullmatch(r'[a-z0-9.-]{1,253}', recipient_domain):
+        recipient_domain = 'unknown'
+    request_id = getattr(g, 'request_id', '-')
+
+    def log_delivery(provider, outcome, started_at, status=None, provider_request_id=None, category=None):
+        provider_request_id = re.sub(r'[^A-Za-z0-9_.:-]', '', str(provider_request_id or ''))[:100] or '-'
+        details = (
+            'email_delivery provider=%s recipient_domain=%s outcome=%s status=%s '
+            'provider_request_id=%s request_id=%s duration_ms=%s category=%s',
+            provider, recipient_domain, outcome, status if status is not None else '-',
+            provider_request_id, request_id,
+            round((time.perf_counter() - started_at) * 1000, 2), category or '-',
+        )
+        if outcome == 'success':
+            app.logger.info(*details)
+        else:
+            app.logger.warning(*details)
 
     # --- Resend (preferred) ---
     resend_api_key = os.environ.get('RESEND_API_KEY')
     if resend_api_key:
+        started_at = time.perf_counter()
+        connection = None
         try:
             payload = {
-                "from": email_from,
-                "to": recipient,
-                "subject": subject,
-                "text": body,
+                'from': email_from,
+                'to': recipient,
+                'subject': subject,
+                'text': body,
             }
-            # Use the standard library http.client instead of requests/urllib3.
-            # On Render the app runs under a gunicorn "gevent" worker, which
-            # monkey-patches Python's ssl/socket layer. urllib3's HTTPS handling
-            # recurses infinitely under that patch ("maximum recursion depth
-            # exceeded"). http.client talks to the TLS socket directly and is
-# not affected by the recursion, so verification emails actually get
-            # sent through Resend here.
             body_bytes = json.dumps(payload).encode('utf-8')
-            conn = http.client.HTTPSConnection('api.resend.com', timeout=15)
-            resp = None
-            resp_body = b''
-            try:
-                conn.request(
-                    'POST',
-                    '/emails',
-                    body=body_bytes,
-                    headers={
-                        'Authorization': f'Bearer {resend_api_key}',
-                        'Content-Type': 'application/json',
-                        'Content-Length': str(len(body_bytes)),
-                    },
-                )
-                resp = conn.getresponse()
-                resp_body = resp.read()
-            except Exception as inner_e:
-                # Even if reading the response raises (e.g. under the gevent
-                # worker), capture whatever status/body we already have AND the
-                # underlying error, so the actual reason is never hidden. The
-                # API key is never written to the log.
-                status = getattr(resp, 'status', None) or 'N/A'
-                reason = getattr(resp, 'reason', None) or 'N/A'
-                detail = resp_body.decode('utf-8', 'replace').strip() if resp_body else ''
-                app.logger.warning(
-                    f"Resend email failed for {recipient}: {status} {reason} (error: {type(inner_e).__name__})"
-                )
-            finally:
-                conn.close()
-
-            if resp is not None and resp.status < 300:
-                app.logger.info(f"Resend email sent to {recipient}")
+            connection = http.client.HTTPSConnection(
+                'api.resend.com', timeout=EMAIL_NETWORK_TIMEOUT_SECONDS,
+            )
+            connection.request(
+                'POST',
+                '/emails',
+                body=body_bytes,
+                headers={
+                    'Authorization': f'Bearer {resend_api_key}',
+                    'Content-Type': 'application/json',
+                    'Content-Length': str(len(body_bytes)),
+                },
+            )
+            response = connection.getresponse()
+            provider_request_id = response.getheader('x-request-id')
+            if 200 <= response.status < 300:
+                log_delivery('resend', 'success', started_at, response.status, provider_request_id)
                 return True
-            if resp is not None:
-                app.logger.warning(f"Resend email failed for {recipient}: {resp.status} {resp.reason}")
-        except Exception as e:
-            app.logger.warning(f"Resend email failed for {recipient}: {type(e).__name__}")
+            log_delivery('resend', 'failure', started_at, response.status, provider_request_id, 'provider_rejected')
+        except Exception as error:
+            category = 'timeout' if isinstance(error, (TimeoutError, socket.timeout)) else type(error).__name__
+            log_delivery('resend', 'failure', started_at, category=category)
+        finally:
+            if connection is not None:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
 
     smtp_server = os.environ.get('SMTP_SERVER')
     smtp_port = os.environ.get('SMTP_PORT')
@@ -490,30 +520,42 @@ def send_email(subject, recipient, body):
 
 
     if smtp_server and smtp_port and smtp_username and smtp_password:
-        msg = EmailMessage()
-        msg['Subject'] = subject
-        msg['From'] = email_from
-        msg['To'] = recipient
-        msg.set_content(body)
-
+        started_at = time.perf_counter()
         try:
+            msg = EmailMessage()
+            msg['Subject'] = subject
+            msg['From'] = email_from
+            msg['To'] = recipient
+            msg.set_content(body)
             if smtp_use_tls:
                 context = ssl.create_default_context()
-                with smtplib.SMTP(smtp_server, int(smtp_port), timeout=15) as server:
+                with smtplib.SMTP(smtp_server, int(smtp_port), timeout=EMAIL_NETWORK_TIMEOUT_SECONDS) as server:
                     server.starttls(context=context)
                     server.login(smtp_username, smtp_password)
-                    server.send_message(msg)
+                    refused = server.send_message(msg)
             else:
                 context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(smtp_server, int(smtp_port), context=context, timeout=15) as server:
+                with smtplib.SMTP_SSL(
+                    smtp_server, int(smtp_port), context=context,
+                    timeout=EMAIL_NETWORK_TIMEOUT_SECONDS,
+                ) as server:
                     server.login(smtp_username, smtp_password)
-                    server.send_message(msg)
-            app.logger.info(f"Email sent to {recipient}")
+                    refused = server.send_message(msg)
+            if recipient in refused:
+                refusal = refused[recipient]
+                status = refusal[0] if isinstance(refusal, tuple) and refusal else None
+                log_delivery('smtp', 'failure', started_at, status, category='recipient_rejected')
+                return False
+            log_delivery('smtp', 'success', started_at)
             return True
-        except Exception as e:
-            app.logger.warning(f"SMTP email failed for {recipient}: {type(e).__name__}")
+        except Exception as error:
+            category = 'timeout' if isinstance(error, (TimeoutError, socket.timeout)) else type(error).__name__
+            log_delivery('smtp', 'failure', started_at, category=category)
+            return False
 
-    app.logger.warning(f"Email delivery unavailable for {recipient}")
+    if not resend_api_key:
+        started_at = time.perf_counter()
+        log_delivery('none', 'failure', started_at, category='not_configured')
     return False
 
 
@@ -525,17 +567,20 @@ def send_verification_code(user):
     user.verification_code = generate_code(6)
     user.verification_expires_at = datetime.utcnow() + timedelta(minutes=15)
     db.session.commit()
+
+    verification_url = url_for('verify_email', email=user.email, _external=True)
     
     subject = 'Verify your GameArena email'
     body = (
         f'Hi {user.username},\n\n'
         f'Use the code below to verify your email address on GameArena:\n\n'
         f'{user.verification_code}\n\n'
+        f'Open the verification page: {verification_url}\n\n'
         'This code expires in 15 minutes.\n\n'
         'If you did not request this, please ignore this message.\n\n'
         'Thanks,\nGameArena Team'
     )
-    send_email(subject, user.email, body)
+    return send_email(subject, user.email, body)
 
 
 def send_password_reset_code(user):
@@ -554,7 +599,7 @@ def send_password_reset_code(user):
         'If you did not request this, please ignore this message.\n\n'
         'Thanks,\nGameArena Team'
     )
-    send_email(subject, user.email, body)
+    return send_email(subject, user.email, body)
 
 
 # Form Classes
@@ -867,7 +912,15 @@ def client_rate_limit_key():
 
 
 def rate_limit_response(retry_after):
-    response = jsonify({'status': 'error', 'message': 'Too many requests. Please try again later.'})
+    message = 'Too many requests. Please try again later.'
+    if request.path == '/verify-email' and request.method == 'POST' and request.form.get('action') == 'resend':
+        message = 'Please wait before requesting another verification code.'
+        form = EmailVerificationForm()
+        form.email.data = (request.form.get('email') or '').strip()
+        flash(message, 'error')
+        response = app.make_response(render_template('verify_email.html', form=form))
+    else:
+        response = jsonify({'status': 'error', 'message': message})
     response.status_code = 429
     response.headers['Retry-After'] = str(max(1, int(retry_after)))
     return response
@@ -930,14 +983,14 @@ def enforce_rate_limits():
         checks = [('register_ip:' + client_key, 'register_ip')]
     elif path == '/forgot-password' and request.method == 'POST':
         checks = [('password_reset_ip:' + client_key, 'password_reset_ip')]
-    elif path == '/verify-email':
-        if request.method == 'GET' and request.args.get('resend') == '1':
-            email = (request.args.get('email') or '').strip().lower()
+    elif path == '/verify-email' and request.method == 'POST':
+        if request.form.get('action') == 'resend':
+            email = (request.form.get('email') or '').strip().lower()
             checks = [
                 ('verification_resend_ip:' + client_key, 'verification_resend'),
                 ('verification_resend_email:' + (email or 'unknown'), 'verification_resend'),
             ]
-        elif request.method == 'POST':
+        else:
             checks = [('verification_ip:' + client_key, 'verification_ip')]
     elif (path.startswith('/initialize-payment/') or path == '/wallet/initialize-deposit'):
         checks = [('payment_user:' + str(current_user.get_id()), 'payment_user')]
@@ -1425,8 +1478,10 @@ def register():
         try:
             db.session.add(new_user)
             db.session.commit()
-            send_verification_code(new_user)
-            flash("Account created successfully! Check your email for the verification code.", "success")
+            if send_verification_code(new_user):
+                flash('Verification code sent. Please check your inbox and spam folder.', 'success')
+            else:
+                flash("Your account was created, but we couldn't send the verification email right now. Please try again shortly.", 'error')
             return redirect(url_for("verify_email", email=new_user.email))
         except Exception as e:
             db.session.rollback()
@@ -1456,8 +1511,10 @@ def login():
                 return redirect(url_for("login"))
 
             if not user.email_verified and not getattr(user, "is_admin", False):
-                send_verification_code(user)
-                flash("Email not verified. A new code was sent to your inbox.", "error")
+                if send_verification_code(user):
+                    flash('Verification code sent. Please check your inbox and spam folder.', 'success')
+                else:
+                    flash("Your email isn't verified, and we couldn't send a new code right now. Please try again shortly.", 'error')
                 return redirect(url_for("verify_email", email=user.email))
 
             if getattr(user, "is_admin", False) and not user.email_verified:
@@ -1582,14 +1639,17 @@ def google_callback():
 def verify_email():
     form = EmailVerificationForm()
     email = request.args.get('email', '')
-    if request.method == 'POST':
+    if request.method == 'POST' and request.form.get('action') != 'resend':
         email = form.email.data.lower().strip()
 
-    if request.method == 'GET' and request.args.get('resend') == '1' and email:
-        user = User.query.filter_by(email=email.lower().strip()).first()
-        if user:
-            send_verification_code(user)
-            flash('Verification code resent. Check your email.', 'success')
+    if request.method == 'POST' and request.form.get('action') == 'resend':
+        email = (request.form.get('email') or '').strip().lower()
+        user = User.query.filter_by(email=email).first() if email else None
+        if user and not user.email_verified:
+            if send_verification_code(user):
+                flash('Verification code sent. Please check your inbox and spam folder.', 'success')
+            else:
+                flash("We couldn't send the verification email right now. Please try again shortly.", 'error')
         else:
             flash('Unable to resend code. Please register first.', 'error')
         return redirect(url_for('verify_email', email=email))
@@ -1604,14 +1664,16 @@ def verify_email():
             flash('Email already verified. Please login.', 'success')
             return redirect(url_for('login'))
 
-        if not user.verification_code or user.verification_code != form.code.data:
-            flash('Invalid verification code.', 'error')
+        if (
+            not user.verification_code
+            or not hmac.compare_digest(user.verification_code, form.code.data)
+        ):
+            flash('This verification code is invalid or has expired. Please request a new code.', 'error')
             return render_template('verify_email.html', form=form)
 
         if not user.verification_expires_at or user.verification_expires_at < datetime.utcnow():
-            flash('Verification code has expired. A new code was sent.', 'error')
-            send_verification_code(user)
-            return redirect(url_for('verify_email', email=user.email))
+            flash('This verification code is invalid or has expired. Please request a new code.', 'error')
+            return render_template('verify_email.html', form=form)
 
         user.email_verified = True
         user.verification_code = None
@@ -1635,7 +1697,7 @@ def forgot_password():
         user = User.query.filter_by(email=form.email.data.lower().strip()).first()
         if user:
             send_password_reset_code(user)
-        flash('If that email exists, a reset code has been sent.', 'success')
+        flash('If that email exists, a reset code will be sent if email delivery is available.', 'success')
         return redirect(url_for('reset_password', email=form.email.data.lower().strip()))
 
     return render_template('forgot_password.html', form=form)

@@ -8,6 +8,7 @@ def test_create_tournament_matches_pairs_participants():
     with app_module.app.app_context():
         app_module.TournamentMatch.query.delete()
         app_module.TournamentMatchChatMessage.query.delete()
+        app_module.GlobalChatMessage.query.delete()
         app_module.UserTournament.query.delete()
         app_module.Tournament.query.delete()
         app_module.User.query.delete()
@@ -50,6 +51,7 @@ def test_submit_match_result_marks_pending_confirmation():
     with app_module.app.app_context():
         app_module.TournamentMatch.query.delete()
         app_module.TournamentMatchChatMessage.query.delete()
+        app_module.GlobalChatMessage.query.delete()
         app_module.UserTournament.query.delete()
         app_module.Tournament.query.delete()
         app_module.User.query.delete()
@@ -107,6 +109,7 @@ def test_admin_can_login_without_email_verification():
         with app_module.app.app_context():
             app_module.TournamentMatch.query.delete()
             app_module.TournamentMatchChatMessage.query.delete()
+            app_module.GlobalChatMessage.query.delete()
             app_module.UserTournament.query.delete()
             app_module.Tournament.query.delete()
             app_module.User.query.delete()
@@ -138,6 +141,7 @@ def test_match_chat_message_is_stored():
     with app_module.app.app_context():
         app_module.TournamentMatch.query.delete()
         app_module.TournamentMatchChatMessage.query.delete()
+        app_module.GlobalChatMessage.query.delete()
         app_module.UserTournament.query.delete()
         app_module.Tournament.query.delete()
         app_module.User.query.delete()

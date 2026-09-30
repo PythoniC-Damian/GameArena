@@ -1,10 +1,11 @@
 import unittest
 import re
+import json
 import app as app_module
 import db_migrate
 import tempfile
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import create_engine, inspect, text
@@ -25,12 +26,9 @@ from app import (
 
 class NotificationFlowTests(unittest.TestCase):
     def setUp(self):
-        app.config.update(TESTING=True, SQLALCHEMY_DATABASE_URI='sqlite:///:memory:')
         self.app_context = app.app_context()
         self.app_context.push()
         self.client = app.test_client()
-        db.drop_all()
-        db.create_all()
 
         self.user = User(username='tester', email='tester@example.com')
         self.user.set_password('secret123')
@@ -43,7 +41,6 @@ class NotificationFlowTests(unittest.TestCase):
 
     def tearDown(self):
         db.session.remove()
-        db.drop_all()
         self.app_context.pop()
 
     def test_only_count_does_not_mark_notifications_as_read(self):
@@ -68,9 +65,9 @@ class NotificationFlowTests(unittest.TestCase):
         self.assertEqual(get_unread_notification_count(self.user.id), 0)
         self.assertIsNotNone(Notification.query.get(notification.id).read_at)
 
-    def test_database_uri_is_project_local(self):
+    def test_database_uri_is_postgresql_test_database(self):
         uri = app.config['SQLALCHEMY_DATABASE_URI']
-        self.assertTrue('instance' in uri or 'memory' in uri or uri.endswith('.db'))
+        self.assertTrue(uri.lower().startswith(('postgresql://', 'postgres://', 'postgresql+')))
 
     def test_health_endpoint_returns_minimal_database_ready_response(self):
         response = self.client.get('/health')
@@ -97,6 +94,220 @@ class NotificationFlowTests(unittest.TestCase):
         self.assertNotIn('123456', ' '.join(messages))
         self.assertNotIn('Verification code is', ' '.join(messages))
 
+    def test_resend_email_provider_request_and_success_logging(self):
+        response = MagicMock(status=202)
+        response.getheader.return_value = 'req_test_123'
+        with patch.dict(os.environ, {'RESEND_API_KEY': 'test-api-key', 'EMAIL_FROM': 'noreply@example.com'}, clear=True):
+            with patch('app.http.client.HTTPSConnection') as https_connection:
+                https_connection.return_value.getresponse.return_value = response
+                with patch.object(app_module.app.logger, 'info') as info:
+                    result = app_module.send_email(
+                        'Verification email', 'user@example.com',
+                        'Your verification code is 123456.',
+                    )
+
+        self.assertTrue(result)
+        https_connection.assert_called_once_with(
+            'api.resend.com', timeout=app_module.EMAIL_NETWORK_TIMEOUT_SECONDS,
+        )
+        request_args, request_kwargs = https_connection.return_value.request.call_args
+        self.assertEqual(request_args[:2], ('POST', '/emails'))
+        self.assertEqual(request_kwargs['headers']['Authorization'], 'Bearer test-api-key')
+        payload = json.loads(request_kwargs['body'])
+        self.assertEqual(payload['from'], 'noreply@example.com')
+        self.assertEqual(payload['to'], 'user@example.com')
+        self.assertEqual(payload['text'], 'Your verification code is 123456.')
+        log_messages = ' '.join(str(call) for call in info.call_args_list)
+        self.assertIn('recipient_domain=example.com', log_messages)
+        self.assertIn('req_test_123', log_messages)
+        self.assertNotIn('123456', log_messages)
+        self.assertNotIn('test-api-key', log_messages)
+
+    def test_email_provider_rejection_and_timeout_fail_safely(self):
+        secret = 'test-api-key-must-not-be-logged'
+        response = MagicMock(status=401)
+        response.getheader.return_value = 'req_rejected'
+        with patch.dict(os.environ, {'RESEND_API_KEY': secret}, clear=True):
+            with patch('app.http.client.HTTPSConnection') as https_connection:
+                https_connection.return_value.getresponse.return_value = response
+                with patch.object(app_module.app.logger, 'warning') as warning:
+                    rejected = app_module.send_email(
+                        'Verification email', 'user@example.com',
+                        'Your verification code is 123456.',
+                    )
+            with patch('app.http.client.HTTPSConnection', side_effect=TimeoutError(secret)):
+                with patch.object(app_module.app.logger, 'warning') as timeout_warning:
+                    timed_out = app_module.send_email(
+                        'Verification email', 'user@example.com',
+                        'Your verification code is 123456.',
+                    )
+
+        self.assertFalse(rejected)
+        self.assertFalse(timed_out)
+        messages = ' '.join(
+            str(call)
+            for call in warning.call_args_list + timeout_warning.call_args_list
+        )
+        self.assertIn('provider_rejected', messages)
+        self.assertIn('timeout', messages)
+        self.assertNotIn(secret, messages)
+        self.assertNotIn('123456', messages)
+
+    def test_resend_email_falls_back_to_smtp_after_resend_rejection(self):
+        response = MagicMock(status=503)
+        response.getheader.return_value = 'req_unavailable'
+        with patch.dict(os.environ, {
+            'RESEND_API_KEY': 'test-api-key',
+            'SMTP_SERVER': 'smtp.test',
+            'SMTP_PORT': '587',
+            'SMTP_USERNAME': 'test-user',
+            'SMTP_PASSWORD': 'test-password',
+            'SMTP_USE_TLS': 'true',
+        }, clear=True):
+            with patch('app.http.client.HTTPSConnection') as https_connection:
+                https_connection.return_value.getresponse.return_value = response
+                with patch('app.smtplib.SMTP') as smtp:
+                    smtp.return_value.__enter__.return_value.send_message.return_value = {}
+                    result = app_module.send_email('Subject', 'user@example.com', 'Body')
+
+        self.assertTrue(result)
+        smtp.assert_called_once_with(
+            'smtp.test', 587, timeout=app_module.EMAIL_NETWORK_TIMEOUT_SECONDS,
+        )
+
+    def test_verification_page_loads_and_email_url_verifies_user(self):
+        page = self.client.get('/verify-email')
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.headers['X-Frame-Options'], 'DENY')
+
+        token = self.csrf_token('/verify-email')
+        with patch.object(app_module, 'send_email', return_value=True) as send_email:
+            resend = self.client.post('/verify-email', data={
+                'action': 'resend', 'email': self.user.email, 'csrf_token': token,
+            })
+        self.assertEqual(resend.status_code, 302)
+
+        email_body = send_email.call_args.args[2]
+        verification_code = self.user.verification_code
+        verification_url = re.search(
+            r'Open the verification page: (https?://\S+)', email_body,
+        ).group(1)
+        parsed_url = urlparse(verification_url)
+        endpoint, _ = app.url_map.bind(parsed_url.netloc).match(parsed_url.path, method='GET')
+        self.assertEqual(endpoint, 'verify_email')
+
+        linked_page = self.client.get(parsed_url.path + '?' + parsed_url.query)
+        self.assertEqual(linked_page.status_code, 200)
+        token = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', linked_page.text).group(1)
+        response = self.client.post('/verify-email', data={
+            'email': self.user.email,
+            'code': verification_code,
+            'csrf_token': token,
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(User.query.get(self.user.id).email_verified)
+        self.assertIsNone(User.query.get(self.user.id).verification_code)
+
+        reused = self.client.post('/verify-email', data={
+            'email': self.user.email,
+            'code': verification_code,
+            'csrf_token': token,
+        })
+        self.assertEqual(reused.status_code, 302)
+        self.assertIsNone(User.query.get(self.user.id).verification_code)
+
+    def test_invalid_and_expired_verification_codes_are_rejected(self):
+        self.user.verification_code = '111111'
+        self.user.verification_expires_at = datetime.utcnow() + timedelta(minutes=5)
+        db.session.commit()
+        token = self.csrf_token('/verify-email')
+        invalid = self.client.post('/verify-email', data={
+            'email': self.user.email, 'code': '999999', 'csrf_token': token,
+        })
+        self.assertEqual(invalid.status_code, 200)
+        self.assertIn('invalid or has expired', invalid.text)
+        self.assertFalse(User.query.get(self.user.id).email_verified)
+
+        self.user.verification_expires_at = datetime.utcnow() - timedelta(seconds=1)
+        db.session.commit()
+        with patch.object(app_module, 'send_email') as send_email:
+            expired = self.client.post('/verify-email', data={
+                'email': self.user.email, 'code': '111111', 'csrf_token': token,
+            })
+
+        self.assertEqual(expired.status_code, 200)
+        self.assertIn('invalid or has expired', expired.text)
+        self.assertEqual(User.query.get(self.user.id).verification_code, '111111')
+        self.assertFalse(User.query.get(self.user.id).email_verified)
+        send_email.assert_not_called()
+
+    def test_resend_replaces_previous_code_and_reports_delivery(self):
+        self.user.verification_code = '111111'
+        self.user.verification_expires_at = datetime.utcnow() + timedelta(minutes=5)
+        db.session.commit()
+        token = self.csrf_token('/verify-email')
+
+        with patch.object(app_module, 'generate_code', return_value='222222'):
+            with patch.object(app_module, 'send_email', return_value=True) as send_email:
+                response = self.client.post('/verify-email', data={
+                    'action': 'resend', 'email': self.user.email, 'csrf_token': token,
+                })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(User.query.get(self.user.id).verification_code, '222222')
+        self.assertNotEqual(User.query.get(self.user.id).verification_code, '111111')
+        send_email.assert_called_once()
+
+    def test_resend_provider_failure_is_not_reported_as_success(self):
+        token = self.csrf_token('/verify-email')
+        with patch.object(app_module, 'send_email', return_value=False):
+            response = self.client.post('/verify-email', data={
+                'action': 'resend', 'email': self.user.email, 'csrf_token': token,
+            }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("couldn't send the verification email right now", response.text)
+        self.assertNotIn('Verification code sent.', response.text)
+        self.assertIsNotNone(User.query.get(self.user.id).verification_code)
+
+    def test_verification_resend_still_requires_csrf(self):
+        response = self.client.post('/verify-email', data={
+            'action': 'resend', 'email': self.user.email,
+        })
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_registration_enters_verification_flow_only_with_truthful_mail_status(self):
+        token = self.csrf_token('/register')
+        with patch.object(app_module, 'send_email', return_value=False) as send_email:
+            response = self.client.post('/register', data={
+                'username': 'new-player',
+                'email': 'new-player@example.com',
+                'password': 'secret123',
+                'confirm_password': 'secret123',
+                'csrf_token': token,
+            }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("couldn't send the verification email", response.text)
+        new_user = User.query.filter_by(email='new-player@example.com').one()
+        self.assertFalse(new_user.email_verified)
+        self.assertIsNotNone(new_user.verification_code)
+        send_email.assert_called_once()
+
+    def test_password_reset_still_uses_shared_email_sender(self):
+        token = self.csrf_token('/forgot-password')
+        with patch.object(app_module, 'send_email', return_value=True) as send_email:
+            response = self.client.post('/forgot-password', data={
+                'email': self.user.email, 'csrf_token': token,
+            }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('will be sent if email delivery is available', response.text)
+        self.assertIsNotNone(User.query.get(self.user.id).reset_code)
+        send_email.assert_called_once()
+
     def test_rate_limit_cleanup_removes_only_expired_buckets(self):
         old_bucket = RateLimitBucket(bucket_key='old', window_started=datetime.utcnow() - timedelta(hours=3), count=1)
         recent_bucket = RateLimitBucket(bucket_key='recent', window_started=datetime.utcnow(), count=1)
@@ -109,23 +320,17 @@ class NotificationFlowTests(unittest.TestCase):
         self.assertIsNone(RateLimitBucket.query.filter_by(bucket_key='old').first())
         self.assertIsNotNone(RateLimitBucket.query.filter_by(bucket_key='recent').first())
 
-    def test_local_schema_migration_is_idempotent_and_adds_required_objects(self):
+    def test_sqlite_schema_migration_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             database_file = os.path.join(directory, 'migration.db')
             engine = create_engine(f'sqlite:///{database_file}')
             with engine.begin() as connection:
                 connection.execute(text('CREATE TABLE user_tournament (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, tournament_id INTEGER NOT NULL)'))
 
-            db_migrate.migrate(f'sqlite:///{database_file}')
-            db_migrate.migrate(f'sqlite:///{database_file}')
+            with self.assertRaises(RuntimeError):
+                db_migrate.migrate(f'sqlite:///{database_file}')
 
-            with engine.connect() as connection:
-                inspector = inspect(connection)
-                self.assertTrue(inspector.has_table('rate_limit_bucket'))
-                indexes = inspector.get_indexes('user_tournament')
-                self.assertTrue(any(index['name'] == db_migrate.CONSTRAINT_NAME and index['unique'] for index in indexes))
-
-    def test_local_schema_migration_stops_on_duplicate_registrations(self):
+    def test_sqlite_duplicate_registration_migration_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             database_file = os.path.join(directory, 'duplicates.db')
             engine = create_engine(f'sqlite:///{database_file}')
@@ -135,10 +340,6 @@ class NotificationFlowTests(unittest.TestCase):
 
             with self.assertRaises(RuntimeError):
                 db_migrate.migrate(f'sqlite:///{database_file}')
-
-            with engine.connect() as connection:
-                indexes = inspect(connection).get_indexes('user_tournament')
-                self.assertFalse(any(index['name'] == db_migrate.CONSTRAINT_NAME for index in indexes))
 
     def test_security_headers_on_normal_response(self):
         response = self.client.get('/')
@@ -210,16 +411,31 @@ class NotificationFlowTests(unittest.TestCase):
 
     def test_verification_resend_rate_limit_returns_429(self):
         with patch.dict(app_module.RATE_LIMITS, {'verification_resend': (1, 60)}, clear=False):
-            self.client.get('/verify-email?email=unknown@example.com&resend=1')
-            response = self.client.get('/verify-email?email=unknown@example.com&resend=1')
+            token = self.csrf_token('/verify-email')
+            with patch.object(app_module, 'send_email', return_value=True) as send_email:
+                first = self.client.post('/verify-email', data={
+                    'action': 'resend', 'email': self.user.email, 'csrf_token': token,
+                })
+                with patch.object(app_module.time, 'sleep', side_effect=AssertionError('rate limiting must not sleep')):
+                    response = self.client.post('/verify-email', data={
+                        'action': 'resend', 'email': self.user.email, 'csrf_token': token,
+                    })
 
+        self.assertEqual(first.status_code, 302)
         self.assertEqual(response.status_code, 429)
-        self.assertIn('Retry-After', response.headers)
+        self.assertGreaterEqual(int(response.headers['Retry-After']), 1)
+        self.assertIn('Please wait before requesting another verification code.', response.text)
+        send_email.assert_called_once()
 
     def test_verification_resend_is_limited_by_ip_across_addresses(self):
         with patch.dict(app_module.RATE_LIMITS, {'verification_resend': (1, 60)}, clear=False):
-            self.client.get('/verify-email?email=first@example.com&resend=1')
-            response = self.client.get('/verify-email?email=second@example.com&resend=1')
+            token = self.csrf_token('/verify-email')
+            self.client.post('/verify-email', data={
+                'action': 'resend', 'email': 'first@example.com', 'csrf_token': token,
+            })
+            response = self.client.post('/verify-email', data={
+                'action': 'resend', 'email': 'second@example.com', 'csrf_token': token,
+            })
 
         self.assertEqual(response.status_code, 429)
 

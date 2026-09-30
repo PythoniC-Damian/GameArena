@@ -1,11 +1,10 @@
 /* GameArena Service Worker
    Provides offline caching and enables installability as a PWA. */
 
-const CACHE_NAME = 'gamearena-v2';
+const CACHE_NAME = 'gamearena-v3';
 
 // App shell assets to cache for offline/instant loading
 const APP_SHELL = [
-  '/',
   '/static/manifest.json',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
@@ -34,19 +33,15 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-const PUBLIC_NAVIGATION_PATHS = new Set(['/', '/tournaments', '/leaderboard']);
-
-function isPublicNavigation(url) {
-  return PUBLIC_NAVIGATION_PATHS.has(url.pathname) || url.pathname.startsWith('/tournament/');
+function isCacheableStaticAsset(url) {
+  if (url.origin !== self.location.origin || !url.pathname.startsWith('/static/')) return false;
+  if (url.pathname.endsWith('/sw.js') || url.pathname.endsWith('/manifest.json')) return false;
+  return /\.(?:css|js|mjs|png|jpe?g|webp|avif|gif|svg|ico|woff2?|ttf|otf)$/i.test(url.pathname);
 }
 
-function isSameOriginStaticAsset(url) {
-  return url.origin === self.location.origin && url.pathname.startsWith('/static/');
-}
-
-// Fetch: cache only public navigation pages and same-origin static assets.
-// Authenticated pages, API responses, and payment callbacks must never enter
-// Cache Storage: it is not scoped to an individual signed-in user.
+// Fetch: cache only safe, same-origin static assets. HTML pages and APIs may
+// vary by session, so they must never enter Cache Storage, which is shared by
+// all signed-in users of this browser profile.
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
@@ -55,23 +50,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // For public navigation requests: try network, fall back to cache (offline).
-  if (request.mode === 'navigate' && isPublicNavigation(url)) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
-    );
-    return;
-  }
-
-  if (!isSameOriginStaticAsset(url)) return;
+  if (!isCacheableStaticAsset(url)) return;
 
   // Static assets use stale-while-revalidate.
   event.respondWith(

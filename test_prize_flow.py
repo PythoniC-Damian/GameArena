@@ -1,9 +1,10 @@
-import importlib
 import sqlite3
-import sys
+import pytest
+
+import db_migrate
 
 
-def test_existing_sqlite_db_gets_prize_columns_for_tournament_stat(tmp_path, monkeypatch):
+def test_sqlite_migrations_are_rejected():
     db_path = tmp_path / "legacy.sqlite"
 
     conn = sqlite3.connect(db_path)
@@ -29,14 +30,5 @@ def test_existing_sqlite_db_gets_prize_columns_for_tournament_stat(tmp_path, mon
     conn.commit()
     conn.close()
 
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
-    sys.modules.pop("app", None)
-
-    app_module = importlib.import_module("app")
-    db = app_module.db
-
-    with app_module.app.app_context():
-        result = db.session.execute("PRAGMA table_info(tournament_stat)").fetchall()
-        columns = {row[1] for row in result}
-
-    assert {"prize_code", "prize_code_sent_at", "prize_status", "paystack_transfer_ref", "prize_paid_at"}.issubset(columns)
+    with pytest.raises(RuntimeError, match='Unsupported database dialect'):
+        db_migrate.migrate(f"sqlite:///{db_path}")

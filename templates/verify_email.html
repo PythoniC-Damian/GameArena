@@ -31,7 +31,12 @@
                     <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
                         <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Need the code again?</p>
                         <p class="mt-3 text-base">Click resend and check your inbox.</p>
-                        <a href="{{ url_for('verify_email', email=form.email.data, resend=1) }}" class="mt-4 inline-flex rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Resend Code</a>
+                        <form method="POST" action="{{ url_for('verify_email') }}">
+                            {{ form.csrf_token }}
+                            <input type="hidden" name="action" value="resend">
+                            <input type="hidden" name="email" value="{{ form.email.data or '' }}">
+                            <button type="submit" class="mt-4 inline-flex rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Resend Code</button>
+                        </form>
                     </div>
                 </div>
                 <div class="rounded-[32px] border border-white/10 bg-slate-950/90 p-8 shadow-xl shadow-slate-950/40">

@@ -1,29 +1,31 @@
-import sys, os
-sys.path.insert(0, os.getcwd())
-os.environ['DATABASE_URL'] = 'sqlite:///' + os.path.join(os.getcwd(), 'instance', 'database.db')
-
 from app import app, db, GlobalChatMessage, User
 from sqlalchemy import func
 
-with app.app_context():
-    messages = GlobalChatMessage.query.order_by(GlobalChatMessage.created_at.asc()).limit(50).all()
 
-    distinct_user_ids = [
-        row[0] for row in db.session.query(
-            func.max(GlobalChatMessage.created_at).label('last_seen'),
-            GlobalChatMessage.user_id,
-        )
-        .group_by(GlobalChatMessage.user_id)
-        .order_by(func.max(GlobalChatMessage.created_at).desc())
-        .limit(10).all()
-    ]
-    chat_partners = []
-    if distinct_user_ids:
+def test_chat_partner_query_uses_latest_message_order():
+    with app.app_context():
+        first = User(username='first', email='first@example.com', password='hashed')
+        second = User(username='second', email='second@example.com', password='hashed')
+        db.session.add_all([first, second])
+        db.session.commit()
+        db.session.add_all([
+            GlobalChatMessage(user_id=first.id, message='old'),
+            GlobalChatMessage(user_id=second.id, message='new'),
+        ])
+        db.session.commit()
+
+        distinct_user_ids = [
+            row[1] for row in db.session.query(
+                func.max(GlobalChatMessage.created_at).label('last_seen'),
+                GlobalChatMessage.user_id,
+            )
+            .group_by(GlobalChatMessage.user_id)
+            .order_by(func.max(GlobalChatMessage.created_at).desc())
+            .limit(10).all()
+        ]
+
         partners = User.query.filter(User.id.in_(distinct_user_ids)).all()
-        partner_map = {u.id: u for u in partners}
-        chat_partners = [partner_map[uid] for uid in distinct_user_ids if uid in partner_map]
+        partner_map = {user.id: user for user in partners}
+        chat_partners = [partner_map[user_id] for user_id in distinct_user_ids]
 
-    print('messages:', len(messages))
-    print('distinct ids:', distinct_user_ids)
-    print('chat_partners:', [p.username for p in chat_partners])
-    print('OK: chat query works')
+        assert {partner.username for partner in chat_partners} == {'first', 'second'}
