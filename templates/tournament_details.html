@@ -94,7 +94,7 @@
                 </div>
                 <div class="rounded-[28px] bg-slate-950/80 p-5 text-center">
                     <p class="text-sm text-slate-400">Slots</p>
-                    <p class="mt-2 text-2xl font-semibold text-white">{{ tournament.participants|length }}/{{ tournament.max_participants }}</p>
+                    <p class="mt-2 text-2xl font-semibold text-white">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</p>
                 </div>
             </div>
         </div>
@@ -104,12 +104,12 @@
         {% endif %}
 
         <div class="mt-8 flex flex-wrap gap-3">
-            {% if joined_paid %}
+            {% if joined_participant %}
                 <span class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950">✓ You're in this tournament</span>
                 <a href="{{ url_for('dashboard') }}" class="rounded-full bg-slate-800 px-6 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Go to Dashboard</a>
             {% elif current_user.is_authenticated %}
                 {% if tournament.status == 'open' %}
-                    {% if tournament.participants|length >= tournament.max_participants %}
+                    {% if active_participant_count(tournament) >= tournament.max_participants %}
                     <span class="rounded-full bg-red-500 px-6 py-4 text-sm font-semibold text-white">Full</span>
                     {% else %}
                     <a href="{{ url_for('join_tournament', tournament_id=tournament.id) }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Join Tournament</a>
@@ -137,28 +137,108 @@
             {% for match in matches %}
             <div class="rounded-[28px] border border-slate-800 bg-slate-950/80 p-6">
                 <div class="flex items-center justify-between gap-3">
-                    <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-slate-950 {% if match.status == 'confirmed' %}bg-emerald-500{% elif match.status == 'pending_confirmation' %}bg-amber-500{% elif match.status == 'scheduled' %}bg-sky-500{% else %}bg-slate-700 text-white{% endif %}">{{ match.status|replace('_', ' ')|capitalize }}</span>
+                    <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] {% if match.status == 'confirmed' %}bg-emerald-500 text-slate-950{% elif match.status in ('pending_confirmation', 'disputed') %}bg-amber-500 text-slate-950{% elif match.status == 'scheduled' %}bg-sky-500 text-slate-950{% else %}bg-slate-700 text-white{% endif %}">{{ match.status|replace('_', ' ')|capitalize }}</span>
                     <span class="text-xs text-slate-500">{{ match.created_at.strftime('%b %d, %Y') if match.created_at else '' }}</span>
                 </div>
                 <div class="mt-5 space-y-3">
                     <div class="flex items-center justify-between gap-3 rounded-[24px] bg-slate-900/80 p-4">
                         <span class="font-semibold text-white">{{ match.player_one.username if match.player_one else 'TBD' }}</span>
-                        {% if match.winner and match.winner.id == match.player_one_user_id %}
+                        {% if match.status == 'confirmed' and match.winner and match.winner.id == match.player_one_user_id %}
                         <span class="rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold text-slate-950">WINNER</span>
                         {% endif %}
                     </div>
                     <div class="flex items-center justify-between gap-3 rounded-[24px] bg-slate-900/80 p-4">
                         <span class="font-semibold text-white">{{ match.player_two.username if match.player_two else 'TBD' }}</span>
-                        {% if match.winner and match.winner.id == match.player_two_user_id %}
+                        {% if match.status == 'confirmed' and match.winner and match.winner.id == match.player_two_user_id %}
                         <span class="rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold text-slate-950">WINNER</span>
                         {% endif %}
                     </div>
                 </div>
+                {% if current_user.is_authenticated and (current_user.id in (match.player_one_user_id, match.player_two_user_id) or (current_user.is_admin and not current_user.suspended)) %}
+                {% set is_match_player = current_user.id in (match.player_one_user_id, match.player_two_user_id) %}
                 {% if match.room_code %}
                 <div class="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
                     <div class="rounded-2xl bg-slate-900/80 p-3"><p class="text-xs text-slate-500">Room</p><p class="font-mono text-white">{{ match.room_code }}</p></div>
                     {% if match.room_password %}<div class="rounded-2xl bg-slate-900/80 p-3"><p class="text-xs text-slate-500">Password</p><p class="font-mono text-white">{{ match.room_password }}</p></div>{% endif %}
                 </div>
+                {% endif %}
+                {% if match.winner %}
+                <div class="mt-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-sm text-slate-300">
+                    <p>Reported winner: <span class="font-semibold text-white">{{ match.winner.username }}</span></p>
+                    {% if match.submitted_by %}<p class="mt-1">Submitted by {{ match.submitted_by.username }}</p>{% endif %}
+                    {% if match.proof_note %}<p class="mt-3 whitespace-pre-wrap break-words">{{ match.proof_note }}</p>{% endif %}
+                </div>
+                {% endif %}
+
+                {% if is_match_player and match.status in ('scheduled', 'ongoing') %}
+                <form method="POST" action="{{ url_for('submit_match_result_route', match_id=match.id) }}" class="mt-5 space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <h3 class="font-semibold text-white">Submit match result</h3>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="text-xs text-slate-400">Room code
+                            <input name="room_code" maxlength="100" required value="{{ match.room_code or '' }}" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+                        </label>
+                        <label class="text-xs text-slate-400">Room password (if any)
+                            <input name="room_password" maxlength="100" value="{{ match.room_password or '' }}" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+                        </label>
+                        <label class="text-xs text-slate-400">Player one game ID
+                            <input name="player_profile_id" maxlength="150" required value="{{ match.player_one_profile_id or '' }}" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+                        </label>
+                        <label class="text-xs text-slate-400">Player two game ID
+                            <input name="opponent_profile_id" maxlength="150" required value="{{ match.player_two_profile_id or '' }}" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+                        </label>
+                    </div>
+                    <label class="block text-xs text-slate-400">Winner
+                        <select name="winner_user_id" required class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+                            <option value="">Choose the winner</option>
+                            <option value="{{ match.player_one_user_id }}" {% if match.winner_user_id == match.player_one_user_id %}selected{% endif %}>{{ match.player_one.username }}</option>
+                            <option value="{{ match.player_two_user_id }}" {% if match.winner_user_id == match.player_two_user_id %}selected{% endif %}>{{ match.player_two.username }}</option>
+                        </select>
+                    </label>
+                    <label class="block text-xs text-slate-400">Evidence or result notes
+                        <textarea name="proof_note" maxlength="2000" rows="3" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">{{ match.proof_note or '' }}</textarea>
+                    </label>
+                    <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Submit result</button>
+                </form>
+                {% elif is_match_player and not (current_user.is_admin and not current_user.suspended) and match.status == 'pending_confirmation' and current_user.id != match.submitted_by_user_id %}
+                <div class="mt-5 space-y-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+                    <p class="text-sm text-amber-100">Review the reported result. Confirm it or send it to an admin for review.</p>
+                    <div class="flex flex-wrap gap-2">
+                        <form method="POST" action="{{ url_for('confirm_match_result', match_id=match.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950">Confirm result</button>
+                        </form>
+                    </div>
+                    <form method="POST" action="{{ url_for('dispute_match_result', match_id=match.id) }}" class="space-y-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <label class="block text-xs text-slate-400">Dispute reason
+                            <textarea name="reason" maxlength="2000" rows="2" required class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"></textarea>
+                        </label>
+                        <button type="submit" class="rounded-xl border border-amber-400/40 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/10">Dispute result</button>
+                    </form>
+                </div>
+                {% endif %}
+
+                {% if match.status == 'disputed' and current_user.is_admin and not current_user.suspended %}
+                {% for dispute in match.disputes if dispute.status == 'pending' %}
+                <div class="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+                    <p class="text-sm font-semibold text-amber-100">Dispute from {{ dispute.user.username if dispute.user else 'Player' }}</p>
+                    <p class="mt-2 whitespace-pre-wrap break-words text-sm text-slate-300">{{ dispute.reason }}</p>
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <form method="POST" action="{{ url_for('review_match_dispute', match_id=match.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="decision" value="confirm">
+                            <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950">Confirm reported result</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('review_match_dispute', match_id=match.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="decision" value="reopen">
+                            <button type="submit" class="rounded-xl border border-amber-400/40 px-4 py-2 text-sm font-semibold text-amber-100">Reopen match</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+                {% endif %}
                 {% endif %}
             </div>
             {% endfor %}
@@ -217,7 +297,7 @@
             <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
                 <h2 class="text-xl font-semibold text-white">Tournament info</h2>
                 <div class="mt-5 space-y-3 text-sm text-slate-300">
-                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Entries</span><span class="font-semibold text-white">{{ tournament.participants|length }}/{{ tournament.max_participants }}</span></div>
+                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Entries</span><span class="font-semibold text-white">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</span></div>
                     <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Match time</span><span class="font-semibold text-white">{{ tournament.match_time.strftime('%b %d, %Y · %H:%M') if tournament.match_time else 'TBD' }}</span></div>
                     <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Status</span><span class="font-semibold text-emerald-300 capitalize">{{ tournament.status }}</span></div>
                 </div>

@@ -1,7 +1,49 @@
 import importlib
 import re
+from datetime import datetime, timedelta
 
 app_module = importlib.import_module('app')
+
+
+def create_pending_match():
+    tournament = app_module.Tournament(
+        name='Result Review Tournament', game='eFootball', status='live',
+    )
+    submitter = app_module.User(
+        username='result_submitter', email='result_submitter@example.com',
+        password='hashed', email_verified=True,
+    )
+    opponent = app_module.User(
+        username='result_opponent', email='result_opponent@example.com',
+        password='hashed', email_verified=True,
+    )
+    app_module.db.session.add_all([tournament, submitter, opponent])
+    app_module.db.session.commit()
+    match = app_module.TournamentMatch(
+        tournament_id=tournament.id,
+        player_one_user_id=submitter.id,
+        player_two_user_id=opponent.id,
+        submitted_by_user_id=submitter.id,
+        winner_user_id=submitter.id,
+        status='pending_confirmation',
+        proof_note='Test evidence',
+    )
+    app_module.db.session.add(match)
+    app_module.db.session.commit()
+    return tournament, submitter, opponent, match
+
+
+def authenticated_client(user_id):
+    client = app_module.app.test_client()
+    with client.session_transaction() as session:
+        session['_user_id'] = str(user_id)
+        session['_fresh'] = True
+    return client
+
+
+def csrf_token(client, path):
+    response = client.get(path)
+    return re.search(r'name="csrf_token"[^>]*value="([^"]+)"', response.text).group(1)
 
 
 def test_create_tournament_matches_pairs_participants():
@@ -102,6 +144,140 @@ def test_submit_match_result_marks_pending_confirmation():
         assert result.status == 'pending_confirmation'
         assert result.room_code == 'ABC123'
         assert result.winner_user_id == player_one.id
+
+
+def test_only_opponent_can_confirm_a_submitted_result():
+    with app_module.app.app_context():
+        tournament, submitter, opponent, match = create_pending_match()
+        submitter_client = authenticated_client(submitter.id)
+        submitter_token = csrf_token(
+            submitter_client, f'/tournament/{tournament.id}',
+        )
+        submitter_response = submitter_client.post(
+            f'/match/{match.id}/confirm-result',
+            data={'csrf_token': submitter_token},
+        )
+
+        assert submitter_response.status_code == 302
+        assert app_module.db.session.get(app_module.TournamentMatch, match.id).status == 'pending_confirmation'
+
+        opponent_client = authenticated_client(opponent.id)
+        opponent_token = csrf_token(
+            opponent_client, f'/tournament/{tournament.id}',
+        )
+        opponent_response = opponent_client.post(
+            f'/match/{match.id}/confirm-result',
+            data={'csrf_token': opponent_token},
+        )
+
+        assert opponent_response.status_code == 302
+        assert app_module.db.session.get(app_module.TournamentMatch, match.id).status == 'confirmed'
+
+
+def test_dispute_freezes_result_until_admin_reopens_match():
+    with app_module.app.app_context():
+        tournament, submitter, opponent, match = create_pending_match()
+        opponent_client = authenticated_client(opponent.id)
+        opponent_token = csrf_token(
+            opponent_client, f'/tournament/{tournament.id}',
+        )
+        dispute_response = opponent_client.post(
+            f'/match/{match.id}/dispute',
+            data={'csrf_token': opponent_token, 'reason': 'The reported winner is incorrect.'},
+        )
+
+        assert dispute_response.status_code == 302
+        assert app_module.db.session.get(app_module.TournamentMatch, match.id).status == 'disputed'
+
+        admin = app_module.User(
+            username='review_admin', email='review_admin@example.com',
+            password='hashed', email_verified=True, is_admin=True,
+        )
+        app_module.db.session.add(admin)
+        app_module.db.session.commit()
+        admin_client = authenticated_client(admin.id)
+        admin_token = csrf_token(admin_client, f'/tournament/{tournament.id}')
+        review_response = admin_client.post(
+            f'/admin/matches/{match.id}/review-dispute',
+            data={'csrf_token': admin_token, 'decision': 'reopen'},
+        )
+
+        refreshed_match = app_module.db.session.get(app_module.TournamentMatch, match.id)
+        dispute = app_module.TournamentMatchDispute.query.filter_by(match_id=match.id).one()
+        assert review_response.status_code == 302
+        assert refreshed_match.status == 'ongoing'
+        assert refreshed_match.winner_user_id is None
+        assert refreshed_match.submitted_by_user_id is None
+        assert dispute.status == 'resolved'
+
+
+def test_free_tournament_member_is_shown_as_registered():
+    with app_module.app.app_context():
+        tournament = app_module.Tournament(
+            name='Free Entry Tournament', game='PUBG', status='open',
+            match_time=datetime.utcnow() + timedelta(hours=1),
+        )
+        user = app_module.User(
+            username='free_member', email='free_member@example.com',
+            password='hashed', email_verified=True,
+        )
+        app_module.db.session.add_all([tournament, user])
+        app_module.db.session.commit()
+        app_module.db.session.add(app_module.UserTournament(
+            user_id=user.id, tournament_id=tournament.id, payment_status='free',
+        ))
+        app_module.db.session.commit()
+
+        client = authenticated_client(user.id)
+        response = client.get(f'/tournament/{tournament.id}')
+
+        assert response.status_code == 200
+        assert "You're in this tournament" in response.text
+        assert 'Join Tournament' not in response.text
+
+
+def test_dashboard_shows_scheduled_match_and_confirmed_stats():
+    with app_module.app.app_context():
+        tournament = app_module.Tournament(
+            name='Dashboard Tournament', game='eFootball', status='live',
+            match_time=datetime.utcnow() + timedelta(hours=2),
+        )
+        player = app_module.User(
+            username='dashboard_player', email='dashboard_player@example.com',
+            password='hashed', email_verified=True,
+        )
+        opponent = app_module.User(
+            username='dashboard_opponent', email='dashboard_opponent@example.com',
+            password='hashed', email_verified=True,
+        )
+        app_module.db.session.add_all([tournament, player, opponent])
+        app_module.db.session.commit()
+        app_module.db.session.add_all([
+            app_module.TournamentMatch(
+                tournament_id=tournament.id,
+                player_one_user_id=player.id,
+                player_two_user_id=opponent.id,
+                status='scheduled',
+            ),
+            app_module.TournamentMatch(
+                tournament_id=tournament.id,
+                player_one_user_id=player.id,
+                player_two_user_id=opponent.id,
+                submitted_by_user_id=opponent.id,
+                winner_user_id=player.id,
+                status='confirmed',
+            ),
+        ])
+        app_module.db.session.commit()
+
+        response = authenticated_client(player.id).get('/dashboard')
+
+        assert response.status_code == 200
+        assert 'Matches played' in response.text
+        assert 'Wins / losses' in response.text
+        assert 'Win rate' in response.text
+        assert 'dashboard_opponent' in response.text
+        assert 'Dashboard Tournament' in response.text
 
 
 def test_admin_can_login_without_email_verification():

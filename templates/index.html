@@ -276,12 +276,12 @@
                             </div>
                             <div class="space-y-1 text-sm text-slate-300">
                                 <p>Slots</p>
-                                <p class="text-white font-semibold">{{ tournament.participants|length }}/{{ tournament.max_participants }}</p>
+                                <p class="text-white font-semibold">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</p>
                             </div>
                         </div>
                         <div class="mt-6 flex gap-3 flex-wrap">
                             <a href="{{ url_for('tournament_details', tournament_id=tournament.id) }}" class="flex-1 rounded-full bg-emerald-500 px-4 py-3 text-center text-sm font-semibold text-slate-950 hover:bg-emerald-400">View</a>
-                            {% if tournament.participants|length >= tournament.max_participants %}
+                            {% if active_participant_count(tournament) >= tournament.max_participants %}
                             <span class="flex-1 rounded-full bg-red-500 px-4 py-3 text-center text-sm font-semibold">Full</span>
                             {% elif current_user.is_authenticated %}
                             <a href="{{ url_for('join_tournament', tournament_id=tournament.id) }}" class="flex-1 rounded-full bg-slate-800 px-4 py-3 text-center text-sm hover:bg-slate-700">Join</a>

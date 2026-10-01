@@ -84,6 +84,32 @@
                 </div>
             </div>
         </div>
+        {% if current_user.is_authenticated %}
+        <section class="rounded-[32px] border border-emerald-500/20 bg-emerald-500/5 p-6">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Your placements</p>
+                    <h2 class="mt-2 text-2xl font-semibold text-white">Tournament rankings</h2>
+                </div>
+                <a href="{{ url_for('profile') }}" class="text-sm font-semibold text-emerald-300 hover:text-emerald-200">Your profile</a>
+            </div>
+            {% if own_placements %}
+            <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {% for placement in own_placements %}
+                <a href="{{ url_for('tournament_details', tournament_id=placement.tournament_id) }}" class="flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 hover:border-emerald-500/40">
+                    <div class="min-w-0">
+                        <p class="truncate font-semibold text-white">{{ placement.tournament.name if placement.tournament else 'Tournament' }}</p>
+                        <p class="mt-1 text-sm text-slate-400">{{ placement.tournament.game if placement.tournament else '' }} · {{ placement.wins }} wins · {{ placement.points }} points</p>
+                    </div>
+                    <span class="shrink-0 text-lg font-bold text-emerald-300">#{{ placement.rank or '–' }}</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="mt-5 rounded-2xl border border-dashed border-slate-700 bg-slate-950/70 p-5 text-sm text-slate-400">Your placements will appear here when tournament results are recorded.</p>
+            {% endif %}
+        </section>
+        {% endif %}
         <div class="grid gap-6 lg:grid-cols-3">
             {% for tournament in tournaments %}
             <article class="rounded-[32px] border border-white/10 bg-slate-900/90 p-6 shadow-2xl shadow-emerald-500/10">
@@ -95,13 +121,19 @@
                 <div class="mt-4 grid gap-3 text-sm text-slate-300">
                     <div class="flex justify-between"><span>Entry</span><span>₦{{ tournament.entry_fee }}</span></div>
                     <div class="flex justify-between"><span>Prize</span><span>₦{{ tournament.prize }}</span></div>
-                    <div class="flex justify-between"><span>Slots</span><span>{{ tournament.participants|length }}/{{ tournament.max_participants }}</span></div>
+                    <div class="flex justify-between"><span>Slots</span><span>{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</span></div>
                 </div>
                 <div class="mt-6 flex gap-3">
                     <a href="{{ url_for('tournament_details', tournament_id=tournament.id) }}" class="flex-1 rounded-full bg-emerald-500 px-4 py-3 text-center text-sm font-semibold text-slate-950 hover:bg-emerald-400">View</a>
                 </div>
             </article>
             {% endfor %}
+            {% if not tournaments %}
+            <div class="rounded-[32px] border border-dashed border-slate-700 bg-slate-900/70 p-8 text-center text-slate-400 lg:col-span-3">
+                <p class="font-semibold text-white">No tournament rankings yet.</p>
+                <p class="mt-2">Check back when tournament results are available.</p>
+            </div>
+            {% endif %}
         </div>
     </section>
 </main>

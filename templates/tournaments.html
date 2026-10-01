@@ -63,16 +63,16 @@
                     <p class="mt-2 text-slate-400">Find the latest open and live tournaments across your favorite games.</p>
                 </div>
                 <div class="flex flex-wrap gap-3">
-                    <button class="rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950">All</button>
-                    <button class="rounded-full bg-slate-800 px-5 py-3 text-sm text-slate-200 hover:bg-slate-700">Upcoming</button>
-                    <button class="rounded-full bg-slate-800 px-5 py-3 text-sm text-slate-200 hover:bg-slate-700">Ongoing</button>
-                    <button class="rounded-full bg-slate-800 px-5 py-3 text-sm text-slate-200 hover:bg-slate-700">Finished</button>
+                    <button type="button" data-tournament-filter="all" aria-pressed="true" class="rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950">All</button>
+                    <button type="button" data-tournament-filter="upcoming" aria-pressed="false" class="rounded-full bg-slate-800 px-5 py-3 text-sm text-slate-200 hover:bg-slate-700">Upcoming</button>
+                    <button type="button" data-tournament-filter="ongoing" aria-pressed="false" class="rounded-full bg-slate-800 px-5 py-3 text-sm text-slate-200 hover:bg-slate-700">Ongoing</button>
+                    <button type="button" data-tournament-filter="finished" aria-pressed="false" class="rounded-full bg-slate-800 px-5 py-3 text-sm text-slate-200 hover:bg-slate-700">Finished</button>
                 </div>
             </div>
         </div>
         <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {% for tournament in tournaments %}
-            <article class="group overflow-hidden rounded-[32px] border border-white/10 bg-slate-900/90 shadow-2xl shadow-emerald-500/10 transition duration-300 hover:-translate-y-1 hover:border-emerald-500/30">
+            <article data-tournament-status="{{ tournament.status|lower }}" class="group overflow-hidden rounded-[32px] border border-white/10 bg-slate-900/90 shadow-2xl shadow-emerald-500/10 transition duration-300 hover:-translate-y-1 hover:border-emerald-500/30">
                 <div class="relative h-56 overflow-hidden">
                     {% for image_url in game_image_carousel(tournament.game) %}
 <img {% if loop.first %}src="{{ image_url }}"{% else %}data-src="{{ image_url }}" aria-hidden="true"{% endif %} alt="{{ tournament.game if loop.first else '' }}" loading="lazy" decoding="async" class="absolute inset-0 h-full w-full object-cover {% if not loop.first %}opacity-0{% endif %}" style="transition: opacity 4s ease-in-out;" />
@@ -90,11 +90,11 @@
                     <p class="text-sm leading-6 text-slate-400 mb-6">{{ (tournament.description or '')[:120] ~ ('...' if (tournament.description or '')|length > 120 else '') }}</p>
                     <div class="grid gap-3 sm:grid-cols-2">
                         <span class="rounded-3xl bg-slate-950/80 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300">Prize ₦{{ tournament.prize }}</span>
-                        <span class="rounded-3xl bg-slate-950/80 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300">{{ tournament.participants|length }}/{{ tournament.max_participants }}</span>
+                        <span class="rounded-3xl bg-slate-950/80 px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-300">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</span>
                     </div>
                     <div class="mt-6 flex gap-3 flex-wrap">
                         <a href="{{ url_for('tournament_details', tournament_id=tournament.id) }}" class="flex-1 rounded-full bg-emerald-500 px-4 py-3 text-center text-sm font-semibold text-slate-950 hover:bg-emerald-400">View</a>
-                        {% if tournament.participants|length >= tournament.max_participants %}
+                        {% if active_participant_count(tournament) >= tournament.max_participants %}
                         <span class="flex-1 rounded-full bg-red-500 px-4 py-3 text-center text-sm font-semibold">Full</span>
                         {% elif current_user.is_authenticated %}
                         <a href="{{ url_for('join_tournament', tournament_id=tournament.id) }}" class="flex-1 rounded-full bg-slate-800 px-4 py-3 text-center text-sm hover:bg-slate-700">Join</a>
@@ -105,6 +105,15 @@
                 </div>
             </article>
             {% endfor %}
+            {% if not tournaments %}
+            <div class="rounded-[32px] border border-dashed border-slate-700 bg-slate-900/70 p-10 text-center text-slate-400 md:col-span-2 lg:col-span-3">
+              <p class="text-lg font-semibold text-white">No tournaments available right now.</p>
+              <p class="mt-2">Check back soon for the next competition.</p>
+            </div>
+            {% endif %}
+            <div id="tournamentFilterEmpty" class="hidden rounded-[32px] border border-dashed border-slate-700 bg-slate-900/70 p-8 text-center text-slate-400 md:col-span-2 lg:col-span-3">
+                No tournaments match this filter.
+            </div>
         </div>
     </section>
 </main>
@@ -116,6 +125,35 @@
 </footer>
 
 <script>
+const tournamentCards = document.querySelectorAll('[data-tournament-status]');
+const tournamentFilterButtons = document.querySelectorAll('[data-tournament-filter]');
+const tournamentFilterEmpty = document.getElementById('tournamentFilterEmpty');
+tournamentFilterButtons.forEach(function (button) {
+  button.addEventListener('click', function () {
+    const filter = button.dataset.tournamentFilter;
+    let visibleCount = 0;
+    tournamentCards.forEach(function (card) {
+      const status = card.dataset.tournamentStatus;
+      const visible = filter === 'all'
+        || (filter === 'upcoming' && status === 'open')
+        || (filter === 'ongoing' && (status === 'ongoing' || status === 'live'))
+        || status === filter;
+      card.classList.toggle('hidden', !visible);
+      if (visible) visibleCount += 1;
+    });
+    tournamentFilterButtons.forEach(function (item) {
+      const active = item === button;
+      item.setAttribute('aria-pressed', String(active));
+      item.classList.toggle('bg-emerald-500', active);
+      item.classList.toggle('text-slate-950', active);
+      item.classList.toggle('font-semibold', active);
+      item.classList.toggle('bg-slate-800', !active);
+      item.classList.toggle('text-slate-200', !active);
+    });
+    if (tournamentFilterEmpty) tournamentFilterEmpty.classList.toggle('hidden', visibleCount > 0 || tournamentCards.length === 0);
+  });
+});
+
 // Auto-rotating image carousel for tournament cards
 document.querySelectorAll('article .relative.overflow-hidden').forEach(function (container) {
   const images = container.querySelectorAll('img.absolute');

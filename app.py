@@ -15,6 +15,7 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from sqlalchemy.pool import NullPool
+from sqlalchemy import or_
 from sqlalchemy.orm import selectinload, joinedload
 
 from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, validators
@@ -441,6 +442,7 @@ def utility_processor():
         game_image_carousel=game_image_carousel,
         carousel_images=carousel_images(),
         featured_tournaments=featured_tournaments,
+        active_participant_count=active_participant_count,
     )
 
 
@@ -1340,7 +1342,19 @@ def leaderboard():
     tournaments = Tournament.query.options(
         selectinload(Tournament.leaderboard).joinedload(TournamentStat.user),
     ).order_by(Tournament.match_time.desc()).all()
-    return render_template("leaderboard.html", tournaments=tournaments)
+    own_placements = []
+    if current_user.is_authenticated:
+        own_placements = (
+            TournamentStat.query
+            .options(joinedload(TournamentStat.tournament))
+            .filter_by(user_id=current_user.id)
+            .order_by(TournamentStat.rank.asc(), TournamentStat.points.desc())
+            .limit(20)
+            .all()
+        )
+    return render_template(
+        "leaderboard.html", tournaments=tournaments, own_placements=own_placements,
+    )
 
 
 # -------------------------
@@ -1369,7 +1383,10 @@ def wallet():
 @app.route('/chat')
 @login_required
 def chat():
-    all_messages = GlobalChatMessage.query.order_by(GlobalChatMessage.created_at.asc()).limit(50).all()
+    latest_messages = GlobalChatMessage.query.order_by(
+        GlobalChatMessage.created_at.desc(), GlobalChatMessage.id.desc(),
+    ).limit(50).all()
+    all_messages = list(reversed(latest_messages))
 
     # Defensively drop any messages whose user relationship is missing (orphaned
     # rows, e.g. a chat message referencing a user that no longer exists). This
@@ -1419,7 +1436,7 @@ def profile():
 @app.route("/tournament/<int:tournament_id>")
 def tournament_details(tournament_id):
     tournament = Tournament.query.get_or_404(tournament_id)
-    joined_paid = False
+    joined_participant = False
     can_view_match_rooms = is_admin_user()
 
     if current_user.is_authenticated:
@@ -1427,8 +1444,8 @@ def tournament_details(tournament_id):
             user_id=current_user.id,
             tournament_id=tournament_id
         ).first()
-        if join and join.payment_status == 'paid':
-            joined_paid = True
+        if join and join.payment_status in {'paid', 'free'}:
+            joined_participant = True
             can_view_match_rooms = True
 
     matches = []
@@ -1438,7 +1455,7 @@ def tournament_details(tournament_id):
     return render_template(
         "tournament_details.html",
         tournament=tournament,
-        joined_paid=joined_paid,
+        joined_participant=joined_participant,
         matches=matches,
         can_view_match_rooms=can_view_match_rooms,
     )
@@ -1747,10 +1764,53 @@ def dashboard():
             joined_tournaments.append(ut)
             seen_tournaments.add(ut.tournament_id)
 
-    upcoming_matches = [
-        ut for ut in joined_tournaments
-        if ut.tournament.match_time and ut.tournament.match_time >= datetime.utcnow()
-    ]
+    match_players = or_(
+        TournamentMatch.player_one_user_id == current_user.id,
+        TournamentMatch.player_two_user_id == current_user.id,
+    )
+    now = datetime.utcnow()
+    upcoming_matches = (
+        TournamentMatch.query
+        .join(Tournament)
+        .options(
+            joinedload(TournamentMatch.tournament),
+            joinedload(TournamentMatch.player_one),
+            joinedload(TournamentMatch.player_two),
+        )
+        .filter(
+            match_players,
+            TournamentMatch.status.in_(['scheduled', 'ongoing']),
+            or_(Tournament.match_time >= now, Tournament.match_time.is_(None)),
+        )
+        .order_by(Tournament.match_time.asc().nullslast(), TournamentMatch.created_at.asc())
+        .limit(5)
+        .all()
+    )
+    recent_matches = (
+        TournamentMatch.query
+        .options(
+            joinedload(TournamentMatch.tournament),
+            joinedload(TournamentMatch.player_one),
+            joinedload(TournamentMatch.player_two),
+            joinedload(TournamentMatch.winner),
+        )
+        .filter(
+            match_players,
+            TournamentMatch.status.in_(['pending_confirmation', 'disputed', 'confirmed']),
+        )
+        .order_by(TournamentMatch.updated_at.desc(), TournamentMatch.id.desc())
+        .limit(5)
+        .all()
+    )
+    confirmed_matches = TournamentMatch.query.filter(
+        match_players,
+        TournamentMatch.status == 'confirmed',
+        TournamentMatch.winner_user_id.isnot(None),
+    )
+    matches_played = confirmed_matches.count()
+    wins = confirmed_matches.filter(TournamentMatch.winner_user_id == current_user.id).count()
+    losses = matches_played - wins
+    win_rate = round((wins / matches_played) * 100) if matches_played else 0
 
     tournament_stats = sorted(
         current_user.tournament_stats,
@@ -1773,6 +1833,12 @@ def dashboard():
         tournament_stats=tournament_stats,
         recent_notifications=recent_notifications,
         total_paid=total_paid,
+        recent_matches=recent_matches,
+        matches_played=matches_played,
+        wins=wins,
+        losses=losses,
+        win_rate=win_rate,
+        unread_notification_count=get_unread_notification_count(current_user.id),
     )
 
 
@@ -2079,9 +2145,9 @@ def _get_paid_participants_not_in_assigned_match(tournament_id: int, exclude_use
     - scheduled
     - ongoing
     - pending_confirmation
-    - confirmed
+    - disputed
     """
-    active_statuses = {'scheduled', 'ongoing', 'pending_confirmation', 'confirmed'}
+    active_statuses = {'scheduled', 'ongoing', 'pending_confirmation', 'disputed'}
 
     assigned_rows = TournamentMatch.query.filter(
         TournamentMatch.tournament_id == tournament_id,
@@ -2134,7 +2200,7 @@ def matchmake_player_pair(tournament_id):
         return redirect(url_for('tournament_details', tournament_id=tournament_id))
 
     #This here is to prevent making multiple assignments for the same user
-    active_statuses = {'scheduled', 'ongoing', 'pending_confirmation', 'confirmed'}
+    active_statuses = {'scheduled', 'ongoing', 'pending_confirmation', 'disputed'}
     existing = TournamentMatch.query.filter(
         TournamentMatch.tournament_id == tournament_id,
         TournamentMatch.status.in_(active_statuses),
@@ -2180,7 +2246,13 @@ def submit_match_result_route(match_id):
     tournament = match.tournament
 
     if not can_access_match(current_user.id, match):
-        flash('Only the assigned players or an admin can submit match results.', 'error')
+        flash('Only the assigned players or an admin can view this match.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    if current_user.id not in {match.player_one_user_id, match.player_two_user_id}:
+        flash('Only an assigned player can submit a match result.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    if match.status not in {'scheduled', 'ongoing'}:
+        flash('This match is not accepting result submissions right now.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
     room_code = request.form.get('room_code', '').strip()
@@ -2233,15 +2305,24 @@ def confirm_match_result(match_id):
     tournament = match.tournament
 
     if not can_access_match(current_user.id, match):
-        flash('Only the assigned players or an admin can confirm match results.', 'error')
+        flash('Only the assigned players or an admin can view this match.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    if current_user.id not in {match.player_one_user_id, match.player_two_user_id}:
+        flash('Only an assigned player can confirm a match result.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    if match.status != 'pending_confirmation':
+        flash('There is no submitted result waiting for confirmation.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    if current_user.id == match.submitted_by_user_id:
+        flash('The other player must confirm the submitted result.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    if is_admin_user():
+        flash('Admins can review disputed results only.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
-    if is_admin_user() or current_user.id in {match.player_one_user_id, match.player_two_user_id}:
-        match.status = 'confirmed'
-        db.session.commit()
-        flash('Match result confirmed.', 'success')
-    else:
-        flash('You are not part of this match.', 'error')
+    match.status = 'confirmed'
+    db.session.commit()
+    flash('Match result confirmed.', 'success')
     return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
 
@@ -2276,7 +2357,16 @@ def dispute_match_result(match_id):
     tournament = match.tournament
 
     if not can_access_match(current_user.id, match):
-        flash('Only the assigned players or an admin can dispute a match result.', 'error')
+        flash('Only the assigned players or an admin can view this match.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    if current_user.id not in {match.player_one_user_id, match.player_two_user_id}:
+        flash('Only an assigned player can dispute a match result.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    if match.status != 'pending_confirmation':
+        flash('Only a submitted result can be disputed.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    if current_user.id == match.submitted_by_user_id:
+        flash('The other player must raise a dispute.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
     reason = request.form.get('reason', '').strip()
@@ -2286,11 +2376,43 @@ def dispute_match_result(match_id):
     if reason:
         dispute = TournamentMatchDispute(match_id=match.id, user_id=current_user.id, reason=reason)
         db.session.add(dispute)
+        match.status = 'disputed'
         db.session.commit()
         flash('Dispute submitted for review.', 'success')
     else:
         flash('Please describe the issue before submitting a dispute.', 'error')
     return redirect(url_for('tournament_details', tournament_id=tournament.id))
+
+
+@app.route('/admin/matches/<int:match_id>/review-dispute', methods=['POST'])
+@login_required
+def review_match_dispute(match_id):
+    match = TournamentMatch.query.get_or_404(match_id)
+    if not is_admin_user():
+        abort(403)
+
+    dispute = TournamentMatchDispute.query.filter_by(
+        match_id=match.id, status='pending',
+    ).order_by(TournamentMatchDispute.created_at.desc()).first()
+    decision = (request.form.get('decision') or '').strip().lower()
+    if match.status != 'disputed' or not dispute or decision not in {'confirm', 'reopen'}:
+        flash('This dispute is not available for review.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=match.tournament_id))
+
+    dispute.status = 'resolved'
+    if decision == 'confirm':
+        match.status = 'confirmed'
+        flash('Disputed result confirmed after review.', 'success')
+    else:
+        match.status = 'ongoing'
+        match.winner_user_id = None
+        match.submitted_by_user_id = None
+        match.proof_note = None
+        match.player_one_profile_id = None
+        match.player_two_profile_id = None
+        flash('Match reopened for a new result submission.', 'success')
+    db.session.commit()
+    return redirect(url_for('tournament_details', tournament_id=match.tournament_id))
 
 
 # PAYMENT ROUTES
