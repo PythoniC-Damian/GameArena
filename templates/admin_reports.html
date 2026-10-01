@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Player Safety Reports - GameArena</title>
+{% include '_pwa_meta.html' %}
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-950 text-white">
+{% include '_preloader.html' %}
+<nav class="flex items-center justify-between gap-4 border-b border-slate-800 bg-slate-950/95 p-5">
+    <a href="{{ url_for('admin') }}" class="font-semibold text-emerald-300">GameArena Admin</a>
+    <a href="{{ url_for('admin') }}" class="text-sm text-slate-300 hover:text-white">Admin panel</a>
+</nav>
+<main class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+    <header class="mb-6"><p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Player safety</p><h1 class="mt-2 text-3xl font-bold">Reports</h1><p class="mt-2 text-sm text-slate-400">Review player, chat, and support reports. Only admins can access this queue.</p></header>
+    <div class="space-y-4">
+        {% for report in reports %}
+        <article class="rounded-[24px] border border-slate-800 bg-slate-900 p-5">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="rounded-full bg-slate-800 px-3 py-1 text-xs uppercase text-slate-200">{{ report.content_type|replace('_', ' ') }}</span>
+                        <span class="rounded-full px-3 py-1 text-xs uppercase {{ 'bg-amber-500/20 text-amber-200' if report.status == 'pending' else 'bg-emerald-500/20 text-emerald-200' }}">{{ report.status }}</span>
+                    </div>
+                    <p class="mt-3 text-xs text-slate-400">From {{ report.reporter.username if report.reporter else 'Deleted account' }}{% if report.target_user %} · About {{ report.target_user.username }}{% endif %} · {{ report.created_at.strftime('%b %d, %Y %H:%M') if report.created_at else 'Date unavailable' }}</p>
+                    <p class="mt-3 whitespace-pre-wrap break-words text-sm text-white">{{ report.reason }}</p>
+                    {% if report.content_type == 'global_chat' and report.content_id %}
+                    {% set chat_message = reported_messages.get(report.content_id) %}
+                    <div class="mt-3 rounded-xl border border-slate-800 bg-slate-950 p-3"><p class="text-xs uppercase text-slate-500">Reported chat message</p><p class="mt-2 whitespace-pre-wrap break-words text-sm text-slate-200">{{ chat_message.message if chat_message else 'The referenced message is no longer available.' }}</p></div>
+                    {% endif %}
+                </div>
+                {% if report.status == 'pending' %}
+                <div class="flex shrink-0 gap-2">
+                    <form method="POST" action="{{ url_for('review_report', report_id=report.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="resolve"><button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950">Resolve</button></form>
+                </div>
+                {% elif report.status == 'resolved' %}
+                <form method="POST" action="{{ url_for('review_report', report_id=report.id) }}" class="shrink-0"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="reopen"><button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200">Reopen</button></form>
+                {% endif %}
+            </div>
+        </article>
+        {% else %}
+        <div class="rounded-[24px] border border-dashed border-slate-700 bg-slate-900/70 p-8 text-center text-slate-400">No reports to review.</div>
+        {% endfor %}
+    </div>
+</main>
+{% include '_pwa_register.html' %}
+</body>
+</html>

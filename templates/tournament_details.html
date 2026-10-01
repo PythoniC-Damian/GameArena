@@ -28,7 +28,7 @@
     </div>
 
     <div class="hidden md:flex items-center gap-3">
-        <a href="{{ url_for('tournaments_page') }}" class="rounded-full border border-white/10 bg-slate-950/80 p-3 text-slate-200 transition hover:bg-slate-900" aria-label="Search">
+        <a href="{{ url_for('search') }}" class="rounded-full border border-white/10 bg-slate-950/80 p-3 text-slate-200 transition hover:bg-slate-900" aria-label="Search">
             🔍
         </a>
         <a href="{{ url_for('notifications') }}" class="relative rounded-full border border-white/10 bg-slate-950/80 p-3 text-slate-200 transition hover:bg-slate-900" aria-label="Notifications">
@@ -107,6 +107,12 @@
             {% if joined_participant %}
                 <span class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950">✓ You're in this tournament</span>
                 <a href="{{ url_for('dashboard') }}" class="rounded-full bg-slate-800 px-6 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Go to Dashboard</a>
+                {% if can_matchmake %}
+                <form method="POST" action="{{ url_for('matchmake_player_pair', tournament_id=tournament.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-6 py-4 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20">Find Match</button>
+                </form>
+                {% endif %}
             {% elif current_user.is_authenticated %}
                 {% if tournament.status == 'open' %}
                     {% if active_participant_count(tournament) >= tournament.max_participants %}
@@ -125,18 +131,26 @@
     </section>
 
     <!-- Match schedule / brackets -->
+    {% if current_user.is_authenticated and current_user.is_admin and not current_user.suspended and not matches and tournament.status in ('live', 'ongoing') %}
+    <form method="POST" action="{{ url_for('create_matches', tournament_id=tournament.id) }}" class="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="text-sm text-slate-300">Create a single-elimination bracket from eligible participants. The field must contain a power of two; no player is dropped.</p>
+        <button type="submit" class="mt-3 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950">Create bracket</button>
+    </form>
+    {% endif %}
     {% if matches %}
     <section class="mt-10 rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-2xl shadow-slate-950/20">
         <div class="flex items-center justify-between">
             <div>
                 <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Schedule</p>
-                <h2 class="mt-2 text-2xl font-semibold text-white">Matches</h2>
+                <h2 class="mt-2 text-2xl font-semibold text-white">{% if matches[0].round_number %}Single-elimination bracket{% else %}Matches{% endif %}</h2>
             </div>
         </div>
         <div class="mt-6 grid gap-4 md:grid-cols-2">
             {% for match in matches %}
             <div class="rounded-[28px] border border-slate-800 bg-slate-950/80 p-6">
                 <div class="flex items-center justify-between gap-3">
+                    {% if match.round_number %}<span class="text-xs font-semibold uppercase tracking-wide text-emerald-300">Round {{ match.round_number }} · Match {{ match.match_order }}</span>{% endif %}
                     <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] {% if match.status == 'confirmed' %}bg-emerald-500 text-slate-950{% elif match.status in ('pending_confirmation', 'disputed') %}bg-amber-500 text-slate-950{% elif match.status == 'scheduled' %}bg-sky-500 text-slate-950{% else %}bg-slate-700 text-white{% endif %}">{{ match.status|replace('_', ' ')|capitalize }}</span>
                     <span class="text-xs text-slate-500">{{ match.created_at.strftime('%b %d, %Y') if match.created_at else '' }}</span>
                 </div>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Search - GameArena</title>
+{% include '_pwa_meta.html' %}
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-950 text-white">
+{% include '_preloader.html' %}
+<nav class="flex items-center justify-between gap-4 p-5 bg-slate-950/95">
+    <a href="{{ url_for('home') }}" class="font-semibold text-emerald-300">GameArena</a>
+    <div class="flex gap-4 text-sm"><a href="{{ url_for('tournaments_page') }}" class="text-slate-300">Tournaments</a><a href="{{ url_for('leaderboard') }}" class="text-slate-300">Leaderboard</a>{% if current_user.is_authenticated %}<a href="{{ url_for('profile') }}" class="text-slate-300">Profile</a>{% endif %}</div>
+    {% include '_mobile_menu.html' %}
+</nav>
+<main class="mx-auto max-w-5xl space-y-6 px-4 py-8 pb-28 sm:px-6">
+    <header><p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Discover</p><h1 class="mt-2 text-3xl font-bold">Search GameArena</h1></header>
+    <form method="GET" action="{{ url_for('search') }}" class="flex gap-2 rounded-2xl border border-slate-800 bg-slate-900 p-2">
+        <input type="search" name="q" value="{{ query }}" minlength="2" maxlength="100" placeholder="Players, tournaments, or games" class="min-w-0 flex-1 rounded-xl bg-slate-950 px-4 py-3 text-white placeholder:text-slate-500" aria-label="Search GameArena">
+        <button class="shrink-0 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950">Search</button>
+    </form>
+    {% if query|length < 2 %}<p class="rounded-2xl border border-dashed border-slate-700 p-6 text-sm text-slate-400">Enter at least two characters to search.</p>{% else %}
+    <section class="space-y-3"><h2 class="text-xl font-semibold">Players</h2>
+        {% for player in players %}<a href="{{ url_for('public_profile', user_id=player.id) }}" class="flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 hover:border-emerald-500/40"><span class="font-semibold">{{ player.username }}</span><span class="text-xs text-slate-400">{{ 'Verified' if player.email_verified else 'Player' }}</span></a>
+        {% else %}<p class="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">No public players found.</p>{% endfor %}
+    </section>
+    <section class="space-y-3"><h2 class="text-xl font-semibold">Tournaments</h2>
+        {% for tournament in tournaments %}<a href="{{ url_for('tournament_details', tournament_id=tournament.id) }}" class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 hover:border-emerald-500/40"><span class="font-semibold">{{ tournament.name }}</span><span class="text-sm text-slate-400">{{ tournament.game }} · {{ tournament.status|capitalize }}</span></a>
+        {% else %}<p class="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">No tournaments found.</p>{% endfor %}
+    </section>
+    <section class="space-y-3"><h2 class="text-xl font-semibold">Games</h2>
+        {% if games %}<div class="flex flex-wrap gap-2">{% for game in games %}<a href="{{ url_for('tournaments_page') }}" class="rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 text-sm text-emerald-200">{{ game }}</a>{% endfor %}</div>{% else %}<p class="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">No games found.</p>{% endif %}
+    </section>
+    {% endif %}
+</main>
+{% include '_mobile_nav.html' %}
+{% include '_pwa_register.html' %}
+</body>
+</html>

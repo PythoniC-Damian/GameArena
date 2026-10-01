@@ -16,6 +16,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from sqlalchemy.pool import NullPool
 from sqlalchemy import or_
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import selectinload, joinedload
 
 from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, validators
@@ -103,6 +104,8 @@ RATE_LIMITS = {
     'password_reset_ip': (5, 60 * 60),
     'verification_ip': (10, 15 * 60),
     'verification_resend': (3, 15 * 60),
+    'user_report': (5, 60 * 60),
+    'global_search': (40, 60),
     'payment_user': (10, 10 * 60),
     'payment_verification': (20, 10 * 60),
 }
@@ -238,6 +241,7 @@ SOCKET_EVENT_LIMITS = {
     'send_global_chat_message': (6, 10),
     'send_chat_message': (6, 10),
     'mark_notification_read': (15, 10),
+    'send_direct_message': (8, 10),
 }
 socket_event_windows = defaultdict(deque)
 
@@ -329,11 +333,28 @@ def mark_notifications_read_for_user(user_id: int, only_count: bool = False):
     return get_unread_notification_count(user_id)
 
 
-def create_and_emit_notification(user_id: int, message: str):
-    """Create a Notification row and emit it to the user's Socket.IO room."""
+def create_and_emit_notification(user_id: int, message: str, category='system', target_url=None):
+    """Create one preference-aware notification and emit it to the user's room."""
     if not user_id or not message:
         return
-    notif = Notification(user_id=int(user_id), message=message)
+    category = category if category in {
+        'tournament', 'match', 'wallet', 'chat', 'achievement', 'system', 'marketing',
+    } else 'system'
+    settings = UserSettings.query.filter_by(user_id=int(user_id)).first()
+    preference_name = {
+        'tournament': 'tournament_notifications',
+        'match': 'match_notifications',
+        'wallet': 'wallet_notifications',
+        'chat': 'chat_notifications',
+        'marketing': 'marketing_notifications',
+    }.get(category)
+    if settings and preference_name and not getattr(settings, preference_name):
+        return
+    if target_url and (not target_url.startswith('/') or target_url.startswith('//')):
+        target_url = None
+    notif = Notification(
+        user_id=int(user_id), message=message, category=category, target_url=target_url,
+    )
     db.session.add(notif)
     db.session.commit()
 
@@ -341,12 +362,49 @@ def create_and_emit_notification(user_id: int, message: str):
     # Dashboard client listens for event name: 'notification'
     socketio.emit(
         'notification',
-        {'message': message, 'created_at': notif.created_at.isoformat() if notif.created_at else None},
+        {
+            'message': message,
+            'category': category,
+            'target_url': target_url,
+            'created_at': notif.created_at.isoformat() if notif.created_at else None,
+        },
         room=f'user:{int(user_id)}'
     )
 
 login_manager.login_view = "login"
 csrf = CSRFProtect(app)
+
+
+@app.errorhandler(403)
+def forbidden_page(error):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': {'message': 'Access denied.', 'status': 403}}), 403
+    return render_template(
+        'error.html', code=403, title='Access denied',
+        message='You do not have permission to view this page.',
+    ), 403
+
+
+@app.errorhandler(404)
+def not_found_page(error):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': {'message': 'The requested resource was not found.', 'status': 404}}), 404
+    return render_template(
+        'error.html', code=404, title='Page not found',
+        message='We could not find the page you requested.',
+    ), 404
+
+
+@app.errorhandler(500)
+def internal_error_page(error):
+    db.session.rollback()
+    app.logger.error('Unhandled application error request_id=%s', getattr(g, 'request_id', '-'))
+    if request.path.startswith('/api/'):
+        return jsonify({'error': {'message': 'The request could not be completed.', 'status': 500}}), 500
+    return render_template(
+        'error.html', code=500, title='Something went wrong',
+        message='GameArena could not complete that request. Please try again.',
+    ), 500
 
 # Tournament images keyed by normalized game name
 GAME_IMAGE_MAP = {
@@ -780,6 +838,53 @@ class User(db.Model, UserMixin):
         return check_password_hash(self.password, password)
 
 
+class UserSettings(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
+    tournament_notifications = db.Column(db.Boolean, nullable=False, default=True)
+    match_notifications = db.Column(db.Boolean, nullable=False, default=True)
+    wallet_notifications = db.Column(db.Boolean, nullable=False, default=True)
+    chat_notifications = db.Column(db.Boolean, nullable=False, default=True)
+    marketing_notifications = db.Column(db.Boolean, nullable=False, default=False)
+    profile_public = db.Column(db.Boolean, nullable=False, default=True)
+    allow_direct_messages = db.Column(db.Boolean, nullable=False, default=True)
+    theme = db.Column(db.String(20), nullable=False, default='dark')
+    reduce_motion = db.Column(db.Boolean, nullable=False, default=False)
+    larger_text = db.Column(db.Boolean, nullable=False, default=False)
+    preferred_games = db.Column(db.JSON, nullable=False, default=list)
+    game_ids = db.Column(db.JSON, nullable=False, default=dict)
+    match_preferences = db.Column(db.JSON, nullable=False, default=dict)
+    user = db.relationship('User', backref=db.backref('settings', uselist=False))
+
+
+class Achievement(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(80), unique=True, nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.String(300), nullable=False)
+    icon = db.Column(db.String(40), nullable=False, default='trophy')
+    category = db.Column(db.String(40), nullable=False, default='milestone')
+    rule_type = db.Column(db.String(40), nullable=False)
+    threshold = db.Column(db.Integer, nullable=False, default=1)
+    hidden = db.Column(db.Boolean, nullable=False, default=False)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class UserAchievement(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    achievement_id = db.Column(db.Integer, db.ForeignKey('achievement.id'), nullable=False)
+    progress = db.Column(db.Integer, nullable=False, default=0)
+    unlocked_at = db.Column(db.DateTime, nullable=True)
+    achievement = db.relationship('Achievement')
+    user = db.relationship('User', backref=db.backref('achievement_records', lazy=True))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'achievement_id', name='unique_user_achievement'),
+        db.Index('ix_user_achievement_user_unlocked', 'user_id', 'unlocked_at'),
+    )
+
+
 
 # -------------------------
 # TOURNAMENT MODEL
@@ -994,6 +1099,12 @@ def enforce_rate_limits():
             ]
         else:
             checks = [('verification_ip:' + client_key, 'verification_ip')]
+    elif path.startswith('/users/') and path.endswith('/report') and request.method == 'POST':
+        checks = [('user_report_ip:' + client_key, 'user_report')]
+    elif (path == '/support' or path.startswith('/chat/messages/')) and request.method == 'POST':
+        checks = [('user_report_ip:' + client_key, 'user_report')]
+    elif path == '/search' and request.method == 'GET':
+        checks = [('global_search_ip:' + client_key, 'global_search')]
     elif (path.startswith('/initialize-payment/') or path == '/wallet/initialize-deposit'):
         checks = [('payment_user:' + str(current_user.get_id()), 'payment_user')]
     elif path in {'/verify-payment', '/wallet/verify-deposit'}:
@@ -1019,6 +1130,8 @@ class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     message = db.Column(db.String(500), nullable=False)
+    category = db.Column(db.String(30), nullable=False, default='system')
+    target_url = db.Column(db.String(500), nullable=True)
     read_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.now())
 
@@ -1061,12 +1174,190 @@ class GlobalChatMessage(db.Model):
     )
 
 
+class DirectMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    recipient_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    message = db.Column(db.String(MAX_CHAT_MESSAGE_LENGTH), nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    read_at = db.Column(db.DateTime, nullable=True)
+    sender = db.relationship('User', foreign_keys=[sender_id])
+    recipient = db.relationship('User', foreign_keys=[recipient_id])
+
+    __table_args__ = (
+        db.Index('ix_direct_message_pair_created', 'sender_id', 'recipient_id', 'created_at'),
+        db.Index('ix_direct_message_recipient_read', 'recipient_id', 'read_at'),
+    )
+
+
+class UserBlock(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    blocker_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    blocked_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    blocker = db.relationship('User', foreign_keys=[blocker_id])
+    blocked = db.relationship('User', foreign_keys=[blocked_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('blocker_id', 'blocked_id', name='unique_user_block'),
+        db.CheckConstraint('blocker_id <> blocked_id', name='check_user_block_not_self'),
+        db.Index('ix_user_block_blocked_id', 'blocked_id'),
+    )
+
+
+class UserReport(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    reporter_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    target_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    content_type = db.Column(db.String(30), nullable=False, default='player')
+    content_id = db.Column(db.Integer, nullable=True)
+    reason = db.Column(db.String(2000), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    reviewed_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    reporter = db.relationship('User', foreign_keys=[reporter_id])
+    target_user = db.relationship('User', foreign_keys=[target_user_id])
+    reviewed_by = db.relationship('User', foreign_keys=[reviewed_by_id])
+
+    __table_args__ = (
+        db.Index('ix_user_report_status_created', 'status', 'created_at'),
+        db.Index('ix_user_report_target_user', 'target_user_id', 'created_at'),
+    )
+
+
+def get_or_create_user_settings(user_id):
+    settings = UserSettings.query.filter_by(user_id=user_id).first()
+    if settings:
+        return settings
+    db.session.execute(
+        postgresql_insert(UserSettings).values(user_id=user_id).on_conflict_do_nothing(
+            index_elements=['user_id'],
+        )
+    )
+    db.session.commit()
+    return UserSettings.query.filter_by(user_id=user_id).first()
+
+
+def users_have_block(user_one_id, user_two_id):
+    if not user_one_id or not user_two_id or user_one_id == user_two_id:
+        return False
+    return UserBlock.query.filter(
+        or_(
+            db.and_(UserBlock.blocker_id == user_one_id, UserBlock.blocked_id == user_two_id),
+            db.and_(UserBlock.blocker_id == user_two_id, UserBlock.blocked_id == user_one_id),
+        )
+    ).first() is not None
+
+
+def can_direct_message(sender, recipient):
+    if not sender or not recipient or sender.id == recipient.id:
+        return False
+    if sender.suspended or recipient.suspended or users_have_block(sender.id, recipient.id):
+        return False
+    recipient_settings = UserSettings.query.filter_by(user_id=recipient.id).first()
+    return recipient_settings is None or recipient_settings.allow_direct_messages
+
+
+def achievement_progress_for_user(user_id):
+    memberships = UserTournament.query.filter(
+        UserTournament.user_id == user_id,
+        UserTournament.payment_status.in_(['paid', 'free']),
+    )
+    tournament_count = memberships.count()
+    confirmed_matches = TournamentMatch.query.filter(
+        TournamentMatch.status == 'confirmed',
+        TournamentMatch.winner_user_id.isnot(None),
+        or_(
+            TournamentMatch.player_one_user_id == user_id,
+            TournamentMatch.player_two_user_id == user_id,
+        ),
+    )
+    wins = confirmed_matches.filter(TournamentMatch.winner_user_id == user_id).count()
+    win_streak = 0
+    for match in confirmed_matches.order_by(
+        TournamentMatch.updated_at.desc(), TournamentMatch.id.desc(),
+    ).limit(1000).yield_per(100):
+        if match.winner_user_id != user_id:
+            break
+        win_streak += 1
+    champion_tournament_ids = {
+        row[0] for row in TournamentStat.query.filter_by(
+            user_id=user_id, rank=1,
+        ).with_entities(TournamentStat.tournament_id).all()
+    }
+    final_rounds = db.session.query(
+        TournamentMatch.tournament_id.label('tournament_id'),
+        db.func.max(TournamentMatch.round_number).label('final_round'),
+    ).filter(TournamentMatch.round_number.isnot(None)).group_by(
+        TournamentMatch.tournament_id,
+    ).subquery()
+    bracket_champions = db.session.query(TournamentMatch.tournament_id).join(
+        Tournament, Tournament.id == TournamentMatch.tournament_id,
+    ).join(
+        final_rounds,
+        db.and_(
+            final_rounds.c.tournament_id == TournamentMatch.tournament_id,
+            final_rounds.c.final_round == TournamentMatch.round_number,
+        ),
+    ).filter(
+        Tournament.status == 'finished',
+        TournamentMatch.status == 'confirmed',
+        TournamentMatch.winner_user_id == user_id,
+    ).all()
+    champion_count = len(champion_tournament_ids | {row[0] for row in bracket_champions})
+    best_rank = db.session.query(db.func.min(TournamentStat.rank)).filter(
+        TournamentStat.user_id == user_id,
+        TournamentStat.rank > 0,
+    ).scalar()
+    return {
+        'tournaments': tournament_count,
+        'wins': wins,
+        'win_streak': win_streak,
+        'champions': champion_count,
+        'top_rank': best_rank,
+    }
+
+
+def award_achievements_for_user(user_id):
+    progress = achievement_progress_for_user(user_id)
+    definitions = Achievement.query.filter_by(enabled=True).all()
+    for achievement in definitions:
+        value = progress.get(achievement.rule_type, 0) or 0
+        db.session.execute(
+            postgresql_insert(UserAchievement).values(
+                user_id=user_id, achievement_id=achievement.id,
+                progress=0, unlocked_at=None,
+            ).on_conflict_do_nothing(constraint='unique_user_achievement')
+        )
+        record = UserAchievement.query.filter_by(
+            user_id=user_id, achievement_id=achievement.id,
+        ).with_for_update().first()
+        if achievement.rule_type == 'top_rank':
+            record.progress = achievement.threshold if value and value <= achievement.threshold else 0
+            unlocked = bool(value and value <= achievement.threshold)
+        else:
+            record.progress = min(value, achievement.threshold)
+            unlocked = value >= achievement.threshold
+        if unlocked and record.unlocked_at is None:
+            record.unlocked_at = datetime.utcnow()
+            db.session.add(Notification(
+                user_id=user_id,
+                message=f'You unlocked {achievement.name}.',
+                category='achievement',
+                target_url='/profile#achievements',
+            ))
+    db.session.commit()
+
+
 class TournamentMatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=False)
     player_one_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     player_two_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     status = db.Column(db.String(30), default='scheduled')
+    round_number = db.Column(db.Integer, nullable=True)
+    match_order = db.Column(db.Integer, nullable=True)
     room_code = db.Column(db.String(100), nullable=True)
     room_password = db.Column(db.String(100), nullable=True)
     player_one_profile_id = db.Column(db.String(150), nullable=True)
@@ -1087,6 +1378,7 @@ class TournamentMatch(db.Model):
         db.Index('ix_tournament_match_tournament_status', 'tournament_id', 'status'),
         db.Index('ix_tournament_match_player_one_status', 'player_one_user_id', 'status'),
         db.Index('ix_tournament_match_player_two_status', 'player_two_user_id', 'status'),
+        db.UniqueConstraint('tournament_id', 'round_number', 'match_order', name='unique_tournament_bracket_match'),
     )
 
 
@@ -1122,28 +1414,34 @@ class TournamentMatchDispute(db.Model):
 
 
 def create_tournament_matches(tournament):
-    if not tournament:
+    if not tournament or tournament.status == 'finished':
         return []
 
     existing_matches = TournamentMatch.query.filter_by(tournament_id=tournament.id).all()
     if existing_matches:
         return existing_matches
 
-    participants = [entry.user_id for entry in tournament.participants if entry.payment_status == 'paid']
-    if len(participants) < 2:
+    participants = [
+        entry.user_id for entry in sorted(
+            tournament.participants,
+            key=lambda item: (item.joined_at or datetime.min, item.user_id),
+        )
+        if entry.payment_status in {'paid', 'free'}
+    ]
+    if len(participants) < 2 or len(participants) & (len(participants) - 1):
         return []
 
     random.shuffle(participants)
     matches = []
     for index in range(0, len(participants), 2):
         pair = participants[index:index + 2]
-        if len(pair) < 2:
-            break
         match = TournamentMatch(
             tournament_id=tournament.id,
             player_one_user_id=pair[0],
             player_two_user_id=pair[1],
-            status='scheduled'
+            status='scheduled',
+            round_number=1,
+            match_order=index // 2 + 1,
         )
         db.session.add(match)
         matches.append(match)
@@ -1151,6 +1449,60 @@ def create_tournament_matches(tournament):
     tournament.status = 'live'
     db.session.commit()
     return matches
+
+
+def advance_tournament_bracket(match):
+    if not match or not match.round_number:
+        return False
+
+    tournament = Tournament.query.filter_by(id=match.tournament_id).with_for_update().first()
+    if not tournament:
+        return False
+    round_matches = TournamentMatch.query.filter_by(
+        tournament_id=tournament.id, round_number=match.round_number,
+    ).order_by(TournamentMatch.match_order.asc()).all()
+    if not round_matches or any(
+        round_match.status != 'confirmed' or round_match.winner_user_id is None
+        for round_match in round_matches
+    ):
+        return False
+
+    winners = [round_match.winner_user_id for round_match in round_matches]
+    next_round = match.round_number + 1
+    if len(winners) == 1:
+        champion = db.session.get(User, winners[0])
+        tournament.status = 'finished'
+        db.session.commit()
+        if champion:
+            award_achievements_for_user(champion.id)
+            create_and_emit_notification(
+                champion.id, f'You won {tournament.name}.', 'tournament',
+                f'/tournament/{tournament.id}',
+            )
+        return True
+
+    existing_next_round = TournamentMatch.query.filter_by(
+        tournament_id=tournament.id, round_number=next_round,
+    ).first()
+    if existing_next_round:
+        return False
+
+    for index in range(0, len(winners), 2):
+        db.session.add(TournamentMatch(
+            tournament_id=tournament.id,
+            player_one_user_id=winners[index],
+            player_two_user_id=winners[index + 1],
+            status='scheduled',
+            round_number=next_round,
+            match_order=index // 2 + 1,
+        ))
+    db.session.commit()
+    for winner_id in winners:
+        create_and_emit_notification(
+            winner_id, f'You advanced to round {next_round} of {tournament.name}.',
+            'tournament', f'/tournament/{tournament.id}',
+        )
+    return True
 
 
 def submit_match_result(match, user, room_code, room_password, player_profile_id, opponent_profile_id, winner_user_id, proof_note):
@@ -1339,21 +1691,41 @@ def api_leaderboard():
 # -------------------------
 @app.route("/leaderboard")
 def leaderboard():
-    tournaments = Tournament.query.options(
+    available_games = [row[0] for row in db.session.query(Tournament.game).distinct().order_by(Tournament.game).all()]
+    selected_game = (request.args.get('game') or '').strip()
+    if selected_game not in available_games:
+        selected_game = ''
+    try:
+        selected_tournament_id = int(request.args.get('tournament', ''))
+    except (TypeError, ValueError):
+        selected_tournament_id = None
+
+    tournaments_query = Tournament.query.options(
         selectinload(Tournament.leaderboard).joinedload(TournamentStat.user),
-    ).order_by(Tournament.match_time.desc()).all()
+    )
+    if selected_game:
+        tournaments_query = tournaments_query.filter(Tournament.game == selected_game)
+    if selected_tournament_id:
+        tournaments_query = tournaments_query.filter(Tournament.id == selected_tournament_id)
+    tournaments = tournaments_query.order_by(Tournament.match_time.desc()).limit(50).all()
     own_placements = []
     if current_user.is_authenticated:
-        own_placements = (
+        placements_query = (
             TournamentStat.query
             .options(joinedload(TournamentStat.tournament))
             .filter_by(user_id=current_user.id)
-            .order_by(TournamentStat.rank.asc(), TournamentStat.points.desc())
-            .limit(20)
-            .all()
         )
+        if selected_game:
+            placements_query = placements_query.join(Tournament).filter(Tournament.game == selected_game)
+        if selected_tournament_id:
+            placements_query = placements_query.filter(TournamentStat.tournament_id == selected_tournament_id)
+        own_placements = placements_query.order_by(
+            TournamentStat.rank.asc(), TournamentStat.points.desc(),
+        ).limit(20).all()
     return render_template(
         "leaderboard.html", tournaments=tournaments, own_placements=own_placements,
+        available_games=available_games, selected_game=selected_game,
+        selected_tournament_id=selected_tournament_id,
     )
 
 
@@ -1413,7 +1785,12 @@ def chat():
         partner_map = {u.id: u for u in partners}
         chat_partners = [partner_map[uid] for uid in distinct_user_ids if uid in partner_map]
 
-    return render_template('chat.html', messages=messages, chat_partners=chat_partners)
+    return render_template(
+        'chat.html', messages=messages, chat_partners=chat_partners,
+        dm_unread_count=DirectMessage.query.filter_by(
+            recipient_id=current_user.id, read_at=None,
+        ).count(),
+    )
 
 
 # -------------------------
@@ -1422,12 +1799,346 @@ def chat():
 @app.route("/profile")
 @login_required
 def profile():
-    joined_count = UserTournament.query.filter_by(user_id=current_user.id).count()
-    stats = sorted(
-        current_user.tournament_stats,
-        key=lambda stat: (stat.rank or 999, -(stat.points or 0))
+    joined_count = UserTournament.query.filter(
+        UserTournament.user_id == current_user.id,
+        UserTournament.payment_status.in_(['paid', 'free']),
+    ).count()
+    stats = TournamentStat.query.options(
+        joinedload(TournamentStat.tournament),
+    ).filter_by(user_id=current_user.id).order_by(
+        TournamentStat.rank.asc(), TournamentStat.points.desc(),
+    ).all()
+    settings = get_or_create_user_settings(current_user.id)
+    award_achievements_for_user(current_user.id)
+    achievements = UserAchievement.query.options(
+        joinedload(UserAchievement.achievement),
+    ).filter(
+        UserAchievement.user_id == current_user.id,
+        or_(
+            UserAchievement.unlocked_at.isnot(None),
+            UserAchievement.achievement.has(Achievement.hidden.is_(False)),
+        ),
+    ).order_by(UserAchievement.unlocked_at.desc().nullslast()).all()
+    progress = achievement_progress_for_user(current_user.id)
+    confirmed_matches = TournamentMatch.query.filter(
+        TournamentMatch.status == 'confirmed',
+        TournamentMatch.winner_user_id.isnot(None),
+        or_(
+            TournamentMatch.player_one_user_id == current_user.id,
+            TournamentMatch.player_two_user_id == current_user.id,
+        ),
     )
-    return render_template("profile.html", joined_count=joined_count, stats=stats)
+    matches_played = confirmed_matches.count()
+    wins = confirmed_matches.filter(TournamentMatch.winner_user_id == current_user.id).count()
+    recent_activity = Notification.query.filter_by(user_id=current_user.id).order_by(
+        Notification.created_at.desc(), Notification.id.desc(),
+    ).limit(5).all()
+    return render_template(
+        "profile.html", joined_count=joined_count, stats=stats,
+        settings=settings, achievements=achievements, achievement_progress=progress,
+        matches_played=matches_played, wins=wins, losses=matches_played - wins,
+        win_rate=round((wins / matches_played) * 100) if matches_played else 0,
+        recent_activity=recent_activity,
+    )
+
+
+@app.route('/players/<int:user_id>')
+def public_profile(user_id):
+    player = User.query.get_or_404(user_id)
+    if player.suspended and not is_admin_user():
+        abort(404)
+    settings = UserSettings.query.filter_by(user_id=player.id).first()
+    if player.id != (current_user.id if current_user.is_authenticated else None):
+        if settings and not settings.profile_public:
+            abort(404)
+
+    matches = TournamentMatch.query.filter(
+        TournamentMatch.status == 'confirmed',
+        TournamentMatch.winner_user_id.isnot(None),
+        or_(
+            TournamentMatch.player_one_user_id == player.id,
+            TournamentMatch.player_two_user_id == player.id,
+        ),
+    )
+    matches_played = matches.count()
+    wins = matches.filter(TournamentMatch.winner_user_id == player.id).count()
+    losses = matches_played - wins
+    placements = TournamentStat.query.options(
+        joinedload(TournamentStat.tournament),
+    ).filter_by(user_id=player.id).order_by(
+        TournamentStat.rank.asc(), TournamentStat.points.desc(),
+    ).limit(20).all()
+    joined_tournaments = UserTournament.query.options(
+        joinedload(UserTournament.tournament),
+    ).filter(
+        UserTournament.user_id == player.id,
+        UserTournament.payment_status.in_(['paid', 'free']),
+    ).order_by(UserTournament.joined_at.desc()).limit(10).all()
+    achievements = UserAchievement.query.options(
+        joinedload(UserAchievement.achievement),
+    ).filter(
+        UserAchievement.user_id == player.id,
+        or_(
+            UserAchievement.unlocked_at.isnot(None),
+            UserAchievement.achievement.has(Achievement.hidden.is_(False)),
+        ),
+    ).order_by(UserAchievement.unlocked_at.desc()).limit(12).all()
+    return render_template(
+        'public_profile.html', player=player, settings=settings,
+        matches_played=matches_played, wins=wins, losses=losses,
+        win_rate=round((wins / matches_played) * 100) if matches_played else 0,
+        placements=placements, joined_tournaments=joined_tournaments,
+        achievements=achievements,
+        is_blocked=users_have_block(current_user.id, player.id) if current_user.is_authenticated else False,
+    )
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    preferences = get_or_create_user_settings(current_user.id)
+    if request.method == 'POST':
+        username = (request.form.get('username') or '').strip()
+        bio = (request.form.get('bio') or '').strip()
+        avatar_url = (request.form.get('avatar_url') or '').strip()
+        if not re.fullmatch(r'[A-Za-z0-9_]{3,150}', username):
+            flash('Username must be 3-150 letters, numbers, or underscores.', 'error')
+            return redirect(url_for('settings'))
+        username_owner = User.query.filter(
+            db.func.lower(User.username) == username.lower(), User.id != current_user.id,
+        ).first()
+        if username_owner:
+            flash('That username is already in use.', 'error')
+            return redirect(url_for('settings'))
+        if len(bio) > 500 or len(avatar_url) > 500:
+            flash('Profile information is too long.', 'error')
+            return redirect(url_for('settings'))
+        if avatar_url:
+            avatar_parts = urlparse(avatar_url)
+            local_avatar = avatar_url.startswith('/static/') and '..' not in avatar_parts.path.split('/')
+            hosted_avatar = (
+                avatar_parts.scheme == 'https'
+                and avatar_parts.hostname == 'images.unsplash.com'
+                and not avatar_parts.username
+                and not avatar_parts.password
+            )
+            if not (local_avatar or hosted_avatar):
+                flash('Avatar must be a local static asset or hosted on images.unsplash.com.', 'error')
+                return redirect(url_for('settings'))
+
+        current_user.username = username
+        current_user.bio = bio or None
+        current_user.avatar_url = avatar_url or None
+        preferences.tournament_notifications = request.form.get('tournament_notifications') == 'on'
+        preferences.match_notifications = request.form.get('match_notifications') == 'on'
+        preferences.wallet_notifications = request.form.get('wallet_notifications') == 'on'
+        preferences.chat_notifications = request.form.get('chat_notifications') == 'on'
+        preferences.marketing_notifications = request.form.get('marketing_notifications') == 'on'
+        preferences.profile_public = request.form.get('profile_public') == 'on'
+        preferences.allow_direct_messages = request.form.get('allow_direct_messages') == 'on'
+        preferences.reduce_motion = request.form.get('reduce_motion') == 'on'
+        preferences.larger_text = request.form.get('larger_text') == 'on'
+        preferred_games = [
+            game.strip()[:100] for game in request.form.getlist('preferred_games')
+            if game.strip() and len(game) <= 100
+        ][:10]
+        preferences.preferred_games = list(dict.fromkeys(preferred_games))
+        game_ids = {}
+        for line in (request.form.get('game_ids') or '').splitlines()[:20]:
+            if ':' not in line:
+                continue
+            game, game_id = (value.strip() for value in line.split(':', 1))
+            if game and game_id and len(game) <= 100 and len(game_id) <= 150:
+                game_ids[game] = game_id
+        preferences.game_ids = game_ids
+        db.session.commit()
+        flash('Settings updated.', 'success')
+        return redirect(url_for('settings'))
+
+    available_games = [row[0] for row in db.session.query(Tournament.game).distinct().order_by(Tournament.game).limit(50).all()]
+    blocks = UserBlock.query.options(joinedload(UserBlock.blocked)).filter_by(blocker_id=current_user.id).order_by(UserBlock.created_at.desc()).all()
+    return render_template(
+        'settings.html', preferences=preferences, available_games=available_games,
+        blocks=blocks, version=os.environ.get('GAMEARENA_VERSION', 'Flask V1'),
+    )
+
+
+@app.route('/search')
+def search():
+    query = (request.args.get('q') or '').strip()[:100]
+    players = []
+    tournaments = []
+    games = []
+    if len(query) >= 2:
+        players = User.query.outerjoin(UserSettings, UserSettings.user_id == User.id).filter(
+            User.suspended.is_(False),
+            or_(UserSettings.id.is_(None), UserSettings.profile_public.is_(True)),
+            User.username.ilike(f'%{query}%'),
+        ).order_by(User.username.asc()).limit(8).all()
+        tournaments = Tournament.query.filter(
+            or_(Tournament.name.ilike(f'%{query}%'), Tournament.game.ilike(f'%{query}%')),
+        ).order_by(Tournament.match_time.asc().nullslast(), Tournament.id.desc()).limit(8).all()
+        games = [row[0] for row in db.session.query(Tournament.game).filter(
+            Tournament.game.ilike(f'%{query}%'),
+        ).distinct().order_by(Tournament.game.asc()).limit(8).all()]
+    return render_template(
+        'search.html', query=query, players=players, tournaments=tournaments, games=games,
+    )
+
+
+@app.route('/users/<int:user_id>/block', methods=['POST'])
+@login_required
+def block_user(user_id):
+    target = User.query.get_or_404(user_id)
+    if target.id == current_user.id:
+        abort(400)
+    if not UserBlock.query.filter_by(blocker_id=current_user.id, blocked_id=target.id).first():
+        db.session.add(UserBlock(blocker_id=current_user.id, blocked_id=target.id))
+        db.session.commit()
+    flash(f'{target.username} is blocked from direct messaging you.', 'success')
+    return redirect(safe_next_url(request.referrer) or url_for('settings'))
+
+
+@app.route('/users/<int:user_id>/unblock', methods=['POST'])
+@login_required
+def unblock_user(user_id):
+    UserBlock.query.filter_by(blocker_id=current_user.id, blocked_id=user_id).delete()
+    db.session.commit()
+    return redirect(safe_next_url(request.referrer) or url_for('settings'))
+
+
+@app.route('/users/<int:user_id>/report', methods=['POST'])
+@login_required
+def report_user(user_id):
+    target = User.query.get_or_404(user_id)
+    if target.id == current_user.id:
+        abort(400)
+    reason = (request.form.get('reason') or '').strip()
+    if not reason or len(reason) > 2000:
+        flash('Add a short reason for the report.', 'error')
+        return redirect(url_for('public_profile', user_id=target.id))
+    db.session.add(UserReport(
+        reporter_id=current_user.id, target_user_id=target.id,
+        content_type='player', reason=reason,
+    ))
+    db.session.commit()
+    flash('Report sent to the admin team.', 'success')
+    return redirect(url_for('public_profile', user_id=target.id))
+
+
+@app.route('/chat/messages/<int:message_id>/report', methods=['POST'])
+@login_required
+def report_chat_message(message_id):
+    message = GlobalChatMessage.query.get_or_404(message_id)
+    if message.user_id == current_user.id:
+        abort(400)
+    reason = (request.form.get('reason') or '').strip()
+    if not reason or len(reason) > 2000:
+        flash('Add a short reason for the report.', 'error')
+    else:
+        db.session.add(UserReport(
+            reporter_id=current_user.id, target_user_id=message.user_id,
+            content_type='global_chat', content_id=message.id, reason=reason,
+        ))
+        db.session.commit()
+        flash('Message report sent to the admin team.', 'success')
+    return redirect(url_for('chat'))
+
+
+@app.route('/support', methods=['GET', 'POST'])
+@login_required
+def support():
+    if request.method == 'POST':
+        reason = (request.form.get('reason') or '').strip()
+        if not reason or len(reason) > 2000:
+            flash('Describe the issue in 2,000 characters or fewer.', 'error')
+        else:
+            db.session.add(UserReport(
+                reporter_id=current_user.id, content_type='support', reason=reason,
+            ))
+            db.session.commit()
+            flash('Your message was sent to the support team.', 'success')
+            return redirect(url_for('support'))
+    return render_template('support.html')
+
+
+@app.route('/admin/reports')
+@login_required
+def admin_reports():
+    if not is_admin_user():
+        abort(403)
+    reports = UserReport.query.options(
+        joinedload(UserReport.reporter), joinedload(UserReport.target_user),
+    ).order_by(UserReport.status.asc(), UserReport.created_at.asc()).limit(100).all()
+    chat_message_ids = [
+        report.content_id for report in reports
+        if report.content_type == 'global_chat' and report.content_id
+    ]
+    reported_messages = {
+        message.id: message for message in GlobalChatMessage.query.filter(
+            GlobalChatMessage.id.in_(chat_message_ids),
+        ).all()
+    } if chat_message_ids else {}
+    return render_template(
+        'admin_reports.html', reports=reports,
+        reported_messages=reported_messages,
+    )
+
+
+@app.route('/admin/reports/<int:report_id>/review', methods=['POST'])
+@login_required
+def review_report(report_id):
+    if not is_admin_user():
+        abort(403)
+    report = UserReport.query.get_or_404(report_id)
+    action = (request.form.get('action') or '').strip()
+    if (report.status == 'pending' and action == 'resolve') or (
+        report.status == 'resolved' and action == 'reopen'
+    ):
+        report.status = 'resolved' if action == 'resolve' else 'pending'
+        report.reviewed_by_id = current_user.id
+        report.reviewed_at = datetime.utcnow() if action == 'resolve' else None
+        db.session.commit()
+        flash('Report updated.', 'success')
+    return redirect(url_for('admin_reports'))
+
+
+def direct_message_room_key(user_one_id, user_two_id):
+    lower_id, higher_id = sorted((int(user_one_id), int(user_two_id)))
+    return f'direct:{lower_id}:{higher_id}'
+
+
+@app.route('/messages/<int:user_id>')
+@login_required
+def direct_message(user_id):
+    recipient = User.query.get_or_404(user_id)
+    if not can_direct_message(current_user, recipient):
+        flash('This conversation is unavailable due to account privacy or blocking.', 'error')
+        return redirect(url_for('chat'))
+    conversation_filter = db.or_(
+        db.and_(DirectMessage.sender_id == current_user.id, DirectMessage.recipient_id == recipient.id),
+        db.and_(DirectMessage.sender_id == recipient.id, DirectMessage.recipient_id == current_user.id),
+    )
+    recent_messages = DirectMessage.query.filter(conversation_filter).order_by(
+        DirectMessage.created_at.desc(), DirectMessage.id.desc(),
+    ).limit(100).all()
+    messages = list(reversed(recent_messages))
+    DirectMessage.query.filter_by(
+        sender_id=recipient.id, recipient_id=current_user.id, read_at=None,
+    ).update({'read_at': datetime.utcnow()}, synchronize_session=False)
+    db.session.commit()
+    unread_count = DirectMessage.query.filter_by(
+        recipient_id=current_user.id, read_at=None,
+    ).count()
+    socketio.emit('unread_count', {'unread': unread_count}, room=f'user:{current_user.id}')
+    return render_template(
+        'chat.html', messages=[], chat_partners=[], conversation_user=recipient,
+        direct_messages=messages,
+        is_blocked=users_have_block(current_user.id, recipient.id),
+        dm_unread_count=DirectMessage.query.filter_by(
+            recipient_id=current_user.id, read_at=None,
+        ).count(),
+    )
 
 
 # -------------------------
@@ -1437,6 +2148,7 @@ def profile():
 def tournament_details(tournament_id):
     tournament = Tournament.query.get_or_404(tournament_id)
     joined_participant = False
+    can_matchmake = False
     can_view_match_rooms = is_admin_user()
 
     if current_user.is_authenticated:
@@ -1447,15 +2159,29 @@ def tournament_details(tournament_id):
         if join and join.payment_status in {'paid', 'free'}:
             joined_participant = True
             can_view_match_rooms = True
+            active_match = TournamentMatch.query.filter(
+                TournamentMatch.tournament_id == tournament_id,
+                TournamentMatch.status.in_({'scheduled', 'ongoing', 'pending_confirmation', 'disputed'}),
+                or_(
+                    TournamentMatch.player_one_user_id == current_user.id,
+                    TournamentMatch.player_two_user_id == current_user.id,
+                ),
+            ).first()
+            can_matchmake = tournament.status in {'live', 'ongoing'} and active_match is None
 
     matches = []
     if tournament.id:
-        matches = TournamentMatch.query.filter_by(tournament_id=tournament.id).order_by(TournamentMatch.created_at.asc()).all()
+        matches = TournamentMatch.query.filter_by(tournament_id=tournament.id).order_by(
+            TournamentMatch.round_number.asc().nullslast(),
+            TournamentMatch.match_order.asc().nullslast(),
+            TournamentMatch.created_at.asc(),
+        ).all()
 
     return render_template(
         "tournament_details.html",
         tournament=tournament,
         joined_participant=joined_participant,
+        can_matchmake=can_matchmake,
         matches=matches,
         can_view_match_rooms=can_view_match_rooms,
     )
@@ -1812,10 +2538,11 @@ def dashboard():
     losses = matches_played - wins
     win_rate = round((wins / matches_played) * 100) if matches_played else 0
 
-    tournament_stats = sorted(
-        current_user.tournament_stats,
-        key=lambda stat: (stat.rank or 999, -(stat.points or 0))
-    )
+    tournament_stats = TournamentStat.query.options(
+        joinedload(TournamentStat.tournament),
+    ).filter_by(user_id=current_user.id).order_by(
+        TournamentStat.rank.asc(), TournamentStat.points.desc(),
+    ).all()
 
     recent_notifications = (
         Notification.query.filter_by(user_id=current_user.id)
@@ -1823,6 +2550,12 @@ def dashboard():
         .limit(5)
         .all()
     )
+    recent_achievements = UserAchievement.query.options(
+        joinedload(UserAchievement.achievement),
+    ).filter(
+        UserAchievement.user_id == current_user.id,
+        UserAchievement.unlocked_at.isnot(None),
+    ).order_by(UserAchievement.unlocked_at.desc()).limit(3).all()
 
     total_paid = sum((ut.amount_paid or 0) for ut in joined_tournaments if ut.payment_status == 'paid')
 
@@ -1839,15 +2572,30 @@ def dashboard():
         losses=losses,
         win_rate=win_rate,
         unread_notification_count=get_unread_notification_count(current_user.id),
+        recent_achievements=recent_achievements,
     )
 
 
 @app.route("/notifications")
 @login_required
 def notifications():
-    notifications = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).all()
-    unread_count = sum(1 for notification in notifications if notification.read_at is None)
+    notifications = Notification.query.filter_by(user_id=current_user.id).order_by(
+        Notification.created_at.desc(), Notification.id.desc(),
+    ).limit(100).all()
+    unread_count = get_unread_notification_count(current_user.id)
     return render_template("notifications.html", notifications=notifications, unread_count=unread_count)
+
+
+@app.route('/notifications/<int:notification_id>/read', methods=['POST'])
+@login_required
+def mark_notification_read(notification_id):
+    notification = Notification.query.filter_by(
+        id=notification_id, user_id=current_user.id,
+    ).first_or_404()
+    if notification.read_at is None:
+        notification.read_at = datetime.utcnow()
+        db.session.commit()
+    return redirect(safe_next_url(request.form.get('next')) or url_for('notifications'))
 
 
 # -------------------------# ADMIN PANEL
@@ -2115,6 +2863,11 @@ def join_tournament(tournament_id):
     )
     db.session.add(join)
     db.session.commit()
+    award_achievements_for_user(current_user.id)
+    create_and_emit_notification(
+        current_user.id, f'You joined {tournament.name}.', 'tournament',
+        f'/tournament/{tournament.id}',
+    )
 
     flash(f"Joined {tournament.game} successfully!", "success")
     return redirect(url_for("dashboard"))
@@ -2132,7 +2885,11 @@ def create_matches(tournament_id):
 
     matches = create_tournament_matches(tournament)
     if not matches:
-        flash('Not enough paid participants to create matches yet.', 'error')
+        participant_count = active_participant_count(tournament)
+        if participant_count >= 2 and participant_count & (participant_count - 1):
+            flash('Bracket tournaments require a power-of-two field so no entrants are silently dropped.', 'error')
+        else:
+            flash('Not enough eligible participants to create matches yet.', 'error')
     else:
         flash(f'{len(matches)} matches created for this tournament.', 'success')
     return redirect(url_for('tournament_details', tournament_id=tournament_id))
@@ -2189,14 +2946,21 @@ def matchmake_player_pair(tournament_id):
     """
     tournament = Tournament.query.get_or_404(tournament_id)
 
-    # Only paid participants can request matchmaking
+    if TournamentMatch.query.filter(
+        TournamentMatch.tournament_id == tournament_id,
+        TournamentMatch.round_number.isnot(None),
+    ).first():
+        flash('This tournament uses an admin-managed bracket; follow the match shown below.', 'error')
+        return redirect(url_for('tournament_details', tournament_id=tournament_id))
+
+    # Only registered paid/free participants can request matchmaking.
     join = UserTournament.query.filter_by(
         user_id=current_user.id,
         tournament_id=tournament_id,
     ).first()
 
-    if not join or join.payment_status != 'paid':
-        flash('Only paid participants can matchmake.', 'error')
+    if not join or join.payment_status not in {'paid', 'free'}:
+        flash('Only registered participants can matchmake.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament_id))
 
     #This here is to prevent making multiple assignments for the same user
@@ -2293,6 +3057,11 @@ def submit_match_result_route(match_id):
         winner_user_id=winner_id,
         proof_note=proof_note,
     )
+    opponent_id = match.player_two_user_id if current_user.id == match.player_one_user_id else match.player_one_user_id
+    create_and_emit_notification(
+        opponent_id, f'{current_user.username} submitted a result for your match.',
+        'match', f'/tournament/{tournament.id}',
+    )
     flash('Match result submitted and waiting for confirmation.', 'success')
     return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
@@ -2322,6 +3091,14 @@ def confirm_match_result(match_id):
 
     match.status = 'confirmed'
     db.session.commit()
+    for player_id in {match.player_one_user_id, match.player_two_user_id}:
+        award_achievements_for_user(player_id)
+    create_and_emit_notification(
+        match.submitted_by_user_id,
+        f'{current_user.username} confirmed your match result.',
+        'match', f'/tournament/{tournament.id}',
+    )
+    advance_tournament_bracket(match)
     flash('Match result confirmed.', 'success')
     return redirect(url_for('tournament_details', tournament_id=tournament.id))
 
@@ -2378,6 +3155,11 @@ def dispute_match_result(match_id):
         db.session.add(dispute)
         match.status = 'disputed'
         db.session.commit()
+        create_and_emit_notification(
+            match.submitted_by_user_id,
+            f'{current_user.username} disputed your match result.',
+            'match', f'/tournament/{tournament.id}',
+        )
         flash('Dispute submitted for review.', 'success')
     else:
         flash('Please describe the issue before submitting a dispute.', 'error')
@@ -2412,6 +3194,10 @@ def review_match_dispute(match_id):
         match.player_two_profile_id = None
         flash('Match reopened for a new result submission.', 'success')
     db.session.commit()
+    if decision == 'confirm':
+        for player_id in {match.player_one_user_id, match.player_two_user_id}:
+            award_achievements_for_user(player_id)
+        advance_tournament_bracket(match)
     return redirect(url_for('tournament_details', tournament_id=match.tournament_id))
 
 
@@ -2487,6 +3273,11 @@ def apply_tournament_payment(user_tournament, transaction):
         db.session.rollback()
         return True, 'already_processed'
     db.session.commit()
+    award_achievements_for_user(user_tournament.user_id)
+    create_and_emit_notification(
+        user_tournament.user_id, f'Your entry for {tournament.name} is confirmed.',
+        'tournament', f'/tournament/{tournament.id}',
+    )
     return True, 'processed'
 
 
@@ -2517,6 +3308,11 @@ def apply_wallet_deposit(wallet_transaction, transaction):
         synchronize_session=False,
     )
     db.session.commit()
+    create_and_emit_notification(
+        wallet_transaction.user_id,
+        f'Your wallet deposit of ₦{wallet_transaction.amount:,} is complete.',
+        'wallet', '/wallet',
+    )
     return True, 'processed'
 
 
@@ -2933,6 +3729,11 @@ def release_failed_withdrawal(withdrawal_id, reason, provider_transfer_code=None
     if provider_transfer_code:
         withdrawal.provider_transfer_code = provider_transfer_code[:100]
     db.session.commit()
+    create_and_emit_notification(
+        withdrawal.user_id,
+        f'Your withdrawal of ₦{withdrawal.amount:,} failed and the funds were returned to your wallet.',
+        'wallet', '/wallet',
+    )
     return withdrawal
 
 
@@ -2947,6 +3748,11 @@ def complete_withdrawal(withdrawal_id, provider_transfer_code=None):
     if provider_transfer_code:
         withdrawal.provider_transfer_code = provider_transfer_code[:100]
     db.session.commit()
+    create_and_emit_notification(
+        withdrawal.user_id,
+        f'Your withdrawal of ₦{withdrawal.amount:,} is complete.',
+        'wallet', '/wallet',
+    )
     return withdrawal
 
 
@@ -3296,6 +4102,67 @@ def on_send_global_chat_message(data):
         'message': message,
         'created_at': new_message.created_at.isoformat() if new_message.created_at else None,
     }, room='global_chat')
+
+
+@socketio.on('join_direct_message')
+def on_join_direct_message(data):
+    if not current_user.is_authenticated or current_user.suspended:
+        return
+    if not socket_event_allowed('join_direct_message'):
+        return socket_rate_limit_error()
+    try:
+        other_user_id = int((data or {}).get('user_id'))
+    except (TypeError, ValueError):
+        return
+    recipient = db.session.get(User, other_user_id)
+    if not can_direct_message(current_user, recipient):
+        return emit('socket_error', {'message': 'This conversation is unavailable.'})
+    join_room(direct_message_room_key(current_user.id, recipient.id))
+    DirectMessage.query.filter_by(
+        sender_id=recipient.id, recipient_id=current_user.id, read_at=None,
+    ).update({'read_at': datetime.utcnow()}, synchronize_session=False)
+    db.session.commit()
+
+
+@socketio.on('send_direct_message')
+def on_send_direct_message(data):
+    if not current_user.is_authenticated or current_user.suspended:
+        return
+    if not socket_event_allowed('send_direct_message'):
+        return socket_rate_limit_error()
+    try:
+        recipient_id = int((data or {}).get('user_id'))
+    except (TypeError, ValueError):
+        return
+    recipient = db.session.get(User, recipient_id)
+    message = ((data or {}).get('message') or '').strip()
+    if not message or len(message) > MAX_CHAT_MESSAGE_LENGTH:
+        return emit('socket_error', {'message': 'Message must be 1,000 characters or fewer.'})
+    if not can_direct_message(current_user, recipient):
+        return emit('socket_error', {'message': 'This conversation is unavailable.'})
+
+    stored_message = DirectMessage(
+        sender_id=current_user.id, recipient_id=recipient.id, message=message,
+    )
+    db.session.add(stored_message)
+    db.session.commit()
+    create_and_emit_notification(
+        recipient.id, f'{current_user.username} sent you a message.', 'chat',
+        f'/messages/{current_user.id}',
+    )
+    payload = {
+        'id': stored_message.id,
+        'sender_id': current_user.id,
+        'username': current_user.username,
+        'message': stored_message.message,
+        'created_at': stored_message.created_at.isoformat() if stored_message.created_at else None,
+    }
+    socketio.emit(
+        'new_direct_message', payload,
+        room=direct_message_room_key(current_user.id, recipient.id),
+    )
+    unread_count = DirectMessage.query.filter_by(recipient_id=recipient.id, read_at=None).count()
+    socketio.emit('unread_count', {'unread': unread_count}, room=f'user:{recipient.id}')
 
 
 @socketio.on('mark_notification_read')

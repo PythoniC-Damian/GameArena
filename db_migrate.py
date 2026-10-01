@@ -18,6 +18,7 @@ MIGRATIONS = (
     ('20260919_rate_limit_and_registration_constraint',),
     ('20260919_query_performance_indexes',),
     ('20260920_wallet_withdrawal_transfer_state',),
+    ('20261001_product_features',),
 )
 
 # These are deliberately additive. PostgreSQL's IF NOT EXISTS keeps deployment
@@ -81,6 +82,87 @@ def ensure_wallet_withdrawal_columns(connection):
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_wallet_transaction_idempotency_key '
         'ON wallet_transaction (idempotency_key) WHERE idempotency_key IS NOT NULL'
     ))
+
+
+def ensure_product_features(connection):
+    statements = (
+        "CREATE TABLE IF NOT EXISTS user_settings ("
+        "id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL UNIQUE REFERENCES \"user\" (id), "
+        "tournament_notifications BOOLEAN NOT NULL DEFAULT TRUE, "
+        "match_notifications BOOLEAN NOT NULL DEFAULT TRUE, "
+        "wallet_notifications BOOLEAN NOT NULL DEFAULT TRUE, "
+        "chat_notifications BOOLEAN NOT NULL DEFAULT TRUE, "
+        "marketing_notifications BOOLEAN NOT NULL DEFAULT FALSE, "
+        "profile_public BOOLEAN NOT NULL DEFAULT TRUE, "
+        "allow_direct_messages BOOLEAN NOT NULL DEFAULT TRUE, "
+        "theme VARCHAR(20) NOT NULL DEFAULT 'dark', "
+        "reduce_motion BOOLEAN NOT NULL DEFAULT FALSE, "
+        "larger_text BOOLEAN NOT NULL DEFAULT FALSE, "
+        "preferred_games JSON NOT NULL DEFAULT '[]', "
+        "game_ids JSON NOT NULL DEFAULT '{}', "
+        "match_preferences JSON NOT NULL DEFAULT '{}')",
+        "CREATE TABLE IF NOT EXISTS achievement ("
+        "id SERIAL PRIMARY KEY, key VARCHAR(80) NOT NULL UNIQUE, "
+        "name VARCHAR(120) NOT NULL, description VARCHAR(300) NOT NULL, "
+        "icon VARCHAR(40) NOT NULL DEFAULT 'trophy', category VARCHAR(40) NOT NULL DEFAULT 'milestone', "
+        "rule_type VARCHAR(40) NOT NULL, threshold INTEGER NOT NULL DEFAULT 1, "
+        "hidden BOOLEAN NOT NULL DEFAULT FALSE, enabled BOOLEAN NOT NULL DEFAULT TRUE)",
+        "CREATE TABLE IF NOT EXISTS user_achievement ("
+        "id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES \"user\" (id), "
+        "achievement_id INTEGER NOT NULL REFERENCES achievement (id), progress INTEGER NOT NULL DEFAULT 0, "
+        "unlocked_at TIMESTAMP NULL, CONSTRAINT unique_user_achievement UNIQUE (user_id, achievement_id))",
+        "CREATE INDEX IF NOT EXISTS ix_user_achievement_user_unlocked ON user_achievement (user_id, unlocked_at)",
+        "CREATE TABLE IF NOT EXISTS direct_message ("
+        "id SERIAL PRIMARY KEY, sender_id INTEGER NOT NULL REFERENCES \"user\" (id), "
+        "recipient_id INTEGER NOT NULL REFERENCES \"user\" (id), message VARCHAR(1000) NOT NULL, "
+        "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, read_at TIMESTAMP NULL)",
+        "CREATE INDEX IF NOT EXISTS ix_direct_message_pair_created ON direct_message (sender_id, recipient_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_direct_message_recipient_read ON direct_message (recipient_id, read_at)",
+        "CREATE TABLE IF NOT EXISTS user_block ("
+        "id SERIAL PRIMARY KEY, blocker_id INTEGER NOT NULL REFERENCES \"user\" (id), "
+        "blocked_id INTEGER NOT NULL REFERENCES \"user\" (id), created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "CONSTRAINT unique_user_block UNIQUE (blocker_id, blocked_id), "
+        "CONSTRAINT check_user_block_not_self CHECK (blocker_id <> blocked_id))",
+        "CREATE INDEX IF NOT EXISTS ix_user_block_blocked_id ON user_block (blocked_id)",
+        "CREATE TABLE IF NOT EXISTS user_report ("
+        "id SERIAL PRIMARY KEY, reporter_id INTEGER NOT NULL REFERENCES \"user\" (id), "
+        "target_user_id INTEGER NULL REFERENCES \"user\" (id), content_type VARCHAR(30) NOT NULL DEFAULT 'player', "
+        "content_id INTEGER NULL, reason VARCHAR(2000) NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'pending', "
+        "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, reviewed_at TIMESTAMP NULL, "
+        "reviewed_by_id INTEGER NULL REFERENCES \"user\" (id))",
+        "CREATE INDEX IF NOT EXISTS ix_user_report_status_created ON user_report (status, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_user_report_target_user ON user_report (target_user_id, created_at)",
+        "ALTER TABLE notification ADD COLUMN IF NOT EXISTS category VARCHAR(30) NOT NULL DEFAULT 'system'",
+        "ALTER TABLE notification ADD COLUMN IF NOT EXISTS target_url VARCHAR(500) NULL",
+        "ALTER TABLE tournament_match ADD COLUMN IF NOT EXISTS round_number INTEGER NULL",
+        "ALTER TABLE tournament_match ADD COLUMN IF NOT EXISTS match_order INTEGER NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_tournament_bracket_match_slot "
+        "ON tournament_match (tournament_id, round_number, match_order) "
+        "WHERE round_number IS NOT NULL AND match_order IS NOT NULL",
+    )
+    for statement in statements:
+        connection.execute(text(statement))
+
+    definitions = (
+        ('first_tournament', 'First Tournament', 'Joined your first tournament.', 'flag', 'tournaments', 1),
+        ('first_win', 'First Win', 'Won your first confirmed match.', 'trophy', 'wins', 1),
+        ('five_wins', 'Five Wins', 'Won five confirmed matches.', 'medal', 'wins', 5),
+        ('ten_wins', 'Ten Wins', 'Won ten confirmed matches.', 'crown', 'wins', 10),
+        ('win_streak_5', 'On a Roll', 'Won five confirmed matches in a row.', 'flame', 'win_streak', 5),
+        ('ten_tournaments', 'Tournament Regular', 'Joined ten tournaments.', 'users', 'tournaments', 10),
+        ('top_100', 'Top 100', 'Placed in the top 100 of a tournament.', 'chart', 'top_rank', 100),
+        ('top_10', 'Top 10', 'Placed in the top 10 of a tournament.', 'star', 'top_rank', 10),
+        ('first_champion', 'Champion', 'Finished first in a tournament leaderboard.', 'crown', 'champions', 1),
+    )
+    for key, name, description, icon, rule_type, threshold in definitions:
+        connection.execute(text(
+            "INSERT INTO achievement (key, name, description, icon, category, rule_type, threshold, hidden, enabled) "
+            "VALUES (:key, :name, :description, :icon, 'milestone', :rule_type, :threshold, FALSE, TRUE) "
+            "ON CONFLICT (key) DO NOTHING"
+        ), {
+            'key': key, 'name': name, 'description': description, 'icon': icon,
+            'rule_type': rule_type, 'threshold': threshold,
+        })
     connection.execute(text(
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_wallet_transaction_provider_transfer_code '
         'ON wallet_transaction (provider_transfer_code) WHERE provider_transfer_code IS NOT NULL'
@@ -186,6 +268,10 @@ def migrate(url=None):
             ensure_wallet_withdrawal_columns(connection)
             mark_migration_applied(connection, '20260920_wallet_withdrawal_transfer_state')
 
+        if '20261001_product_features' not in completed:
+            ensure_product_features(connection)
+            mark_migration_applied(connection, '20261001_product_features')
+
         # Keep this list near the migration declarations so a future migration
         # cannot silently be added without an implementation branch above.
         unknown = {migration[0] for migration in MIGRATIONS} - {
@@ -193,6 +279,7 @@ def migrate(url=None):
             '20260919_rate_limit_and_registration_constraint',
             '20260919_query_performance_indexes',
             '20260920_wallet_withdrawal_transfer_state',
+            '20261001_product_features',
         }
         if unknown:
             raise RuntimeError(f'Migration declarations without implementation: {sorted(unknown)}')
