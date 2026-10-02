@@ -26,6 +26,7 @@
         </button>
     </div>
     <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
+        <a href="{{ url_for('search') }}" class="hover:text-white transition">Search</a>
         <a href="{{ url_for('home') }}" class="hover:text-white transition">Home</a>
         <a href="{{ url_for('tournaments_page') }}" class="hover:text-white transition">Tournaments</a>
         <a href="{{ url_for('leaderboard') }}" class="hover:text-white transition">Leaderboard</a>
@@ -59,8 +60,14 @@
         <section class="min-w-0 rounded-[36px] border border-slate-800 bg-slate-900/90 p-4 shadow-2xl shadow-slate-950/20 sm:p-6">
             <div class="flex items-center justify-between">
                 <div>
+                    {% if conversation_user %}
+                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Private conversation</p>
+                    <h1 class="mt-2 break-words text-3xl font-bold text-white">{{ conversation_user.username }}</h1>
+                    <p id="dmUnreadCount" class="mt-1 text-xs text-slate-400">{{ dm_unread_count }} unread messages across your inbox</p>
+                    {% else %}
                     <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Global chat</p>
                     <h1 class="mt-2 text-3xl font-bold text-white">Community</h1>
+                    {% endif %}
                 </div>
                 <div class="hidden gap-2 text-sm text-slate-400 md:flex">
                     <span class="inline-flex items-center gap-2 rounded-full bg-slate-950/60 px-3 py-2">All</span>
@@ -69,6 +76,15 @@
             </div>
             <div id="chatWindow" class="mt-6 flex h-[66vh] min-w-0 flex-col overflow-hidden rounded-[32px] border border-slate-800 bg-slate-950/80 p-3 sm:p-4">
                 <div id="messages" class="min-w-0 flex-1 space-y-3 overflow-y-auto pr-1 sm:pr-2">
+{% if conversation_user %}
+{% for message in direct_messages %}
+                    <div class="{{ 'ml-auto bg-emerald-500/10 text-emerald-200 border-emerald-500/10' if message.sender_id == current_user.id else 'bg-slate-900/80 text-slate-300 border-slate-800' }} w-fit max-w-[85%] break-words rounded-[28px] border p-4 shadow-sm">
+                        <div class="flex items-center justify-between gap-3"><span class="text-sm font-semibold text-white">{{ message.sender.username }}</span><span class="text-xs text-slate-500">{{ message.created_at.strftime('%H:%M') if message.created_at else '' }}</span></div>
+                        <p class="mt-2 whitespace-pre-wrap text-sm leading-6">{{ message.message }}</p>
+                    </div>
+{% else %}<p class="p-5 text-center text-sm text-slate-400">No messages yet. Start the conversation.</p>
+{% endfor %}
+{% else %}
 {% for message in messages %}
                     {% if message.user %}
                     <div class="{{ 'ml-auto bg-emerald-500/10 text-emerald-200 border-emerald-500/10' if message.user_id == current_user.id else 'bg-slate-900/80 text-slate-300 border-slate-800' }} w-fit max-w-[75%] break-words rounded-[32px] border p-4 shadow-sm">
@@ -77,12 +93,14 @@
                             <span class="text-xs text-slate-500">{{ message.created_at.strftime('%H:%M') if message.created_at else '' }}</span>
                         </div>
                         <p class="mt-3 text-sm leading-6">{{ message.message }}</p>
+                        {% if message.user_id != current_user.id %}<details class="mt-2 text-right"><summary class="cursor-pointer text-xs text-slate-500">Report</summary><form method="POST" action="{{ url_for('report_chat_message', message_id=message.id) }}" class="mt-2 flex gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input name="reason" maxlength="2000" required placeholder="Why report this message?" class="min-w-0 flex-1 rounded-lg bg-slate-950 px-2 py-1 text-xs text-white"><button class="text-xs text-red-300">Send</button></form></details>{% endif %}
                     </div>
                     {% endif %}
                     {% endfor %}
+{% endif %}
                 </div>
                 <form id="chatForm" class="mt-4 flex min-w-0 gap-2 rounded-[32px] border border-slate-800 bg-slate-900/90 p-2 sm:gap-3 sm:p-3">
-                    <input id="chatInput" type="text" placeholder="Type your message..." autocomplete="off" class="min-w-0 flex-1 rounded-[28px] border border-slate-800 bg-slate-950/80 px-3 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none sm:px-4" />
+                    <input id="chatInput" type="text" maxlength="1000" placeholder="Type your message..." autocomplete="off" class="min-w-0 flex-1 rounded-[28px] border border-slate-800 bg-slate-950/80 px-3 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none sm:px-4" />
                     <button type="submit" class="shrink-0 rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold leading-5 text-slate-950 hover:bg-emerald-400 sm:px-6">Send</button>
                 </form>
             </div>
@@ -91,26 +109,36 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Conversations</p>
-                    <h2 class="mt-2 text-2xl font-semibold text-white">Players online</h2>
+                    <h2 class="mt-2 text-2xl font-semibold text-white">Recent players</h2>
                 </div>
                 <span class="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-200">{{ chat_partners|length }}</span>
             </div>
             <div class="mt-6 space-y-3">
-                <a href="#" class="block rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-4 text-white">Global chat</a>
+                <a href="{{ url_for('chat') }}" class="block rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-4 text-white">Global chat</a>
                 {% for partner in chat_partners[:6] %}
-                <div class="rounded-[28px] border border-slate-800 bg-slate-950/80 p-4">
+                <a href="{{ url_for('direct_message', user_id=partner.id) }}" class="block rounded-[28px] border border-slate-800 bg-slate-950/80 p-4 hover:border-emerald-500/40">
                     <div class="flex items-center gap-3">
                         <div class="flex h-12 w-12 items-center justify-center rounded-3xl bg-slate-800 text-emerald-300">{{ partner.username[:1]|upper }}</div>
                         <div>
                             <p class="font-semibold text-white">{{ partner.username }}</p>
-                            <p class="text-sm text-slate-400">Recent message</p>
+                            <p class="text-sm text-slate-400">Open conversation</p>
                         </div>
                     </div>
-                </div>
+                </a>
                 {% else %}
                 <div class="rounded-[28px] border border-dashed border-slate-700 bg-slate-950/70 p-5 text-slate-400">Start chatting and connect with other players.</div>
                 {% endfor %}
             </div>
+            {% if conversation_user %}
+            <div class="mt-5 flex flex-wrap gap-2">
+                {% if is_blocked %}
+                <form method="POST" action="{{ url_for('unblock_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-3 py-2 text-sm">Unblock</button></form>
+                {% else %}
+                <form method="POST" action="{{ url_for('block_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-3 py-2 text-sm">Block</button></form>
+                {% endif %}
+                <form method="POST" action="{{ url_for('report_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="reason" value="Reported from direct message"><button class="rounded-xl border border-red-500/30 px-3 py-2 text-sm text-red-200">Report player</button></form>
+            </div>
+            {% endif %}
         </aside>
     </div>
 </main>
@@ -128,20 +156,21 @@ const chatInput = document.getElementById('chatInput');
 const messagesContainer = document.getElementById('messages');
 
 socket.on('connect', () => {
-  socket.emit('join_global_chat', {});
+    socket.emit('join_user', { user_id: {{ current_user.id }} });
+    {% if conversation_user %}socket.emit('join_direct_message', { user_id: {{ conversation_user.id }} });{% else %}socket.emit('join_global_chat', {});{% endif %}
 });
 if (chatForm) {
   chatForm.addEventListener('submit', (event) => {
     event.preventDefault();
     const message = chatInput.value.trim();
     if (!message) return;
-    socket.emit('send_global_chat_message', { message });
+    {% if conversation_user %}socket.emit('send_direct_message', { user_id: {{ conversation_user.id }}, message });{% else %}socket.emit('send_global_chat_message', { message });{% endif %}
     chatInput.value = '';
   });
 }
 function renderMessage(message) {
   const wrap = document.createElement('div');
-  const own = message.user_id === {{ current_user.id }};
+    const own = (message.sender_id || message.user_id) === {{ current_user.id }};
   wrap.className = own ? 'ml-auto w-fit max-w-[75%] rounded-[32px] bg-emerald-500/10 p-4 text-emerald-200 shadow-sm border border-emerald-500/10' : 'w-fit max-w-[75%] rounded-[32px] bg-slate-900/80 p-4 text-slate-300 shadow-sm border border-slate-800';
 
   // Use textContent for server-provided Socket.IO payloads. Rendering chat text
@@ -165,6 +194,14 @@ function renderMessage(message) {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 socket.on('new_global_chat_message', (message) => { renderMessage(message); });
+{% if conversation_user %}socket.on('new_direct_message', (message) => { renderMessage(message); });{% endif %}
+socket.on('unread_count', (payload) => {
+    const count = document.getElementById('dmUnreadCount');
+    if (count && payload && Number.isFinite(Number(payload.unread))) {
+        count.textContent = `${Number(payload.unread)} unread messages across your inbox`;
+    }
+});
+socket.on('socket_error', (payload) => { if (payload && payload.message) window.alert(payload.message); });
 setTimeout(() => { if (messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight; }, 50);
 // Mobile hamburger menu toggle
   (function () {

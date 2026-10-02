@@ -7,8 +7,12 @@
 
 {% include '_pwa_meta.html' %}
 <script src="https://cdn.tailwindcss.com"></script>
+<style>
+body[data-larger-text="true"] main .text-sm { font-size: 1rem; line-height: 1.6; }
+body[data-larger-text="true"] main .text-xs { font-size: 0.875rem; line-height: 1.4; }
+</style>
 </head>
-<body class="min-h-screen bg-slate-950 text-white">
+<body class="min-h-screen bg-slate-950 text-white" data-larger-text="{{ 'true' if settings.larger_text else 'false' }}">
 {% include '_preloader.html' %}
 <nav class="flex flex-col gap-4 md:flex-row md:justify-between md:items-center p-5 bg-slate-950/95 shadow-lg shadow-slate-950/30 backdrop-blur-sm">
         <div class="flex items-center justify-between gap-4">
@@ -25,6 +29,7 @@
         </button>
     </div>
     <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
+        <a href="{{ url_for('search') }}" class="hover:text-white transition">Search</a>
         <a href="{{ url_for('home') }}" class="hover:text-white transition">Home</a>
         <a href="{{ url_for('tournaments_page') }}" class="hover:text-white transition">Tournaments</a>
         <a href="{{ url_for('leaderboard') }}" class="hover:text-white transition">Leaderboard</a>
@@ -59,21 +64,27 @@
             <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-8 shadow-2xl shadow-slate-950/20">
                 <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                     <div class="flex items-center gap-5">
-                        <div class="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-4xl font-bold text-slate-950">{{ current_user.username[:1]|upper }}</div>
+                        {% if current_user.avatar_url %}<img src="{{ current_user.avatar_url }}" alt="{{ current_user.username }} avatar" class="h-20 w-20 rounded-full border border-slate-700 object-cover">{% else %}<div class="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-4xl font-bold text-slate-950">{{ current_user.username[:1]|upper }}</div>{% endif %}
                         <div>
                             <p class="text-lg font-semibold text-white">{{ current_user.username }}</p>
                             <p class="text-sm text-slate-400">{{ current_user.email }}</p>
                             <span class="inline-flex mt-3 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1 text-sm text-emerald-200">{% if current_user.email_verified %}Verified{% else %}Unverified{% endif %}</span>
                         </div>
                     </div>
-                    <a href="{{ url_for('dashboard') }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Dashboard</a>
+                    <div class="flex flex-wrap gap-2"><a href="{{ url_for('public_profile', user_id=current_user.id) }}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200">View public profile</a><a href="{{ url_for('settings') }}" class="rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Settings</a></div>
                 </div>
+            </section>
+
+            <section class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {% for label, value in [('Matches', matches_played), ('Wins', wins), ('Losses', losses), ('Win rate', win_rate|string ~ '%')] %}
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/90 p-4"><p class="text-sm text-slate-400">{{ label }}</p><p class="mt-2 text-2xl font-semibold text-white">{{ value }}</p></div>
+                {% endfor %}
             </section>
 
             <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
                 <div class="flex items-center justify-between">
-                    <h2 class="text-xl font-semibold text-white">Rankings & achievements</h2>
-                    <span class="text-sm text-slate-400">Performance</span>
+                    <h2 class="text-xl font-semibold text-white">Tournament placements</h2>
+                    <span class="text-sm text-slate-400">{{ joined_count }} tournaments</span>
                 </div>
                 {% if stats %}
                 <div class="mt-6 grid gap-4 lg:grid-cols-2">
@@ -91,6 +102,20 @@
                 <div class="mt-6 rounded-[28px] border border-dashed border-slate-700 bg-slate-950/70 p-6 text-slate-400">No ranking data yet. Join tournaments to start climbing.</div>
                 {% endif %}
             </section>
+            <section id="achievements" class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
+                <h2 class="text-xl font-semibold text-white">Achievements</h2>
+                <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                    {% for record in achievements %}
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+                        <div class="flex items-start justify-between gap-3"><p class="font-semibold text-white">{{ record.achievement.icon }} {{ record.achievement.name }}</p>{% if record.unlocked_at %}<span class="shrink-0 text-xs text-emerald-300">Unlocked</span>{% endif %}</div>
+                        <p class="mt-2 text-sm text-slate-400">{{ record.achievement.description }}</p>
+                        {% if not record.unlocked_at %}<div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-800"><div class="h-full rounded-full bg-emerald-400" style="width: {{ (record.progress / record.achievement.threshold * 100) if record.achievement.threshold else 0 }}%"></div></div><p class="mt-1 text-xs text-slate-500">{{ record.progress }}/{{ record.achievement.threshold }}</p>{% endif %}
+                    </div>
+                    {% else %}<p class="text-sm text-slate-400">No achievements unlocked yet. Tournament milestones appear here as you play.</p>{% endfor %}
+                </div>
+            </section>
+            {% if settings.preferred_games %}<section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20"><h2 class="text-xl font-semibold text-white">Preferred games</h2><div class="mt-4 flex flex-wrap gap-2">{% for game in settings.preferred_games %}<span class="rounded-xl bg-slate-950 px-3 py-2 text-sm text-emerald-200">{{ game }}</span>{% endfor %}</div></section>{% endif %}
+            <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20"><h2 class="text-xl font-semibold text-white">Recent activity</h2><div class="mt-4 space-y-3">{% for activity in recent_activity %}<div class="rounded-2xl bg-slate-950/80 p-4"><p class="text-sm text-white">{{ activity.message }}</p><p class="mt-1 text-xs uppercase text-slate-500">{{ activity.category }} · {{ activity.created_at.strftime('%b %d, %Y') if activity.created_at else '' }}</p></div>{% else %}<p class="text-sm text-slate-400">No recent activity.</p>{% endfor %}</div></section>
         </div>
 
         <aside class="space-y-6">
@@ -117,8 +142,14 @@
                 <h2 class="text-xl font-semibold text-white">Quick actions</h2>
                 <div class="mt-5 grid gap-3">
                     <a href="{{ url_for('dashboard') }}" class="rounded-3xl bg-emerald-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Dashboard</a>
+                    <a href="{{ url_for('settings') }}" class="rounded-3xl bg-slate-800 px-5 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Settings</a>
                     <a href="{{ url_for('wallet') }}" class="rounded-3xl bg-slate-800 px-5 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Wallet</a>
+                    <a href="{{ url_for('notifications') }}" class="rounded-3xl bg-slate-800 px-5 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Notifications</a>
+                    <a href="{{ url_for('chat') }}" class="rounded-3xl bg-slate-800 px-5 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Chat</a>
                     <a href="{{ url_for('tournaments_page') }}" class="rounded-3xl bg-slate-800 px-5 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Browse tournaments</a>
+                    <a href="{{ url_for('leaderboard') }}" class="rounded-3xl bg-slate-800 px-5 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Leaderboard</a>
+                    <a href="{{ url_for('support') }}" class="rounded-3xl bg-slate-800 px-5 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Help & Support</a>
+                    <a href="{{ url_for('logout') }}" class="rounded-3xl border border-red-500/30 px-5 py-4 text-sm font-semibold text-red-200">Log out</a>
                 </div>
             </section>
         </aside>

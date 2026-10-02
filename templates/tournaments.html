@@ -8,7 +8,7 @@
 {% include '_pwa_meta.html' %}
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="min-h-screen bg-slate-950 text-white">
+<body class="min-h-screen bg-slate-950 text-white" data-reduce-motion="{{ 'true' if current_user.is_authenticated and current_user.settings and current_user.settings.reduce_motion else 'false' }}">
 {% include '_preloader.html' %}
 <nav class="flex flex-col gap-4 md:flex-row md:justify-between md:items-center p-5 bg-slate-950/95 shadow-lg shadow-slate-950/30 backdrop-blur-sm">
         <div class="flex items-center justify-between gap-4">
@@ -25,6 +25,7 @@
         </button>
     </div>
     <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
+      <a href="{{ url_for('search') }}" class="hover:text-white transition">Search</a>
         <a href="{{ url_for('home') }}" class="hover:text-white transition">Home</a>
         <a href="{{ url_for('tournaments_page') }}" class="text-white font-semibold">Tournaments</a>
         <a href="{{ url_for('leaderboard') }}" class="hover:text-white transition">Leaderboard</a>
@@ -125,6 +126,7 @@
 </footer>
 
 <script>
+const gamearenaReduceMotion = document.body.dataset.reduceMotion === 'true';
 const tournamentCards = document.querySelectorAll('[data-tournament-status]');
 const tournamentFilterButtons = document.querySelectorAll('[data-tournament-filter]');
 const tournamentFilterEmpty = document.getElementById('tournamentFilterEmpty');
@@ -176,7 +178,7 @@ document.querySelectorAll('article .relative.overflow-hidden').forEach(function 
   }
   function restart() {
     window.clearInterval(timer);
-    if (visible && !document.hidden && !reducedMotion.matches) timer = window.setInterval(rotate, 6000);
+    if (visible && !document.hidden && !reducedMotion.matches && !gamearenaReduceMotion) timer = window.setInterval(rotate, 6000);
   }
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(function (entries) {

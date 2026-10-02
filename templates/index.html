@@ -76,7 +76,7 @@
     }
 </style>
 </head>
-<body class="min-h-screen bg-slate-950 text-white">
+<body class="min-h-screen bg-slate-950 text-white" data-reduce-motion="{{ 'true' if current_user.is_authenticated and current_user.settings and current_user.settings.reduce_motion else 'false' }}">
 {% include '_preloader.html' %}
 <nav class="flex flex-col gap-4 md:flex-row md:justify-between md:items-center p-5 bg-slate-950/95 shadow-lg shadow-slate-950/30 backdrop-blur-sm">
 <div class="flex items-center justify-between gap-4">
@@ -93,6 +93,7 @@
         </button>
     </div>
     <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
+        <a href="{{ url_for('search') }}" class="hover:text-white transition">Search</a>
         <a href="{{ url_for('home') }}" class="text-white font-semibold">Home</a>
         <a href="{{ url_for('tournaments_page') }}" class="hover:text-white transition">Tournaments</a>
         <a href="{{ url_for('leaderboard') }}" class="hover:text-white transition">Leaderboard</a>
@@ -304,6 +305,7 @@
 {% include '_mobile_nav.html' %}
 
 <script>
+const gamearenaReduceMotion = document.body.dataset.reduceMotion === 'true';
 // Mobile hamburger menu toggle
 (function () {
   const btn = document.getElementById('mobileMenuBtn');
@@ -379,7 +381,7 @@
     }
     function restart() {
         window.clearInterval(timer);
-        if (!reducedMotion.matches && faces.length > 1) timer = window.setInterval(function () { show(index + 1); }, 4500);
+        if (!reducedMotion.matches && !gamearenaReduceMotion && faces.length > 1) timer = window.setInterval(function () { show(index + 1); }, 4500);
     }
     stage.addEventListener('mouseenter', function () { window.clearInterval(timer); });
     stage.addEventListener('mouseleave', restart);
@@ -423,7 +425,7 @@ document.querySelectorAll('article .relative.overflow-hidden').forEach(function 
   }
   function restart() {
     window.clearInterval(timer);
-    if (visible && !document.hidden && !reducedMotion.matches) timer = window.setInterval(rotate, 6000);
+    if (visible && !document.hidden && !reducedMotion.matches && !gamearenaReduceMotion) timer = window.setInterval(rotate, 6000);
   }
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(function (entries) {
@@ -454,7 +456,7 @@ document.querySelectorAll('article .relative.overflow-hidden').forEach(function 
   function preload(index) { const image = new Image(); image.src = images[index]; }
   function schedule() {
     window.clearTimeout(timer);
-    if (!document.hidden && !reducedMotion.matches && images.length > 1) timer = window.setTimeout(showNext, 8000);
+    if (!document.hidden && !reducedMotion.matches && !gamearenaReduceMotion && images.length > 1) timer = window.setTimeout(showNext, 8000);
   }
   function showNext() {
     imageIndex = (imageIndex + 1) % images.length;
