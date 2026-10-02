@@ -1,0 +1,3 @@
+{% extends '_base.html' %}
+{% block title %}Join {{ tournament.name }} · GameArena{% endblock %}
+{% block content %}<section class="ga-panel ga-payment-panel"><h1>Join {{ tournament.name }}</h1><p class="ga-muted">This tournament is free to enter. Confirm your registration below.</p><form method="POST" action="{{ url_for('join_tournament', tournament_id=tournament.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ga-button" type="submit">Confirm entry</button></form><a class="ga-button ga-button-secondary" href="{{ url_for('tournament_details', tournament_id=tournament.id) }}">Back to tournament</a></section>{% endblock %}

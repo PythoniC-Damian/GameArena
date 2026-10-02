@@ -1,62 +1,21 @@
 {% set active_page = 'tournaments' %}
+{% from '_icons.html' import icon %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ tournament.game }} - GameArena</title>
-    
+
 {% include '_pwa_meta.html' %}
-<script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+{% include '_design_assets.html' %}
+
 </head>
-<body class="min-h-screen bg-slate-950 text-white">
-{% include '_preloader.html' %}
-<nav class="flex flex-col gap-4 md:flex-row md:justify-between md:items-center p-5 bg-slate-950/95 shadow-lg shadow-slate-950/30 backdrop-blur-sm">
-    <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-            <div class="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500 text-slate-950 font-bold">G</div>
-            <div>
-                <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">GameArena</p>
-                <p class="text-sm text-slate-400">Tournament details</p>
-            </div>
-        </div>
-        <button id="mobileMenuBtn" class="md:hidden rounded-full border border-white/10 bg-slate-950/80 p-3 text-slate-200 transition hover:bg-slate-900" aria-label="Menu" aria-expanded="false">
-            <svg id="menuIconOpen" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
-            <svg id="menuIconClose" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-    </div>
+<body class="min-h-screen bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
 
-    <div class="hidden md:flex items-center gap-3">
-        <a href="{{ url_for('search') }}" class="rounded-full border border-white/10 bg-slate-950/80 p-3 text-slate-200 transition hover:bg-slate-900" aria-label="Search">
-            🔍
-        </a>
-        <a href="{{ url_for('notifications') }}" class="relative rounded-full border border-white/10 bg-slate-950/80 p-3 text-slate-200 transition hover:bg-slate-900" aria-label="Notifications">
-            🔔
-            <span class="absolute -right-1 -top-1 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-semibold text-slate-950">1</span>
-        </a>
-        <a href="{{ url_for('chat') }}" class="rounded-full border border-white/10 bg-slate-950/80 p-3 text-slate-200 transition hover:bg-slate-900" aria-label="Chat">
-            💬
-        </a>
-    </div>
+{% include '_header.html' %}
 
-    <div class="hidden md:flex flex-wrap items-center justify-end gap-3">
-        <a href="{{ url_for('home') }}" class="text-sm text-slate-300 hover:text-white transition">Home</a>
-        <a href="{{ url_for('tournaments_page') }}" class="text-sm text-slate-300 hover:text-white transition">Tournament</a>
-        {% if current_user.is_authenticated %}
-            <a href="{{ url_for('wallet') }}" class="text-sm text-slate-300 hover:text-white transition">Wallet</a>
-            <a href="{{ url_for('profile') }}" class="text-sm text-slate-300 hover:text-white transition">Profile</a>
-            <a href="{{ url_for('logout') }}" class="rounded-full bg-red-500 px-4 py-2 text-sm text-white hover:bg-red-600">Logout</a>
-        {% else %}
-            <a href="{{ url_for('login') }}" class="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-white hover:border-emerald-400">Login</a>
-            <a href="{{ url_for('register') }}" class="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Register</a>
-        {% endif %}
-    </div>
-
-    {% include '_mobile_menu.html' %}
-</nav>
-
-<main class="mx-auto max-w-7xl px-6 py-10">
+<main id="main-content" class="mx-auto max-w-7xl px-6 py-10">
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
     <div class="mb-8 space-y-3">
@@ -86,11 +45,11 @@
             <div class="grid gap-4 sm:grid-cols-3">
                 <div class="rounded-[28px] bg-slate-950/80 p-5 text-center">
                     <p class="text-sm text-slate-400">Entry fee</p>
-                    <p class="mt-2 text-2xl font-semibold text-white">₦{{ tournament.entry_fee }}</p>
+                    <p class="mt-2 text-2xl font-semibold text-white">{{ tournament.entry_fee|naira }}</p>
                 </div>
                 <div class="rounded-[28px] bg-slate-950/80 p-5 text-center">
-                    <p class="text-sm text-slate-400">Prize</p>
-                    <p class="mt-2 text-2xl font-semibold text-emerald-300">₦{{ tournament.prize }}</p>
+                    <p class="text-sm text-slate-400">Prize pool</p>
+                    <p class="mt-2 text-2xl font-semibold text-emerald-300">{{ tournament.prize|naira }}</p>
                 </div>
                 <div class="rounded-[28px] bg-slate-950/80 p-5 text-center">
                     <p class="text-sm text-slate-400">Slots</p>
@@ -105,7 +64,7 @@
 
         <div class="mt-8 flex flex-wrap gap-3">
             {% if joined_participant %}
-                <span class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950">✓ You're in this tournament</span>
+                <span class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950">{{ icon('check') }} You're in this tournament</span>
                 <a href="{{ url_for('dashboard') }}" class="rounded-full bg-slate-800 px-6 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Go to Dashboard</a>
                 {% if can_matchmake %}
                 <form method="POST" action="{{ url_for('matchmake_player_pair', tournament_id=tournament.id) }}">
@@ -118,14 +77,19 @@
                     {% if active_participant_count(tournament) >= tournament.max_participants %}
                     <span class="rounded-full bg-red-500 px-6 py-4 text-sm font-semibold text-white">Full</span>
                     {% else %}
-                    <a href="{{ url_for('join_tournament', tournament_id=tournament.id) }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Join Tournament</a>
+                    <a href="{{ url_for('pay_for_tournament' if pending_payment else 'join_tournament', tournament_id=tournament.id) }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">{{ 'Resume payment' if pending_payment else 'Join tournament' }}</a>
                     {% endif %}
                 {% else %}
                 <span class="rounded-full bg-slate-800 px-6 py-4 text-sm text-slate-300">Tournament is not open for registration</span>
                 {% endif %}
             {% else %}
-                <a href="{{ url_for('login') }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Login to Join</a>
-                <a href="{{ url_for('register') }}" class="rounded-full border border-slate-700 bg-slate-950 px-6 py-4 text-sm text-slate-200 hover:border-slate-500">Register</a>
+                {% if tournament.status != 'open' %}
+                <span class="ga-status">Registration closed</span>
+                {% elif active_participant_count(tournament) >= tournament.max_participants %}
+                <span class="ga-status">Full</span>
+                {% else %}
+                <a href="{{ url_for('login', next=url_for('tournament_details', tournament_id=tournament.id)) }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Login to Join</a>
+                {% endif %}
             {% endif %}
         </div>
     </section>
@@ -293,18 +257,19 @@
         <aside class="space-y-6">
             <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
                 <h2 class="text-xl font-semibold text-white">Prizes</h2>
+                <p class="mt-2 text-sm text-slate-400">The prize pool is the announced total. Individual payouts below are shown only when the organizer publishes them.</p>
                 <div class="mt-5 space-y-3">
                     <div class="flex items-center justify-between rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-4">
                         <span class="font-semibold text-emerald-200">1st Place</span>
-                        <span class="font-semibold text-white">₦{{ tournament.first_place or tournament.prize }}</span>
+                        <span class="font-semibold text-white">{{ tournament.first_place|naira if tournament.first_place and tournament.first_place.isdigit() else (tournament.first_place or 'Not published') }}</span>
                     </div>
                     <div class="flex items-center justify-between rounded-[28px] border border-slate-800 bg-slate-950/80 p-4">
                         <span class="text-slate-300">2nd Place</span>
-                        <span class="font-semibold text-white">₦{{ tournament.second_place or ((tournament.prize|int) * 0.5)|int }}</span>
+                        <span class="font-semibold text-white">{{ tournament.second_place|naira if tournament.second_place and tournament.second_place.isdigit() else (tournament.second_place or 'Not published') }}</span>
                     </div>
                     <div class="flex items-center justify-between rounded-[28px] border border-slate-800 bg-slate-950/80 p-4">
                         <span class="text-slate-300">3rd Place</span>
-                        <span class="font-semibold text-white">₦{{ tournament.third_place or ((tournament.prize|int) * 0.25)|int }}</span>
+                        <span class="font-semibold text-white">{{ tournament.third_place|naira if tournament.third_place and tournament.third_place.isdigit() else (tournament.third_place or 'Not published') }}</span>
                     </div>
                 </div>
             </section>
@@ -312,7 +277,7 @@
                 <h2 class="text-xl font-semibold text-white">Tournament info</h2>
                 <div class="mt-5 space-y-3 text-sm text-slate-300">
                     <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Entries</span><span class="font-semibold text-white">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</span></div>
-                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Match time</span><span class="font-semibold text-white">{{ tournament.match_time.strftime('%b %d, %Y · %H:%M') if tournament.match_time else 'TBD' }}</span></div>
+                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Match time</span><span class="font-semibold text-white">{{ tournament.match_time.strftime('%b %d, %Y · %H:%M') if tournament.match_time else 'To be announced' }} (organizer time)</span></div>
                     <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Status</span><span class="font-semibold text-emerald-300 capitalize">{{ tournament.status }}</span></div>
                 </div>
             </section>
@@ -327,22 +292,7 @@
 {% include '_mobile_nav.html' %}
 
 <script>
-// Mobile hamburger menu toggle
-(function () {
-  const btn = document.getElementById('mobileMenuBtn');
-  const menu = document.getElementById('mobileMenu');
-  const iconOpen = document.getElementById('menuIconOpen');
-  const iconClose = document.getElementById('menuIconClose');
-  if (btn && menu) {
-    btn.addEventListener('click', function () {
-      const isOpen = !menu.classList.contains('hidden');
-      menu.classList.toggle('hidden');
-      btn.setAttribute('aria-expanded', String(!isOpen));
-      if (iconOpen) iconOpen.classList.toggle('hidden', !isOpen);
-      if (iconClose) iconClose.classList.toggle('hidden', isOpen);
-    });
-  }
-})();
+
 </script>
 
 {% include '_pwa_register.html' %}

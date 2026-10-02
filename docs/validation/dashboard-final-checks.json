@@ -1,0 +1,25 @@
+{
+  "checks": [
+    {
+      "width": 360,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "width": 390,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "width": 768,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "width": 1440,
+      "overflow": false,
+      "headers": 1
+    }
+  ],
+  "page_errors": []
+}

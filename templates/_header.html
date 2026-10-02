@@ -1,0 +1,26 @@
+{% from '_icons.html' import icon %}
+<a class="ga-skip" href="#main-content">Skip to content</a>
+<header class="ga-header" data-user-id="{{ current_user.id if current_user.is_authenticated else '' }}" data-unread-url="{{ url_for('notification_count') if current_user.is_authenticated else '' }}">
+  <div class="ga-header-inner">
+    <a class="ga-brand" href="{{ url_for('home') }}" aria-label="GameArena Home"><span class="ga-brand-mark">G</span><span>Game<span class="ga-brand-accent">Arena</span></span></a>
+    <nav class="ga-primary" aria-label="Primary navigation">
+      {% for endpoint, label in [('home','Home'),('tournaments_page','Tournaments'),('leaderboard','Leaderboard')] %}
+      <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint or (endpoint == 'tournaments_page' and request.endpoint in ['tournament_details','pay_for_tournament','join_tournament']) %}aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="ga-utilities">
+      <a class="ga-icon-button" href="{{ url_for('search') }}" aria-label="Search GameArena" title="Search">{{ icon('search') }}</a>
+      {% if current_user.is_authenticated %}
+      <a class="ga-icon-button ga-notifications" href="{{ url_for('notifications') }}" aria-label="Notifications{% if nav_unread_count %}, {{ nav_unread_count }} unread{% endif %}" title="Notifications">{{ icon('bell') }}<span class="ga-notification-badge" data-unread-badge {% if not nav_unread_count %}hidden{% endif %}>{{ nav_unread_count }}</span></a>
+      <details class="ga-account ga-desktop-account" data-menu>
+        <summary class="ga-icon-button" aria-label="Account menu" title="Account menu">{% if current_user.avatar_url %}<img src="{{ current_user.avatar_url }}" alt="" class="ga-avatar-small" width="32" height="32">{% else %}<span class="ga-avatar-small">{{ current_user.username[:1]|upper }}</span>{% endif %}</summary>
+        <div class="ga-menu"><p class="ga-menu-identity">{{ current_user.username }}</p>{% include '_account_links.html' %}</div>
+      </details>
+      {% else %}<a class="ga-login" href="{{ url_for('login') }}">Login</a><a class="ga-button ga-button-primary ga-register" href="{{ url_for('register') }}">Register</a>{% endif %}
+      <details class="ga-mobile-menu" data-menu>
+        <summary class="ga-icon-button" aria-label="Navigation menu" title="Menu">{{ icon('menu') }}</summary>
+        {% include '_mobile_menu.html' %}
+      </details>
+    </div>
+  </div>
+</header>

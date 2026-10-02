@@ -13,3 +13,4 @@ templates_backup_*/
 *.db
 
 .env.local-postgres-backup
+.local-test/

@@ -5,15 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Help & Support - GameArena</title>
 {% include '_pwa_meta.html' %}
-<script src="https://cdn.tailwindcss.com"></script>
+{% include '_design_assets.html' %}
 </head>
-<body class="min-h-screen bg-slate-950 text-white">
-{% include '_preloader.html' %}
-<nav class="flex items-center justify-between gap-4 border-b border-slate-800 bg-slate-950/95 p-5">
-    <a href="{{ url_for('profile') }}" class="font-semibold text-emerald-300">GameArena · Profile</a>
-    <a href="{{ url_for('settings') }}" class="text-sm text-slate-300 hover:text-white">Settings</a>
-</nav>
-<main class="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+<body class="min-h-screen bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
+
+{% include '_header.html' %}
+<main id="main-content" class="mx-auto max-w-2xl px-4 py-10 sm:px-6">
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}<div class="mb-6 space-y-3">{% for category, message in messages %}<p class="rounded-xl px-4 py-3 text-sm {{ 'bg-red-500 text-white' if category == 'error' else 'bg-emerald-500 text-slate-950' }}">{{ message }}</p>{% endfor %}</div>{% endif %}
     {% endwith %}

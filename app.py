@@ -6,6 +6,7 @@ import hashlib
 import secrets
 import re
 import time
+from functools import lru_cache
 import urllib.parse
 from collections import defaultdict, deque
 from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify, session, g
@@ -76,7 +77,7 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "form-action 'self'",
     "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.socket.io https://js.paystack.co",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https://images.unsplash.com https://source.unsplash.com",
+    "img-src 'self' data: https://images.unsplash.com https://lh3.googleusercontent.com",
     "connect-src 'self' https://api.paystack.co https://accounts.google.com https://oauth2.googleapis.com wss:",
     "frame-src https://checkout.paystack.com",
     "font-src 'self' data:",
@@ -136,6 +137,8 @@ def add_response_security_headers(response):
         # browser/CDN cache, but not immutable because URLs are unversioned.
         if request.path.endswith(('/sw.js', '/manifest.json')):
             response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
+        elif request.args.get('v') == asset_fingerprint((request.view_args or {}).get('filename', '')):
+            response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
         else:
             response.headers['Cache-Control'] = (
                 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600'
@@ -174,7 +177,7 @@ def log_completed_request(response):
 
 
 # Socket.IO (WebSockets)
-# Note: for production you may want a message queue (Redis) to support multi-worker.
+# Note:bruv for production you may want a message queue (Redis) to support multi-worker.
 socketio_cors_origins = [
     origin.strip()
     for origin in (os.environ.get('SOCKETIO_CORS_ALLOWED_ORIGINS') or '').split(',')
@@ -295,6 +298,8 @@ def can_access_match(user_id, match):
 
 def active_participant_count(tournament):
     """Count only memberships that represent an actual participant."""
+    if hasattr(tournament, '_active_count'):
+        return tournament._active_count
     return sum(
         1 for membership in tournament.participants
         if membership.payment_status in {'paid', 'free'}
@@ -363,6 +368,7 @@ def create_and_emit_notification(user_id: int, message: str, category='system', 
     socketio.emit(
         'notification',
         {
+            'id': notif.id,
             'message': message,
             'category': category,
             'target_url': target_url,
@@ -407,6 +413,44 @@ def internal_error_page(error):
     ), 500
 
 # Tournament images keyed by normalized game name
+@lru_cache(maxsize=256)
+def asset_fingerprint(filename):
+    path = os.path.join(app.static_folder, filename)
+    try:
+        with open(path, 'rb') as asset:
+            return hashlib.sha256(asset.read()).hexdigest()[:12]
+    except OSError:
+        return 'missing'
+
+
+def asset_url(filename):
+    return url_for('static', filename=filename, v=asset_fingerprint(filename))
+
+
+def optimized_image(filename, width=960):
+    stem = os.path.splitext(os.path.basename(filename))[0].replace(' ', '_')
+    optimized = f'images/optimized/{stem}-{width}.webp'
+    return optimized if os.path.isfile(os.path.join(app.static_folder, optimized)) else filename
+
+
+@app.context_processor
+def application_navigation():
+    preferences = current_user.settings if current_user.is_authenticated else None
+    return {
+        'asset_url': asset_url,
+        'nav_unread_count': get_unread_notification_count(current_user.id) if current_user.is_authenticated else 0,
+        'nav_preferences': preferences,
+    }
+
+
+@app.template_filter('naira')
+def format_naira(value):
+    try:
+        return f'₦{int(value or 0):,}'
+    except (TypeError, ValueError):
+        return 'Not specified'
+
+
 GAME_IMAGE_MAP = {
     'call of duty mobile': 'images/call of duty 2.webp',
     'call of duty': 'images/call of duty 2.webp',
@@ -469,19 +513,19 @@ def utility_processor():
 
     def tournament_image(game_name):
         if not game_name:
-            return 'https://source.unsplash.com/1200x800/?gaming'
+            return asset_url('images/gaming-fallback.svg')
         key = normalize_game_key(game_name)
         if key in GAME_IMAGE_MAP:
             value = GAME_IMAGE_MAP[key]
-            return value if value.startswith('http') else url_for('static', filename=value)
-        return f'https://source.unsplash.com/1200x800/?{quote_plus(game_name)}'
+            return value if value.startswith('http') else asset_url(optimized_image(value))
+        return asset_url('images/gaming-fallback.svg')
 
     def game_image_carousel(game_name):
         if not game_name:
             return []
         key = normalize_game_key(game_name)
         if key in GAME_IMAGE_CAROUSEL_MAP:
-            return [url_for('static', filename=image) for image in GAME_IMAGE_CAROUSEL_MAP[key]]
+            return [asset_url(optimized_image(image)) for image in GAME_IMAGE_CAROUSEL_MAP[key]]
         fallback = tournament_image(game_name)
         return [fallback]
 
@@ -501,6 +545,8 @@ def utility_processor():
         carousel_images=carousel_images(),
         featured_tournaments=featured_tournaments,
         active_participant_count=active_participant_count,
+        tournament_image_small=lambda game: asset_url(optimized_image(GAME_IMAGE_MAP.get(normalize_game_key(game), 'images/gaming-fallback.svg'), 480)),
+        tournament_image_large=lambda game: asset_url(optimized_image(GAME_IMAGE_MAP.get(normalize_game_key(game), 'images/gaming-fallback.svg'), 1440)),
     )
 
 
@@ -1458,6 +1504,8 @@ def advance_tournament_bracket(match):
     tournament = Tournament.query.filter_by(id=match.tournament_id).with_for_update().first()
     if not tournament:
         return False
+    if tournament.status == 'finished':
+        return False
     round_matches = TournamentMatch.query.filter_by(
         tournament_id=tournament.id, round_number=match.round_number,
     ).order_by(TournamentMatch.match_order.asc()).all()
@@ -1538,8 +1586,37 @@ def load_user(user_id):
 # -------------------------
 @app.route("/")
 def home():
-    tournaments = Tournament.query.options(selectinload(Tournament.participants)).all()
-    return render_template("index.html", tournaments=tournaments)
+    tournaments = Tournament.query.filter(Tournament.status.in_(['open', 'ongoing', 'live'])).order_by(
+        Tournament.match_time.asc().nullslast(), Tournament.id.desc(),
+    ).limit(6).all()
+    memberships = prepare_tournament_cards(tournaments)
+    return render_template("index.html", tournaments=tournaments, memberships=memberships)
+
+
+def prepare_tournament_cards(tournaments):
+    """Aggregate counts instead of loading every participant for a listing."""
+    ids = [tournament.id for tournament in tournaments]
+    if not ids:
+        return {}
+    counts = dict(db.session.query(UserTournament.tournament_id, db.func.count(UserTournament.id)).filter(
+        UserTournament.tournament_id.in_(ids), UserTournament.payment_status.in_(['paid', 'free']),
+    ).group_by(UserTournament.tournament_id).all())
+    for tournament in tournaments:
+        tournament._active_count = counts.get(tournament.id, 0)
+    if not current_user.is_authenticated:
+        return {}
+    return {membership.tournament_id: membership for membership in UserTournament.query.filter(
+        UserTournament.user_id == current_user.id, UserTournament.tournament_id.in_(ids),
+    ).all()}
+
+
+@app.route('/sw.js')
+def service_worker():
+    from flask import send_from_directory
+    response = send_from_directory(app.static_folder, 'sw.js', mimetype='application/javascript')
+    response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
+    response.headers['Service-Worker-Allowed'] = '/'
+    return response
 
 
 @app.route('/health')
@@ -1708,6 +1785,16 @@ def leaderboard():
     if selected_tournament_id:
         tournaments_query = tournaments_query.filter(Tournament.id == selected_tournament_id)
     tournaments = tournaments_query.order_by(Tournament.match_time.desc()).limit(50).all()
+    rankings_query = TournamentStat.query.join(Tournament).options(
+        joinedload(TournamentStat.user), joinedload(TournamentStat.tournament),
+    )
+    if selected_game:
+        rankings_query = rankings_query.filter(Tournament.game == selected_game)
+    if selected_tournament_id:
+        rankings_query = rankings_query.filter(TournamentStat.tournament_id == selected_tournament_id)
+    pagination = rankings_query.order_by(
+        TournamentStat.tournament_id.desc(), TournamentStat.rank.asc(), TournamentStat.points.desc(),
+    ).paginate(page=max(request.args.get('page', 1, type=int) or 1, 1), per_page=30, error_out=False)
     own_placements = []
     if current_user.is_authenticated:
         placements_query = (
@@ -1726,6 +1813,7 @@ def leaderboard():
         "leaderboard.html", tournaments=tournaments, own_placements=own_placements,
         available_games=available_games, selected_game=selected_game,
         selected_tournament_id=selected_tournament_id,
+        filter_tournaments=tournaments, rankings=pagination.items, pagination=pagination,
     )
 
 
@@ -1734,8 +1822,26 @@ def leaderboard():
 # -------------------------
 @app.route("/tournaments")
 def tournaments_page():
-    tournaments = Tournament.query.options(selectinload(Tournament.participants)).all()
-    return render_template("tournaments.html", tournaments=tournaments)
+    selected_game = (request.args.get('game') or '').strip()[:100]
+    selected_status = (request.args.get('status') or '').strip().lower()
+    search_query = (request.args.get('q') or '').strip()[:100]
+    query = Tournament.query
+    if selected_game:
+        query = query.filter(Tournament.game == selected_game)
+    if selected_status in PUBLIC_TOURNAMENT_STATUSES:
+        query = query.filter(Tournament.status == selected_status)
+    else:
+        selected_status = ''
+    if search_query:
+        query = query.filter(or_(Tournament.name.ilike(f'%{search_query}%'), Tournament.game.ilike(f'%{search_query}%')))
+    pagination = query.order_by(Tournament.match_time.asc().nullslast(), Tournament.id.desc()).paginate(
+        page=max(request.args.get('page', 1, type=int) or 1, 1), per_page=12, error_out=False,
+    )
+    games = [row[0] for row in db.session.query(Tournament.game).distinct().order_by(Tournament.game).all()]
+    memberships = prepare_tournament_cards(pagination.items)
+    return render_template('tournaments.html', tournaments=pagination.items, pagination=pagination,
+        available_games=games, selected_game=selected_game, selected_status=selected_status,
+        search_query=search_query, memberships=memberships)
 
 
 # -------------------------
@@ -1744,18 +1850,20 @@ def tournaments_page():
 @app.route("/wallet")
 @login_required
 def wallet():
-    all_joins = UserTournament.query.filter_by(user_id=current_user.id).order_by(UserTournament.joined_at.desc()).all()
-    total_spent = sum((ut.amount_paid or 0) for ut in all_joins if ut.payment_status == 'paid')
-    pending_transactions = [ut for ut in all_joins if ut.payment_status == 'pending']
-    wallet_transactions = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(WalletTransaction.created_at.desc()).all()
+    joins = UserTournament.query.filter_by(user_id=current_user.id)
+    all_joins = joins.options(joinedload(UserTournament.tournament)).order_by(UserTournament.joined_at.desc()).limit(20).all()
+    total_spent = db.session.query(db.func.coalesce(db.func.sum(UserTournament.amount_paid), 0)).filter(UserTournament.user_id == current_user.id, UserTournament.payment_status == 'paid').scalar()
+    pending_count = joins.filter_by(payment_status='pending').count()
+    pagination = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(WalletTransaction.created_at.desc(), WalletTransaction.id.desc()).paginate(page=request.args.get('page', 1, type=int), per_page=30, error_out=False)
+    wallet_transactions = pagination.items
     wallet_balance = current_user.wallet_balance or 0
-    return render_template("wallet.html", transactions=all_joins, total_spent=total_spent, pending_transactions=pending_transactions, wallet_transactions=wallet_transactions, wallet_balance=wallet_balance, paystack_public_key=PAYSTACK_PUBLIC_KEY)
+    return render_template("wallet.html", transactions=all_joins, total_spent=total_spent, pending_count=pending_count, wallet_transactions=wallet_transactions, pagination=pagination, wallet_balance=wallet_balance, paystack_public_key=PAYSTACK_PUBLIC_KEY)
 
 
 @app.route('/chat')
 @login_required
 def chat():
-    latest_messages = GlobalChatMessage.query.order_by(
+    latest_messages = GlobalChatMessage.query.options(joinedload(GlobalChatMessage.user)).order_by(
         GlobalChatMessage.created_at.desc(), GlobalChatMessage.id.desc(),
     ).limit(50).all()
     all_messages = list(reversed(latest_messages))
@@ -1774,6 +1882,7 @@ def chat():
             GlobalChatMessage.user_id,
             func.max(GlobalChatMessage.created_at).label('last_seen'),
         )
+        .filter(GlobalChatMessage.user_id != current_user.id)
         .group_by(GlobalChatMessage.user_id)
         .order_by(func.max(GlobalChatMessage.created_at).desc())
         .limit(10).all()
@@ -1783,7 +1892,8 @@ def chat():
     if distinct_user_ids:
         partners = User.query.filter(User.id.in_(distinct_user_ids)).all()
         partner_map = {u.id: u for u in partners}
-        chat_partners = [partner_map[uid] for uid in distinct_user_ids if uid in partner_map]
+        chat_partners = [partner_map[uid] for uid in distinct_user_ids
+            if uid in partner_map and can_direct_message(current_user, partner_map[uid])]
 
     return render_template(
         'chat.html', messages=messages, chat_partners=chat_partners,
@@ -1791,6 +1901,31 @@ def chat():
             recipient_id=current_user.id, read_at=None,
         ).count(),
     )
+
+
+@app.route('/chat/history')
+@login_required
+def chat_history():
+    after = max(request.args.get('after', 0, type=int) or 0, 0)
+    partner_id = request.args.get('partner', type=int)
+    if partner_id:
+        partner = db.session.get(User, partner_id)
+        if not can_direct_message(current_user, partner):
+            return jsonify({'error': 'This conversation is unavailable.'}), 403
+        rows = DirectMessage.query.options(joinedload(DirectMessage.sender)).filter(
+            DirectMessage.id > after,
+            or_(db.and_(DirectMessage.sender_id == current_user.id, DirectMessage.recipient_id == partner_id),
+                db.and_(DirectMessage.sender_id == partner_id, DirectMessage.recipient_id == current_user.id)),
+        ).order_by(DirectMessage.id).limit(51).all()
+        data = [{'id': row.id, 'sender_id': row.sender_id, 'username': row.sender.username if row.sender else 'Player',
+            'message': row.message, 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
+    else:
+        rows = GlobalChatMessage.query.options(joinedload(GlobalChatMessage.user)).filter(
+            GlobalChatMessage.id > after,
+        ).order_by(GlobalChatMessage.id).limit(51).all()
+        data = [{'id': row.id, 'user_id': row.user_id, 'username': row.user.username if row.user else 'Player',
+            'message': row.message, 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
+    return jsonify({'messages': data, 'has_more': len(rows) > 50})
 
 
 # -------------------------
@@ -1833,12 +1968,19 @@ def profile():
     recent_activity = Notification.query.filter_by(user_id=current_user.id).order_by(
         Notification.created_at.desc(), Notification.id.desc(),
     ).limit(5).all()
+    profile_tournaments = UserTournament.query.options(joinedload(UserTournament.tournament)).filter(
+        UserTournament.user_id == current_user.id, UserTournament.payment_status.in_(['paid', 'free', 'pending']),
+    ).order_by(UserTournament.joined_at.desc()).limit(8).all()
+    match_history = confirmed_matches.options(
+        joinedload(TournamentMatch.tournament), joinedload(TournamentMatch.player_one), joinedload(TournamentMatch.player_two),
+    ).order_by(TournamentMatch.updated_at.desc()).limit(8).all()
     return render_template(
         "profile.html", joined_count=joined_count, stats=stats,
         settings=settings, achievements=achievements, achievement_progress=progress,
         matches_played=matches_played, wins=wins, losses=matches_played - wins,
         win_rate=round((wins / matches_played) * 100) if matches_played else 0,
         recent_activity=recent_activity,
+        profile_tournaments=profile_tournaments, match_history=match_history,
     )
 
 
@@ -2150,12 +2292,14 @@ def tournament_details(tournament_id):
     joined_participant = False
     can_matchmake = False
     can_view_match_rooms = is_admin_user()
+    pending_payment = False
 
     if current_user.is_authenticated:
         join = UserTournament.query.filter_by(
             user_id=current_user.id,
             tournament_id=tournament_id
         ).first()
+        pending_payment = bool(join and join.payment_status == 'pending')
         if join and join.payment_status in {'paid', 'free'}:
             joined_participant = True
             can_view_match_rooms = True
@@ -2171,7 +2315,11 @@ def tournament_details(tournament_id):
 
     matches = []
     if tournament.id:
-        matches = TournamentMatch.query.filter_by(tournament_id=tournament.id).order_by(
+        matches = TournamentMatch.query.options(
+            joinedload(TournamentMatch.player_one), joinedload(TournamentMatch.player_two),
+            joinedload(TournamentMatch.winner), joinedload(TournamentMatch.submitted_by),
+            selectinload(TournamentMatch.disputes),
+        ).filter_by(tournament_id=tournament.id).order_by(
             TournamentMatch.round_number.asc().nullslast(),
             TournamentMatch.match_order.asc().nullslast(),
             TournamentMatch.created_at.asc(),
@@ -2184,6 +2332,7 @@ def tournament_details(tournament_id):
         can_matchmake=can_matchmake,
         matches=matches,
         can_view_match_rooms=can_view_match_rooms,
+        pending_payment=pending_payment,
     )
 
 
@@ -2480,7 +2629,7 @@ def reset_password():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    all_joins = UserTournament.query.filter_by(user_id=current_user.id).order_by(UserTournament.joined_at.desc()).all()
+    all_joins = UserTournament.query.options(joinedload(UserTournament.tournament)).filter_by(user_id=current_user.id).order_by(UserTournament.joined_at.desc()).limit(50).all()
 
     # Deduplicate: show only one entry per tournament (latest join)
     seen_tournaments = set()
@@ -2494,7 +2643,6 @@ def dashboard():
         TournamentMatch.player_one_user_id == current_user.id,
         TournamentMatch.player_two_user_id == current_user.id,
     )
-    now = datetime.utcnow()
     upcoming_matches = (
         TournamentMatch.query
         .join(Tournament)
@@ -2506,7 +2654,7 @@ def dashboard():
         .filter(
             match_players,
             TournamentMatch.status.in_(['scheduled', 'ongoing']),
-            or_(Tournament.match_time >= now, Tournament.match_time.is_(None)),
+            Tournament.status.notin_(['finished', 'cancelled']),
         )
         .order_by(Tournament.match_time.asc().nullslast(), TournamentMatch.created_at.asc())
         .limit(5)
@@ -2522,7 +2670,7 @@ def dashboard():
         )
         .filter(
             match_players,
-            TournamentMatch.status.in_(['pending_confirmation', 'disputed', 'confirmed']),
+            TournamentMatch.status.in_(['pending_confirmation', 'disputed']),
         )
         .order_by(TournamentMatch.updated_at.desc(), TournamentMatch.id.desc())
         .limit(5)
@@ -2557,7 +2705,7 @@ def dashboard():
         UserAchievement.unlocked_at.isnot(None),
     ).order_by(UserAchievement.unlocked_at.desc()).limit(3).all()
 
-    total_paid = sum((ut.amount_paid or 0) for ut in joined_tournaments if ut.payment_status == 'paid')
+    total_paid = db.session.query(db.func.coalesce(db.func.sum(UserTournament.amount_paid), 0)).filter(UserTournament.user_id == current_user.id, UserTournament.payment_status == 'paid').scalar()
 
     return render_template(
         "dashboard.html",
@@ -2586,6 +2734,31 @@ def notifications():
     return render_template("notifications.html", notifications=notifications, unread_count=unread_count)
 
 
+@app.route('/notifications/count')
+@login_required
+def notification_count():
+    return jsonify({'unread': get_unread_notification_count(current_user.id)})
+
+
+@app.route('/notifications/read-all', methods=['POST'])
+@login_required
+def read_all_notifications():
+    unread = mark_notifications_read_for_user(current_user.id)
+    socketio.emit('notification_unread_count', {'unread': unread}, room=f'user:{current_user.id}')
+    flash('All notifications marked as read.', 'success')
+    return redirect(url_for('notifications'))
+
+
+@app.route('/notifications/<int:notification_id>/unread', methods=['POST'])
+@login_required
+def mark_notification_unread(notification_id):
+    notification = Notification.query.filter_by(id=notification_id, user_id=current_user.id).first_or_404()
+    notification.read_at = None
+    db.session.commit()
+    socketio.emit('notification_unread_count', {'unread': get_unread_notification_count(current_user.id)}, room=f'user:{current_user.id}')
+    return redirect(url_for('notifications'))
+
+
 @app.route('/notifications/<int:notification_id>/read', methods=['POST'])
 @login_required
 def mark_notification_read(notification_id):
@@ -2595,6 +2768,7 @@ def mark_notification_read(notification_id):
     if notification.read_at is None:
         notification.read_at = datetime.utcnow()
         db.session.commit()
+    socketio.emit('notification_unread_count', {'unread': get_unread_notification_count(current_user.id)}, room=f'user:{current_user.id}')
     return redirect(safe_next_url(request.form.get('next')) or url_for('notifications'))
 
 
@@ -2832,10 +3006,14 @@ def create_tournament():
 
 # -------------------------  # JOIN TOURNAMENT
 # ------------------
-@app.route("/join-tournament/<int:tournament_id>")
+@app.route("/join-tournament/<int:tournament_id>", methods=['GET', 'POST'])
 @login_required
 def join_tournament(tournament_id):
-    tournament = Tournament.query.get_or_404(tournament_id)
+    # Serialize the capacity check with other joins and payment confirmations.
+    tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+    if tournament.status != 'open':
+        flash('Registration is closed for this tournament.', 'warning')
+        return redirect(url_for('tournament_details', tournament_id=tournament_id))
 
     existing_join = UserTournament.query.filter_by(
         user_id=current_user.id,
@@ -2843,16 +3021,22 @@ def join_tournament(tournament_id):
     ).first()
 
     if existing_join:
+        if existing_join.payment_status == 'pending':
+            return redirect(url_for('pay_for_tournament', tournament_id=tournament_id))
         flash(f"You've already joined {tournament.game}!", "warning")
         return redirect(url_for("dashboard"))
 
-    if active_participant_count(tournament) >= tournament.max_participants:
+    entrant_count = UserTournament.query.filter(UserTournament.tournament_id == tournament_id, UserTournament.payment_status.in_(['paid', 'free'])).count()
+    if entrant_count >= tournament.max_participants:
         flash(f"{tournament.game} is FULL!", "error")
         return redirect(url_for("home"))
 
     # If tournament has entry fee, redirect to payment
     if tournament.entry_fee > 0:
         return redirect(url_for('pay_for_tournament', tournament_id=tournament_id))
+
+    if request.method == 'GET':
+        return render_template('join_confirmation.html', tournament=tournament)
 
     # Free tournament - join directly
     join = UserTournament(
@@ -3250,7 +3434,7 @@ def verify_paystack_reference(reference):
 
 
 def apply_tournament_payment(user_tournament, transaction):
-    tournament = user_tournament.tournament
+    tournament = Tournament.query.filter_by(id=user_tournament.tournament_id).with_for_update().populate_existing().one()
     if not paystack_transaction_matches(
         transaction,
         tournament.entry_fee,
@@ -3320,6 +3504,9 @@ def apply_wallet_deposit(wallet_transaction, transaction):
 @login_required
 def pay_for_tournament(tournament_id):
     tournament = Tournament.query.get_or_404(tournament_id)
+    if tournament.status != 'open':
+        flash('Registration is closed for this tournament.', 'warning')
+        return redirect(url_for('tournament_details', tournament_id=tournament_id))
 
     # Check if already joined
     existing_join = UserTournament.query.filter_by(
@@ -3327,7 +3514,7 @@ def pay_for_tournament(tournament_id):
         tournament_id=tournament_id
     ).first()
 
-    if existing_join:
+    if existing_join and existing_join.payment_status != 'pending':
         flash("You've already joined this tournament!", "warning")
         return redirect(url_for("dashboard"))
 
@@ -3345,7 +3532,11 @@ def initialize_payment(tournament_id):
         return jsonify({'status': 'error', 'message': 'Payment system not available'})
         
     try:
-        tournament = Tournament.query.get_or_404(tournament_id)
+        tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+        if tournament.status != 'open':
+            return jsonify({'status': 'error', 'message': 'Registration is closed.'}), 409
+        if tournament.entry_fee <= 0:
+            return jsonify({'status': 'error', 'message': 'This tournament has free entry.'}), 400
         
         # This line is to:
         # Check if the user already has a registration for this tournament.
@@ -3356,7 +3547,7 @@ def initialize_payment(tournament_id):
             tournament_id=tournament_id
         ).first()
 
-        if existing_join and existing_join.payment_status == 'paid':
+        if existing_join and existing_join.payment_status in {'paid', 'free'}:
             return jsonify({'status': 'error', 'message': 'Already joined this tournament'})
 
         if existing_join and existing_join.payment_status == 'pending':
@@ -3365,7 +3556,6 @@ def initialize_payment(tournament_id):
             transaction_ref = str(uuid.uuid4())
             existing_join.transaction_ref = transaction_ref
             existing_join.amount_paid = tournament.entry_fee
-            db.session.commit()
 
             headers = {
                 'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}',
@@ -3384,16 +3574,18 @@ def initialize_payment(tournament_id):
                 }
             }
 
-            response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=data, headers=headers)
+            response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=data, headers=headers, timeout=(5, 15))
             response_data = response.json()
 
             if response_data['status']:
+                db.session.commit()
                 return jsonify({
                     'status': 'success',
                     'authorization_url': response_data['data']['authorization_url'],
                     'reference': transaction_ref
                 })
-            return jsonify({'status': 'error', 'message': 'Payment initialization failed'})
+            db.session.rollback()
+            return jsonify({'status': 'error', 'message': 'Payment initialization failed'}), 502
 
         if active_participant_count(tournament) >= tournament.max_participants:
             return jsonify({'status': 'error', 'message': 'Tournament is full'})
@@ -3423,7 +3615,7 @@ def initialize_payment(tournament_id):
             }
         }
 
-        response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=data, headers=headers)
+        response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=data, headers=headers, timeout=(5, 15))
         response_data = response.json()
 
         if response_data['status']:
@@ -3612,7 +3804,7 @@ def wallet_initialize_deposit():
     }
 
     try:
-        response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=payload, headers=headers)
+        response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=payload, headers=headers, timeout=(5, 15))
         response_data = response.json()
 
         if response_data['status']:
@@ -3687,6 +3879,24 @@ def wallet_verify_deposit():
 
 
 WITHDRAWAL_FINAL_STATUSES = {'completed', 'failed'}
+_supported_banks_cache = {'expires': 0, 'banks': []}
+
+
+@app.route('/wallet/banks')
+@login_required
+def wallet_banks():
+    if not REQUESTS_AVAILABLE or not PAYSTACK_SECRET_KEY:
+        return jsonify({'message': 'The bank list is temporarily unavailable. Please try again later.'}), 503
+    if _supported_banks_cache['expires'] > time.monotonic():
+        return jsonify({'banks': _supported_banks_cache['banks']})
+    try:
+        banks = paystack_transfer_request('GET', '/bank', params={'currency': PAYSTACK_CURRENCY, 'country': 'nigeria', 'perPage': 100})
+        supported = [{'name': bank['name'], 'code': bank['code']} for bank in banks if bank.get('name') and bank.get('code') and bank.get('active', True)]
+        _supported_banks_cache.update(expires=time.monotonic()+300, banks=supported)
+        return jsonify({'banks': supported})
+    except Exception:
+        app.logger.exception('Unable to retrieve supported withdrawal banks')
+        return jsonify({'message': 'Unable to load supported banks. Please try again.'}), 502
 
 
 def withdrawal_response(withdrawal):
@@ -3925,7 +4135,7 @@ def wallet_withdraw():
     return jsonify({'status': 'success', 'message': f'₦{amount:,} withdrawn successfully to {account_name} ({bank_name} - {account_number}).'})
 
 # LOGOUT
-@app.route("/logout")
+@app.route("/logout", methods=['GET', 'POST'])
 @login_required
 def logout():
     logout_user()
@@ -3975,64 +4185,6 @@ with app.app_context():
 
         db.session.commit()
 
-    # Free Fire tournament card title (fixes “Chat Tournament” showing)
-    # The homepage uses tournament.name for the card title.
-    ff_name = "Free Fire Championship"
-    ff_game_match = "free fire"
-
-    ff_tournament = Tournament.query.filter(db.func.lower(Tournament.game) == ff_game_match).first()
-    if ff_tournament:
-        ff_tournament.name = ff_name
-        if not ff_tournament.description:
-            ff_tournament.description = "Join the ultimate Free Fire tournament! Compete with the best players and win amazing prizes."
-        db.session.commit()
-
-
-    # Create sample tournaments
-    # Only insert if a tournament with the same game does not exist.
-    sample_tournaments = [
-            Tournament(
-                name="Free Fire Championship 2024",
-                game="Free Fire",
-                entry_fee=3000,
-                prize=50000,
-                max_participants=50,
-                description="Join the ultimate Free Fire tournament! Compete with the best players and win amazing prizes. Squad matches with intense gameplay and strategic battles await!"
-            ),
-            Tournament(
-                name="PUBG Mobile Masters League",
-                game="PUBG Mobile",
-                entry_fee=2000,
-                
-                prize=10000,
-                max_participants=100,
-                description="The biggest PUBG Mobile tournament of the year! Classic mode battles with top-tier competition. Show your survival skills and claim victory!"
-            ),
-            Tournament(
-                name="eFootball Legends Cup",
-                game="eFootball",
-                entry_fee=2500,
-                prize=20000,
-                max_participants=60,
-                description="Compete in the eFootball Legends Cup! Showcase your skills, tactics, and teamwork to win big prizes."
-            ),
-            Tournament(
-                name="Call of Duty: Mobile Warfare Cup",
-                game="Call of Duty Mobile",
-                entry_fee=1500,
-                prize=7500,
-                max_participants=75,
-                description="Dominate the battlefield in Call of Duty Mobile! Fast-paced action, tactical gameplay, and massive rewards for the champions!"
-            )
-        ]
-
-
-    # Insert missing tournaments if their game doesn't exist yet.
-    existing_games = {t.game for t in Tournament.query.all()}
-    for tournament in sample_tournaments:
-        if tournament.game not in existing_games:
-            db.session.add(tournament)
-    db.session.commit()
 
 
 @socketio.on('connect')
@@ -4097,11 +4249,13 @@ def on_send_global_chat_message(data):
     db.session.commit()
 
     emit('new_global_chat_message', {
+        'id': new_message.id,
         'user_id': current_user.id,
         'username': current_user.username,
         'message': message,
         'created_at': new_message.created_at.isoformat() if new_message.created_at else None,
     }, room='global_chat')
+    return {'status': 'success', 'id': new_message.id}
 
 
 @socketio.on('join_direct_message')
@@ -4163,6 +4317,7 @@ def on_send_direct_message(data):
     )
     unread_count = DirectMessage.query.filter_by(recipient_id=recipient.id, read_at=None).count()
     socketio.emit('unread_count', {'unread': unread_count}, room=f'user:{recipient.id}')
+    return {'status': 'success', 'id': stored_message.id}
 
 
 @socketio.on('mark_notification_read')

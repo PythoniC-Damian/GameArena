@@ -32,6 +32,20 @@ for email_setting in (
     os.environ[email_setting] = ''
 
 
+# Several legacy tests intentionally keep an outer application context while
+# switching test clients. Flask-Login caches its user on that context's g.
+# Reset that cache per test request so permissions are tested for the actual
+# session instead of the preceding client's cached user.
+from app import app as test_app
+from flask import g
+
+
+@test_app.before_request
+def fresh_test_session_user():
+    g.pop('_login_user', None)
+    g.pop('csrf_token', None)
+
+
 @pytest.fixture(autouse=True)
 def clean_test_database():
     """Keep each test independent without touching the normal database."""

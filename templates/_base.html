@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}GameArena{% endblock %}</title>
+{% include '_pwa_meta.html' %}{% include '_design_assets.html' %}
+{% block head %}{% endblock %}
+</head>
+<body data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
+{% include '_header.html' %}
+<main id="main-content" class="ga-page">{% include '_flash.html' %}{% block content %}{% endblock %}</main>
+{% include '_mobile_nav.html' %}
+<footer class="ga-footer">GameArena · Compete. Connect. Play.</footer>
+{% include '_pwa_register.html' %}
+{% block scripts %}{% endblock %}
+</body></html>

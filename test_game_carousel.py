@@ -36,7 +36,8 @@ def test_featured_tournaments_include_only_supported_local_games():
     with app_module.app.test_request_context('/'):
         context = app_module.utility_processor()
         featured = context['featured_tournaments'](tournaments)
+        image_urls = [context['game_image_carousel'](item.game)[0] for item in featured]
 
     assert [item.game for item in featured] == ['PUBG', 'Free Fire', 'Call of Duty Mobile', 'eFootball']
     assert all('DLS' not in item.game for item in featured)
-    assert all('static/images/' in context['game_image_carousel'](item.game)[0] for item in featured)
+    assert all('static/images/' in image_url for image_url in image_urls)

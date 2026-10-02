@@ -2,6 +2,8 @@
 
 GameArena is a Flask-based gaming tournament platform I'm currently building.
 
+The coordinated interface changes, modified-file map, validation evidence, screenshots, isolated preview instructions, and remaining dependencies are documented in [the implementation report](docs/GAMEARENA_IMPLEMENTATION.md).
+
 The idea is to give gamers a place to join and compete in tournaments for games such as eFootball, COD, Free Fire, PUBG, Blood Strike, and others.
 
 # Current Features

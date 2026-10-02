@@ -4,7 +4,7 @@ import pytest
 import db_migrate
 
 
-def test_sqlite_migrations_are_rejected():
+def test_sqlite_migrations_are_rejected(tmp_path):
     db_path = tmp_path / "legacy.sqlite"
 
     conn = sqlite3.connect(db_path)

@@ -1,0 +1,50 @@
+{
+  "python_files_compiled": 23,
+  "templates_parsed": 40,
+  "source_images": 15,
+  "original_image_bytes": 26004061,
+  "960w_image_bytes": 1327476,
+  "960w_reduction_percent": 94.9,
+  "local_get_latency": {
+    "/": {
+      "median_ms": 951.0,
+      "samples_ms": [
+        6149.7,
+        1641.7,
+        643.2,
+        951.0,
+        943.0
+      ]
+    },
+    "/tournaments": {
+      "median_ms": 752.5,
+      "samples_ms": [
+        401.1,
+        458.1,
+        2913.0,
+        752.5,
+        1634.5
+      ]
+    },
+    "/leaderboard": {
+      "median_ms": 1164.6,
+      "samples_ms": [
+        2445.3,
+        991.8,
+        671.4,
+        1164.6,
+        1283.1
+      ]
+    },
+    "/search?q=PUBG": {
+      "median_ms": 1399.8,
+      "samples_ms": [
+        1399.8,
+        1514.3,
+        1100.6,
+        2426.2,
+        1017.6
+      ]
+    }
+  }
+}

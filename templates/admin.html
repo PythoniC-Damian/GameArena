@@ -6,29 +6,20 @@
 <title>Admin Panel - GameArena</title>
 
 {% include '_pwa_meta.html' %}
-<script src="https://cdn.tailwindcss.com"></script>
+{% include '_design_assets.html' %}
 </head>
-<body class="bg-gray-900 text-white">
-{% include '_preloader.html' %}
+<body class="bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
+
 <!-- NAVBAR -->
-<nav class="flex flex-col gap-4 md:flex-row md:justify-between md:items-center p-5 bg-black shadow-md">
-<h1 class="text-2xl font-bold text-green-400">
-🎮 GameArena Admin
-</h1>
-<div class="flex flex-wrap items-center justify-end gap-4">
-<a href="{{ url_for('home') }}" class="mr-4 hover:text-green-400">Home</a>
-<a href="{{ url_for('dashboard') }}" class="mr-4 hover:text-green-400">Dashboard</a>
-<a href="{{ url_for('admin_reports') }}" class="mr-4 hover:text-green-400">Review Reports</a>
-<a href="{{ url_for('logout') }}" class="bg-red-500 px-4 py-2 rounded hover:bg-red-600">Logout</a>
-</div>
-</nav>
+{% include '_header.html' %}
+<main id="main-content" class="ga-page">
 
 <!-- HEADER -->
 <section class="p-10 text-center">
 <h1 class="text-4xl font-bold mb-2">
 Admin Panel
 </h1>
-<p class="text-gray-400 text-lg">
+<p class="text-slate-400 text-lg">
 Manage tournaments and system settings
 </p>
 </section>
@@ -48,10 +39,10 @@ Manage tournaments and system settings
 
 <!-- ADMIN ACTIONS -->
 <section class="px-10 pb-6">
-<div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+<div class="bg-slate-900 rounded-lg p-6 shadow-lg">
 <h2 class="text-2xl font-bold mb-4">Tournament Management</h2>
-<a href="{{ url_for('create_tournament') }}" class="bg-green-500 px-6 py-3 rounded hover:bg-green-600 font-semibold">
-➕ Create New Tournament
+<a href="{{ url_for('create_tournament') }}" class="ga-button ga-button-primary">
+Create tournament
 </a>
 </div>
 </section>
@@ -63,32 +54,32 @@ Manage tournaments and system settings
 {% if tournaments %}
 <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
     {% for tournament in tournaments %}
-    <div class="bg-gray-800 rounded-lg p-6 shadow-lg">
+    <div class="bg-slate-900 rounded-lg p-6 shadow-lg">
         <h3 class="text-xl font-bold mb-2">{{ tournament.game }}</h3>
-        <p class="text-gray-400 mb-1">Entry Fee: ₦{{ tournament.entry_fee }}</p>
-        <p class="text-gray-400 mb-1">Prize Pool: ₦{{ tournament.prize_pool }}</p>
-        <p class="text-gray-400 mb-1">Max Players: {{ tournament.max_participants }}</p>
-        <p class="text-gray-400 mb-1">Current Players: {{ tournament.participants|length }}</p>
-        <p class="text-gray-400 mb-3">Status: <span class="inline-block rounded-full px-3 py-1 text-xs font-semibold text-white {% if tournament.status == 'open' %}bg-green-500{% elif tournament.status == 'ongoing' %}bg-yellow-500{% elif tournament.status == 'finished' %}bg-blue-500{% else %}bg-red-500{% endif %}">{{ tournament.status|capitalize }}</span></p>
+        <p class="text-slate-400 mb-1">Entry Fee: {{ tournament.entry_fee|naira }}</p>
+        <p class="text-slate-400 mb-1">Prize Pool: {{ tournament.prize_pool|naira }}</p>
+        <p class="text-slate-400 mb-1">Max Players: {{ tournament.max_participants }}</p>
+        <p class="text-slate-400 mb-1">Current Players: {{ active_participant_count(tournament) }}</p>
+        <p class="text-slate-400 mb-3">Status: <span class="inline-block rounded-full px-3 py-1 text-xs font-semibold text-white {% if tournament.status == 'open' %}bg-green-500{% elif tournament.status == 'ongoing' %}bg-yellow-500{% elif tournament.status == 'finished' %}bg-blue-500{% else %}bg-red-500{% endif %}">{{ tournament.status|capitalize }}</span></p>
 
         {% if tournament.match_time %}
-        <p class="text-gray-400 mb-1">Match Time: {{ tournament.match_time.strftime('%Y-%m-%d %H:%M') }}</p>
+        <p class="text-slate-400 mb-1">Match Time: {{ tournament.match_time.strftime('%Y-%m-%d %H:%M') }}</p>
         {% endif %}
 
         {% if tournament.room_id %}
-        <p class="text-gray-400 mb-1">Room ID: {{ tournament.room_id }}</p>
-        <p class="text-gray-400 mb-3">Password: {{ tournament.room_password or 'None' }}</p>
+        <p class="text-slate-400 mb-1">Room ID: {{ tournament.room_id }}</p>
+        <p class="text-slate-400 mb-3">Password: {{ tournament.room_password or 'None' }}</p>
         {% endif %}
 
-        <div class="w-full bg-gray-700 rounded h-2 mb-3">
+        <div class="w-full bg-slate-800 rounded h-2 mb-3">
             <div class="bg-green-400 h-2 rounded"
-                 style="width: {{ (tournament.participants|length / tournament.max_participants) * 100 }}%">
+                 style="width: {{ ((active_participant_count(tournament) / tournament.max_participants) * 100) if tournament.max_participants else 0 }}%">
             </div>
         </div>
 
         <div class="flex flex-wrap gap-2 mb-3">
-            <a href="{{ url_for('edit_tournament', tournament_id=tournament.id) }}" class="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600 text-sm">Setup</a>
-            <a href="{{ url_for('admin_tournament_leaderboard', tournament_id=tournament.id) }}" class="bg-purple-500 px-4 py-2 rounded hover:bg-purple-600 text-sm">Leaderboard</a>
+            <a href="{{ url_for('edit_tournament', tournament_id=tournament.id) }}" class="ga-button ga-button-secondary">Setup</a>
+            <a href="{{ url_for('admin_tournament_leaderboard', tournament_id=tournament.id) }}" class="ga-button ga-button-secondary">Leaderboard</a>
             {% if tournament.status == 'open' %}
             <form method="POST" action="{{ url_for('start_tournament', tournament_id=tournament.id) }}" class="inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -106,18 +97,20 @@ Manage tournaments and system settings
             </form>
         </div>
 
-        <p class="text-sm text-gray-500">Created: {{ tournament.id }}</p>
+        <p class="text-sm text-slate-400">Created: {{ tournament.id }}</p>
     </div>
     {% endfor %}
 </div>
 {% else %}
-<div class="bg-gray-800 p-6 rounded-lg text-center">
-    <p class="text-gray-400 text-lg">No tournaments created yet.</p>
+<div class="bg-slate-900 p-6 rounded-lg text-center">
+    <p class="text-slate-400 text-lg">No tournaments created yet.</p>
 </div>
 {% endif %}
 
 </section>
 
+</main>
+{% include '_mobile_nav.html' %}
 {% include '_pwa_register.html' %}
 </body>
 </html>

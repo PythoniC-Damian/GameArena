@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ code }} · {{ title }} · GameArena</title>
 {% include '_pwa_meta.html' %}
-<script src="https://cdn.tailwindcss.com"></script>
+{% include '_design_assets.html' %}
 </head>
-<body class="min-h-screen bg-slate-950 text-white">
-{% include '_preloader.html' %}
-<main class="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-5 py-16 text-center">
+<body class="min-h-screen bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
+{% include '_header.html' %}
+
+<main id="main-content" class="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center px-5 py-16 text-center">
     <p class="text-sm font-semibold uppercase tracking-[0.3em] text-emerald-300">GameArena · {{ code }}</p>
     <h1 class="mt-4 text-3xl font-bold sm:text-4xl">{{ title }}</h1>
     <p class="mt-3 text-slate-400">{{ message }}</p>

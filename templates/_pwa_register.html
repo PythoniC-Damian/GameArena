@@ -2,7 +2,14 @@
 // PWA: register the service worker for installability + offline support
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/static/sw.js').catch(function (err) {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function () {
+      // Retire the old static-only registration after the root worker is ready.
+      navigator.serviceWorker.getRegistrations().then(function (registrations) {
+        registrations.forEach(function (registration) {
+          if (new URL(registration.scope).pathname === '/static/') registration.unregister();
+        });
+      });
+    }).catch(function (err) {
       console.error('SW registration failed:', err);
     });
   });

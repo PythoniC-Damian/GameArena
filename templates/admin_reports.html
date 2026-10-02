@@ -5,15 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Player Safety Reports - GameArena</title>
 {% include '_pwa_meta.html' %}
-<script src="https://cdn.tailwindcss.com"></script>
+{% include '_design_assets.html' %}
 </head>
-<body class="min-h-screen bg-slate-950 text-white">
-{% include '_preloader.html' %}
-<nav class="flex items-center justify-between gap-4 border-b border-slate-800 bg-slate-950/95 p-5">
-    <a href="{{ url_for('admin') }}" class="font-semibold text-emerald-300">GameArena Admin</a>
-    <a href="{{ url_for('admin') }}" class="text-sm text-slate-300 hover:text-white">Admin panel</a>
-</nav>
-<main class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+<body class="min-h-screen bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
+
+{% include '_header.html' %}
+<main id="main-content" class="mx-auto max-w-5xl px-4 py-10 sm:px-6">
     <header class="mb-6"><p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Player safety</p><h1 class="mt-2 text-3xl font-bold">Reports</h1><p class="mt-2 text-sm text-slate-400">Review player, chat, and support reports. Only admins can access this queue.</p></header>
     <div class="space-y-4">
         {% for report in reports %}

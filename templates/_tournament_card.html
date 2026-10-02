@@ -1,0 +1,18 @@
+{% set membership = memberships.get(tournament.id) if memberships is defined else none %}
+<article class="ga-card ga-tournament-card">
+<img class="ga-card-image" src="{{ tournament_image(tournament.game) }}" srcset="{{ tournament_image_small(tournament.game) }} 480w, {{ tournament_image(tournament.game) }} 960w, {{ tournament_image_large(tournament.game) }} 1440w" sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1023px) 45vw, 360px" alt="{{ tournament.game }}" width="960" height="540" loading="lazy" decoding="async">
+<div class="ga-card-body">
+  <div class="ga-card-meta"><span>{{ tournament.game }}</span><span class="ga-status ga-status-{{ tournament.status }}">{{ tournament.status|capitalize }}</span></div>
+  <h3 class="ga-card-title">{{ tournament.name }}</h3>
+  <p class="ga-muted text-sm">{{ tournament.match_time.strftime('%d %b %Y · %H:%M') ~ ' (organizer time)' if tournament.match_time else 'Schedule to be announced' }}</p>
+  <dl class="ga-card-numbers"><div><dt>Entry fee</dt><dd>{{ tournament.entry_fee|naira if tournament.entry_fee else 'Free entry' }}</dd></div><div><dt>Prize pool</dt><dd>{{ tournament.prize|naira }}</dd></div><div><dt>Participants</dt><dd>{{ active_participant_count(tournament) }} / {{ tournament.max_participants }}</dd></div></dl>
+  <div class="ga-card-actions">
+    <a class="ga-button ga-button-primary" href="{{ url_for('tournament_details', tournament_id=tournament.id) }}">View tournament</a>
+    {% if membership and membership.payment_status in ['paid','free'] %}<span class="ga-status">Joined</span>
+    {% elif tournament.status != 'open' %}<span class="ga-status">Registration closed</span>
+    {% elif active_participant_count(tournament) >= tournament.max_participants %}<span class="ga-status">Full</span>
+    {% elif membership and membership.payment_status == 'pending' %}<a class="ga-button ga-button-secondary" href="{{ url_for('pay_for_tournament', tournament_id=tournament.id) }}">Resume payment</a>
+    {% elif current_user.is_authenticated %}<a class="ga-button ga-button-secondary" href="{{ url_for('join_tournament', tournament_id=tournament.id) }}">Join</a>
+    {% else %}<a class="ga-button ga-button-secondary" href="{{ url_for('login', next=url_for('tournament_details', tournament_id=tournament.id)) }}">Login to join</a>{% endif %}
+  </div>
+</div></article>

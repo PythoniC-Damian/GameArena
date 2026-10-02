@@ -1,0 +1,41 @@
+{
+  "checks": [
+    {
+      "page": "settings",
+      "composer_or_save_above_nav": true
+    },
+    {
+      "page": "chat",
+      "composer_or_save_above_nav": true
+    },
+    {
+      "route": "/admin",
+      "width": 360,
+      "main": true,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/admin/tournaments/2/edit",
+      "width": 360,
+      "main": true,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/admin",
+      "width": 1440,
+      "main": true,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/admin/tournaments/2/edit",
+      "width": 1440,
+      "main": true,
+      "overflow": false,
+      "headers": 1
+    }
+  ],
+  "page_errors": []
+}

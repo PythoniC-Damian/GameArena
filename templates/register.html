@@ -6,7 +6,7 @@
 <title>Register - GameArena</title>
 
 {% include '_pwa_meta.html' %}
-<script src="https://cdn.tailwindcss.com"></script>
+{% include '_design_assets.html' %}
 <style>
 .bg-slide {
   position: absolute;
@@ -21,15 +21,16 @@
 }
 </style>
 </head>
-<body class="relative min-h-screen overflow-y-auto bg-slate-950 text-white">
-{% include '_preloader.html' %}
+<body class="relative min-h-screen overflow-y-auto bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
+{% include '_header.html' %}
+
     <div class="absolute inset-0 overflow-hidden">
-        <div class="bg-slide active bg-[url('{{ url_for('static', filename='images/call_of_duty.jpg') }}')]"></div>
-        <div class="bg-slide bg-[url('https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1400&q=80')]"></div>
-        <div class="bg-slide bg-[url('https://images.unsplash.com/photo-1500534314209-a57faa8aee5b?auto=format&fit=crop&w=1400&q=80')]"></div>
+
+
+
         <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.15),_transparent_20%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),_transparent_18%)]"></div>
     </div>
-    <div class="relative mx-auto flex min-h-screen items-center justify-center px-6 py-12">
+    <div id="main-content" class="relative mx-auto flex min-h-screen items-center justify-center px-6 py-12">
         <div class="grid w-full max-w-6xl gap-10 rounded-[40px] border border-white/10 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/40 backdrop-blur-xl lg:grid-cols-[1.2fr_0.8fr]">
             <div class="space-y-8">
                 <div class="flex items-center gap-3">
@@ -47,7 +48,7 @@
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
                         <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Secure signup</p>
-                        <p class="mt-3 text-base">All passwords are hashed and protected with secure authentication.</p>
+                        <p class="mt-3 text-base">Create your account, verify your email, and choose your next tournament.</p>
                     </div>
                     <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
                         <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Instant access</p>
@@ -58,8 +59,7 @@
             <div class="rounded-[32px] border border-white/10 bg-slate-950/90 p-8 shadow-xl shadow-slate-950/40">
                 <h2 class="text-3xl font-semibold text-white mb-3">Create Account</h2>
                 <p class="text-sm text-slate-400 mb-6">A verification code will be sent to your email after registration.</p>
-
-n                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                 <div class="space-y-3 mb-6">
                 {% for category, message in messages %}
@@ -70,8 +70,7 @@ n                {% with messages = get_flashed_messages(with_categories=true) %
                 </div>
                 {% endif %}
                 {% endwith %}
-
-n                <form method="POST" class="space-y-5">
+                <form method="POST" class="space-y-5">
                     {{ form.hidden_tag() }}
                     <div>
                         {{ form.username.label(class="block text-sm font-medium text-slate-300 mb-2") }}
@@ -110,16 +109,7 @@ n                <form method="POST" class="space-y-5">
             </div>
         </div>
     </div>
-<script>
-const bgSlides = document.querySelectorAll('.bg-slide');
-let bgIndex = 0;
-setInterval(() => {
-  if (!bgSlides.length) return;
-  bgSlides[bgIndex].classList.remove('active');
-  bgIndex = (bgIndex + 1) % bgSlides.length;
-  bgSlides[bgIndex].classList.add('active');
-}, 5000);
-</script>
+
 {% include '_pwa_register.html' %}
 </body>
 </html>

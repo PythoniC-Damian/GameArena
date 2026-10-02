@@ -6,27 +6,19 @@
 <title>Create Tournament - GameArena Admin</title>
 
 {% include '_pwa_meta.html' %}
-<script src="https://cdn.tailwindcss.com"></script>
+{% include '_design_assets.html' %}
 </head>
-<body class="bg-gray-900 text-white">
-{% include '_preloader.html' %}
+<body class="bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
+
 <!-- NAVBAR -->
-<nav class="flex flex-col gap-4 md:flex-row md:justify-between md:items-center p-5 bg-black shadow-md">
-<h1 class="text-2xl font-bold text-green-400">
-🎮 GameArena Admin
-</h1>
-<div class="flex flex-wrap items-center justify-end gap-4">
-<a href="{{ url_for('admin') }}" class="mr-4 hover:text-green-400">← Back to Admin</a>
-<a href="{{ url_for('logout') }}" class="bg-red-500 px-4 py-2 rounded hover:bg-red-600">Logout</a>
-</div>
-</nav>
+{% include '_header.html' %}
 
 <!-- HEADER -->
 <section class="p-10 text-center">
 <h1 class="text-4xl font-bold mb-2">
 Create New Tournament
 </h1>
-<p class="text-gray-400 text-lg">
+<p class="text-slate-400 text-lg">
 Add a new tournament to the platform
 </p>
 </section>
@@ -46,33 +38,33 @@ Add a new tournament to the platform
 
 <!-- CREATE FORM -->
 <section class="px-10 pb-10">
-<div class="max-w-md mx-auto bg-gray-800 rounded-lg p-8 shadow-lg">
+<div class="max-w-md mx-auto bg-slate-900 rounded-lg p-8 shadow-lg">
 <form method="POST">
     {{ form.hidden_tag() }}
-    
+
     <div class="mb-4">
         {{ form.game.label(class="block text-sm font-medium mb-2") }}
-        {{ form.game(class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400") }}
+        {{ form.game(class="w-full px-3 py-2 bg-slate-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400") }}
         {% if form.game.errors %}
             <div class="text-red-400 text-sm mt-1">
                 {% for error in form.game.errors %}{{ error }}{% endfor %}
             </div>
         {% endif %}
     </div>
-    
+
     <div class="mb-4">
         {{ form.entry_fee.label(class="block text-sm font-medium mb-2") }}
-        {{ form.entry_fee(class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400") }}
+        {{ form.entry_fee(class="w-full px-3 py-2 bg-slate-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400") }}
         {% if form.entry_fee.errors %}
             <div class="text-red-400 text-sm mt-1">
                 {% for error in form.entry_fee.errors %}{{ error }}{% endfor %}
             </div>
         {% endif %}
     </div>
-    
+
     <div class="mb-4">
         {{ form.prize_pool.label(class="block text-sm font-medium mb-2") }}
-        {{ form.prize_pool(class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400") }}
+        {{ form.prize_pool(class="w-full px-3 py-2 bg-slate-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400") }}
         {% if form.prize_pool.errors %}
             <div class="text-red-400 text-sm mt-1">
                 {% for error in form.prize_pool.errors %}{{ error }}{% endfor %}
@@ -82,24 +74,24 @@ Add a new tournament to the platform
 
     <div class="mb-4">
         {{ form.match_time.label(class="block text-sm font-medium mb-2") }}
-        {{ form.match_time(class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400", placeholder="2026-05-12 19:00") }}
+        {{ form.match_time(class="w-full px-3 py-2 bg-slate-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400", placeholder="2026-05-12 19:00") }}
         {% if form.match_time.errors %}
             <div class="text-red-400 text-sm mt-1">
                 {% for error in form.match_time.errors %}{{ error }}{% endfor %}
             </div>
         {% endif %}
     </div>
-    
+
     <div class="mb-6">
         {{ form.max_participants.label(class="block text-sm font-medium mb-2") }}
-        {{ form.max_participants(class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400") }}
+        {{ form.max_participants(class="w-full px-3 py-2 bg-slate-800 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-400") }}
         {% if form.max_participants.errors %}
             <div class="text-red-400 text-sm mt-1">
                 {% for error in form.max_participants.errors %}{{ error }}{% endfor %}
             </div>
         {% endif %}
     </div>
-    
+
     {{ form.submit(class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-400") }}
 </form>
 </div>

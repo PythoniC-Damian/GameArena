@@ -1,3 +1,4 @@
+import html
 import unittest
 import re
 import json
@@ -117,7 +118,7 @@ class NotificationFlowTests(unittest.TestCase):
         self.assertEqual(payload['from'], 'noreply@example.com')
         self.assertEqual(payload['to'], 'user@example.com')
         self.assertEqual(payload['text'], 'Your verification code is 123456.')
-        log_messages = ' '.join(str(call) for call in info.call_args_list)
+        log_messages = ' '.join(call.args[0] % call.args[1:] if len(call.args) > 1 else str(call.args[0]) for call in info.call_args_list)
         self.assertIn('recipient_domain=example.com', log_messages)
         self.assertIn('req_test_123', log_messages)
         self.assertNotIn('123456', log_messages)
@@ -267,7 +268,7 @@ class NotificationFlowTests(unittest.TestCase):
             }, follow_redirects=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("couldn't send the verification email right now", response.text)
+        self.assertIn("couldn't send the verification email right now", html.unescape(response.text))
         self.assertNotIn('Verification code sent.', response.text)
         self.assertIsNotNone(User.query.get(self.user.id).verification_code)
 
@@ -282,7 +283,7 @@ class NotificationFlowTests(unittest.TestCase):
         token = self.csrf_token('/register')
         with patch.object(app_module, 'send_email', return_value=False) as send_email:
             response = self.client.post('/register', data={
-                'username': 'new-player',
+                'username': 'new_player',
                 'email': 'new-player@example.com',
                 'password': 'secret123',
                 'confirm_password': 'secret123',
@@ -290,7 +291,7 @@ class NotificationFlowTests(unittest.TestCase):
             }, follow_redirects=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("couldn't send the verification email", response.text)
+        self.assertIn("couldn't send the verification email", html.unescape(response.text))
         new_user = User.query.filter_by(email='new-player@example.com').one()
         self.assertFalse(new_user.email_verified)
         self.assertIsNotNone(new_user.verification_code)

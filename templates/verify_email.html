@@ -6,13 +6,14 @@
 <title>Verify Email - GameArena</title>
 
 {% include '_pwa_meta.html' %}
-<script src="https://cdn.tailwindcss.com"></script>
+{% include '_design_assets.html' %}
 </head>
-<body class="relative min-h-screen overflow-y-auto bg-slate-950 text-white">
-{% include '_preloader.html' %}
+<body class="relative min-h-screen overflow-y-auto bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
+{% include '_header.html' %}
+
     <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.15),_transparent_20%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),_transparent_18%)]"></div>
-    <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1400&q=80')] bg-cover bg-center opacity-20"></div>
-    <div class="relative mx-auto flex min-h-screen items-center justify-center px-6 py-12">
+
+    <div id="main-content" class="relative mx-auto flex min-h-screen items-center justify-center px-6 py-12">
         <div class="w-full max-w-4xl rounded-[40px] border border-white/10 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/40 backdrop-blur-xl">
             <div class="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
                 <div class="space-y-6">

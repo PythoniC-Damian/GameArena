@@ -1,294 +1,68 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wallet - GameArena</title>
-
-{% include '_pwa_meta.html' %}
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://js.paystack.co/v1/inline.js"></script>
-</head>
-<body class="min-h-screen bg-slate-950 text-white">
-{% include '_preloader.html' %}
-<nav class="flex flex-col gap-4 md:flex-row md:justify-between md:items-center p-5 bg-slate-950/95 shadow-lg shadow-slate-950/30 backdrop-blur-sm">
-        <div class="flex items-center justify-between gap-4">
-<a href="{{ url_for('home') }}" class="flex items-center gap-3">
-        <div class="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500 text-slate-950 font-bold">G</div>
-        <div>
-            <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">GameArena</p>
-            <p class="text-sm text-slate-400">Manage your balance and withdrawals.</p>
-        </div>
-    </a>
-        <button id="mobileMenuBtn" class="md:hidden rounded-full border border-white/10 bg-slate-950/80 p-3 text-slate-200 transition hover:bg-slate-900" aria-label="Menu" aria-expanded="false">
-            <svg id="menuIconOpen" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
-            <svg id="menuIconClose" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-    </div>
-    <div class="hidden md:flex items-center gap-8 text-sm text-slate-300">
-        <a href="{{ url_for('search') }}" class="hover:text-white transition">Search</a>
-        <a href="{{ url_for('home') }}" class="hover:text-white transition">Home</a>
-        <a href="{{ url_for('tournaments_page') }}" class="hover:text-white transition">Tournaments</a>
-        <a href="{{ url_for('leaderboard') }}" class="hover:text-white transition">Leaderboard</a>
-    </div>
-    <div class="hidden md:flex items-center gap-3">
-        {% if current_user.is_authenticated %}
-            <a href="{{ url_for('dashboard') }}" class="text-sm text-slate-300 hover:text-white transition">Dashboard</a>
-            <a href="{{ url_for('wallet') }}" class="text-white font-semibold">Wallet</a>
-            <a href="{{ url_for('profile') }}" class="text-sm text-slate-300 hover:text-white transition">Profile</a>
-            <a href="{{ url_for('logout') }}" class="rounded-full bg-red-500 px-4 py-2 text-sm text-white hover:bg-red-600">Logout</a>
-        {% else %}
-            <a href="{{ url_for('login') }}" class="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-white hover:border-emerald-400">Login</a>
-            <a href="{{ url_for('register') }}" class="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Register</a>
-        {% endif %}
-    </div>
-    {% include '_mobile_menu.html' %}
-</nav>
-
-<main class="mx-auto max-w-7xl px-6 py-10">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    <div class="mb-8 space-y-3">
-    {% for category, message in messages %}
-    <div class="rounded-2xl px-4 py-3 text-sm font-medium {{ 'bg-red-500 text-white' if category == 'error' else 'bg-emerald-500 text-slate-950' }}">{{ message }}</div>
-    {% endfor %}
-    </div>
-    {% endif %}
-    {% endwith %}
-
-    <section class="grid gap-6 lg:grid-cols-[0.65fr_0.35fr]">
-        <div class="space-y-6">
-            <div class="rounded-[36px] border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/20 p-8 shadow-2xl shadow-emerald-500/10">
-                <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Wallet balance</p>
-                        <h1 class="mt-3 text-5xl font-bold text-white">₦{{ wallet_balance }}</h1>
-                        <p class="mt-2 text-slate-400">Your current available balance for tournament entries and withdrawals.</p>
-                    </div>
-                    <div class="flex flex-col gap-3 sm:flex-row">
-                        <button onclick="openAddMoneyModal()" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Add Money</button>
-                        <button onclick="openWithdrawModal()" class="rounded-full border border-white/10 bg-slate-950/80 px-6 py-4 text-sm font-semibold text-white hover:bg-slate-900">Withdraw</button>
-                    </div>
-                </div>
-            </div>
-            <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Quick stats</p>
-                        <h2 class="mt-2 text-2xl font-semibold text-white">Wallet activity</h2>
-                    </div>
-                </div>
-                <div class="mt-6 grid gap-4 sm:grid-cols-3">
-                    <div class="rounded-[28px] border border-slate-800 bg-slate-950/80 p-4 text-center">
-                        <p class="text-sm text-slate-400">Balance</p>
-                        <p class="mt-3 text-2xl font-semibold text-white">₦{{ wallet_balance }}</p>
-                    </div>
-                    <div class="rounded-[28px] border border-slate-800 bg-slate-950/80 p-4 text-center">
-                        <p class="text-sm text-slate-400">Spent</p>
-                        <p class="mt-3 text-2xl font-semibold text-cyan-300">₦{{ total_spent }}</p>
-                    </div>
-                    <div class="rounded-[28px] border border-slate-800 bg-slate-950/80 p-4 text-center">
-                        <p class="text-sm text-slate-400">Pending</p>
-                        <p class="mt-3 text-2xl font-semibold text-emerald-300">{{ pending_transactions|length }}</p>
-                    </div>
-                </div>
-            </section>
-            <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Recent transactions</p>
-                        <h2 class="mt-2 text-2xl font-semibold text-white">Activity log</h2>
-                    </div>
-                    <a href="{{ url_for('notifications') }}" class="text-sm font-semibold text-emerald-300 hover:text-emerald-200">View all</a>
-                </div>
-                <div class="mt-6 space-y-3">
-                    {% if wallet_transactions %}
-                        {% for wt in wallet_transactions[:5] %}
-                        <div class="rounded-[28px] border border-slate-800 bg-slate-950/80 p-4 flex items-center justify-between gap-4">
-                            <div class="flex items-center gap-4">
-                                <div class="flex h-12 w-12 items-center justify-center rounded-3xl bg-slate-900/80 text-emerald-300">{% if wt.type == 'deposit' %}+{% else %}-{% endif %}</div>
-                                <div>
-                                    <p class="font-semibold text-white capitalize">{{ wt.type }}</p>
-                                    <p class="text-sm text-slate-400">{{ wt.created_at.strftime('%b %d, %Y') if wt.created_at else '' }}</p>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <p class="text-sm font-semibold {% if wt.type == 'deposit' %}text-emerald-300{% else %}text-red-400{% endif %}">{% if wt.type == 'deposit' %}+{% else %}-{% endif %}₦{{ wt.amount }}</p>
-                                <p class="mt-1 text-xs uppercase tracking-[0.25em] text-slate-500">{{ wt.status }}</p>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <div class="rounded-[28px] border border-dashed border-slate-700 bg-slate-950/70 p-8 text-center text-slate-400">No recent wallet activity yet.</div>
-                    {% endif %}
-                </div>
-            </section>
-        </div>
-
-        <aside class="space-y-6">
-            <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
-                <h2 class="text-xl font-semibold text-white">Top actions</h2>
-                <div class="mt-5 grid gap-3">
-                    <button onclick="openAddMoneyModal()" class="rounded-3xl bg-emerald-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400 max-md:flex max-md:min-h-[56px] max-md:items-center max-md:justify-center max-md:text-center">Deposit funds</button>
-                    <button onclick="openWithdrawModal()" class="rounded-3xl bg-slate-800 px-5 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700 max-md:flex max-md:min-h-[56px] max-md:items-center max-md:justify-center max-md:text-center">Request withdrawal</button>
-                    <a href="{{ url_for('tournaments_page') }}" class="rounded-3xl bg-slate-800 px-5 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700 max-md:flex max-md:min-h-[56px] max-md:items-center max-md:justify-center max-md:text-center">Join a tournament</a>
-                </div>
-            </section>
-        </aside>
-    </section>
-</main>
-
+{% extends '_base.html' %}
+{% block title %}Wallet · GameArena{% endblock %}
+{% block content %}
+<h1>Wallet</h1>
+<section class="ga-panel ga-section">
+<p class="ga-eyebrow">Available balance</p><p class="ga-balance">{{ wallet_balance|naira }}</p>
+<p class="ga-muted">Manage deposits, withdrawals, and wallet activity.</p>
+<div class="ga-actions"><button class="ga-button" onclick="openAddMoneyModal()">Deposit</button><button class="ga-button ga-button-secondary" onclick="openWithdrawModal()">Withdraw</button></div>
+</section>
+<section class="ga-panel ga-section"><h2>Transaction history</h2>
+{% for wt in wallet_transactions %}<article class="ga-record"><div><strong>{{ wt.type|capitalize }}</strong><p class="ga-muted">{{ wt.created_at.strftime('%b %d, %Y · %H:%M') if wt.created_at else '' }}</p></div><div class="ga-text-right"><strong>{{ wt.amount|naira }}</strong><p><span class="ga-badge">{{ wt.status|replace('_', ' ') }}</span></p></div></article>
+{% else %}<p class="ga-empty">No wallet transactions yet. Completed deposits and withdrawals will appear here.</p>{% endfor %}
+{% include '_pagination.html' %}</section>
+<section class="ga-panel ga-section"><h2>Tournament entries</h2><p class="ga-muted">Total paid: {{ total_spent|naira }} · {{ pending_count }} pending. Showing the 20 most recent entries.</p>
+{% for ut in transactions %}<article class="ga-record"><div><a href="{{ url_for('tournament_details', tournament_id=ut.tournament_id) }}">{{ ut.tournament.name }}</a><p class="ga-muted">{{ ut.joined_at.strftime('%b %d, %Y') if ut.joined_at else '' }}</p></div><div class="ga-text-right"><strong>{{ ut.amount_paid|naira }}</strong><p class="ga-muted">{{ ut.payment_status|capitalize }}</p>{% if ut.payment_status == 'pending' and ut.tournament.status == 'open' %}<a href="{{ url_for('pay_for_tournament', tournament_id=ut.tournament_id) }}">Resume payment</a>{% endif %}</div></article>{% else %}<p class="ga-empty">No tournament entries yet.</p>{% endfor %}</section>
+{% endblock %}
+{% block scripts %}
 <!-- Modals -->
-<div id="addMoneyModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+<div id="addMoneyModal" role="dialog" aria-modal="true" aria-labelledby="depositTitle" class="fixed inset-0 ga-dialog hidden items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
     <div class="w-full max-w-md rounded-[32px] border border-slate-800 bg-slate-950 p-8 shadow-2xl">
         <div class="flex items-center justify-between">
             <div>
-                <h2 class="text-xl font-bold text-white">Add Money</h2>
+                <h2 id="depositTitle" class="text-xl font-bold text-white">Deposit</h2>
                 <p class="mt-2 text-sm text-slate-400">Add funds to your wallet using Paystack.</p>
             </div>
-            <button onclick="closeAddMoneyModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            <button aria-label="Close deposit" onclick="closeAddMoneyModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
         </div>
-        <form id="addMoneyForm" class="mt-6 space-y-5">
+        <form data-url="{{ url_for('wallet_initialize_deposit') }}" id="addMoneyForm" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <div>
-                <label class="block text-sm font-semibold text-emerald-300 mb-2">Amount (₦)</label>
-                <input id="depositAmount" type="number" min="100" step="100" placeholder="Enter amount" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none" required />
+                <label for="depositAmount" class="block text-sm font-semibold text-emerald-300 mb-2">Amount (₦)</label>
+                <input id="depositAmount" type="number" min="100" step="1" placeholder="Enter amount" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none" required />
             </div>
-            <button type="button" onclick="processDeposit()" class="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-emerald-400 hover:to-cyan-400">Deposit Now</button>
-        </form>
+            <button type="submit" class="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-emerald-400 hover:to-cyan-400">Deposit Now</button>
+        <p class="ga-muted" role="status" aria-live="polite" data-form-status></p></form>
     </div>
 </div>
 
-<div id="withdrawModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+<div id="withdrawModal" role="dialog" aria-modal="true" aria-labelledby="withdrawTitle" class="fixed inset-0 ga-dialog hidden items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
     <div class="w-full max-w-md rounded-[32px] border border-slate-800 bg-slate-950 p-8 shadow-2xl">
         <div class="flex items-center justify-between">
             <div>
-                <h2 class="text-xl font-bold text-white">Withdraw Funds</h2>
-                <p class="mt-2 text-sm text-slate-400">Send money to your bank account.</p>
+                <h2 id="withdrawTitle" class="text-xl font-bold text-white">Withdraw</h2>
+                <p class="mt-2 text-sm text-slate-400">Send money to your bank account. Your account name is verified securely before transfer.</p>
             </div>
-            <button onclick="closeWithdrawModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            <button aria-label="Close withdrawal" onclick="closeWithdrawModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
         </div>
-        <form id="withdrawForm" class="mt-6 space-y-5">
+        <form data-url="{{ url_for('wallet_withdraw') }}" id="withdrawForm" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <div>
-                <label class="block text-sm font-semibold text-cyan-300 mb-2">Amount (₦)</label>
-                <input id="withdrawAmount" type="number" min="100" step="100" placeholder="Enter amount" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
+                <label for="withdrawAmount" class="block text-sm font-semibold text-cyan-300 mb-2">Amount (₦)</label>
+                <input id="withdrawAmount" type="number" min="100" step="1" placeholder="Enter amount" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
             </div>
-            <div>
-                <label class="block text-sm font-semibold text-cyan-300 mb-2">Bank name</label>
-                <input id="bankName" type="text" placeholder="GTBank" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
+
+
+            <div><label for="withdrawBank" class="block text-sm font-semibold text-cyan-300 mb-2">Bank</label><select id="withdrawBank" data-url="{{ url_for('wallet_banks') }}" required class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"><option value="">Choose your bank</option></select><p id="bankStatus" class="ga-muted" role="status"></p><button id="retryBanks" type="button" class="ga-button ga-button-secondary" hidden>Retry loading banks</button></div>
+<div>
+                <label for="accountNumber" class="block text-sm font-semibold text-cyan-300 mb-2">Account number</label>
+                <input id="accountNumber" type="text" maxlength="10" inputmode="numeric" pattern="[0-9]{10}" placeholder="0123456789" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
             </div>
-            <div>
-                <label class="block text-sm font-semibold text-cyan-300 mb-2">Paystack bank code</label>
-                <input id="bankCode" type="text" placeholder="058" maxlength="20" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-cyan-300 mb-2">Account number</label>
-                <input id="accountNumber" type="text" maxlength="10" placeholder="0123456789" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-cyan-300 mb-2">Account name</label>
-                <input id="accountName" type="text" placeholder="John Doe" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
-            </div>
-            <button type="button" onclick="processWithdraw()" class="w-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-cyan-400 hover:to-emerald-400">Withdraw Now</button>
-        </form>
+
+            <button type="submit" class="w-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-cyan-400 hover:to-emerald-400">Withdraw Now</button>
+        <p class="ga-muted" role="status" aria-live="polite" data-form-status></p></form>
     </div>
 </div>
 
-{% include '_mobile_nav.html' %}
-
-<footer class="border-t border-slate-800/70 bg-slate-950/80 p-8 text-center text-sm text-slate-500" pb-28 md:pb-8>
-    <p>© 2026 GameArena. Compete. Win. Earn.</p>
-</footer>
-
-<script>
-function openAddMoneyModal() {
-  document.getElementById('addMoneyModal').classList.remove('hidden');
-  document.getElementById('addMoneyModal').classList.add('flex');
-}
-function closeAddMoneyModal() {
-  document.getElementById('addMoneyModal').classList.add('hidden');
-  document.getElementById('addMoneyModal').classList.remove('flex');
-}
-function openWithdrawModal() {
-  document.getElementById('withdrawModal').classList.remove('hidden');
-  document.getElementById('withdrawModal').classList.add('flex');
-}
-function closeWithdrawModal() {
-  document.getElementById('withdrawModal').classList.add('hidden');
-  document.getElementById('withdrawModal').classList.remove('flex');
-}
-function processDeposit() {
-  const amount = document.getElementById('depositAmount').value;
-  const csrfToken = document.querySelector('#addMoneyForm input[name="csrf_token"]').value;
-  if (!amount || parseInt(amount) < 100) {
-    alert('Minimum deposit is ₦100');
-    return;
-  }
-  fetch('/wallet/initialize-deposit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-    body: JSON.stringify({ amount: parseInt(amount) })
-  }).then(response => response.json()).then(data => {
-    if (data.status === 'success') {
-      const handler = PaystackPop.setup({
-        key: '{{ paystack_public_key }}',
-        email: '{{ current_user.email }}',
-        amount: parseInt(amount) * 100,
-        ref: data.reference,
-        callback: function(response) {
-          window.location.href = '/wallet/verify-deposit?reference=' + response.reference;
-        },
-        onClose: function() { alert('Deposit cancelled'); }
-      });
-      handler.openIframe();
-    } else {
-      alert('Failed to initialize deposit: ' + (data.message || 'Unknown error'));
-    }
-  }).catch(error => {
-    alert('Error: ' + error);
-  });
-}
-function processWithdraw() {
-  const amount = document.getElementById('withdrawAmount').value;
-  const bankName = document.getElementById('bankName').value.trim();
-  const bankCode = document.getElementById('bankCode').value.trim();
-  const accountNumber = document.getElementById('accountNumber').value.trim();
-  const csrfToken = document.querySelector('#withdrawForm input[name="csrf_token"]').value;
-  if (!amount || parseInt(amount) < 100) { alert('Minimum withdrawal is ₦100'); return; }
-  if (!bankName || !bankCode || !accountNumber) { alert('Please fill in all bank details'); return; }
-  if (accountNumber.length !== 10) { alert('Account number must be 10 digits'); return; }
-  const storedKey = sessionStorage.getItem('gamearena-withdrawal-idempotency-key');
-  const idempotencyKey = storedKey || ((window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID().replace(/-/g, '') : 'wd' + Date.now() + Math.random().toString(36).slice(2));
-  sessionStorage.setItem('gamearena-withdrawal-idempotency-key', idempotencyKey);
-  fetch('/wallet/withdraw', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-    body: JSON.stringify({ amount: parseInt(amount), bank_name: bankName, bank_code: bankCode, account_number: accountNumber, idempotency_key: idempotencyKey })
-  }).then(response => response.json()).then(data => {
-    if (data.status === 'success') { sessionStorage.removeItem('gamearena-withdrawal-idempotency-key'); alert(data.message); window.location.reload(); }
-    else { alert(data.message || 'Withdrawal failed'); }
-  }).catch(error => { alert('Error: ' + error); });
-}
-// Mobile hamburger menu toggle
-  (function () {
-    const btn = document.getElementById('mobileMenuBtn');
-    const menu = document.getElementById('mobileMenu');
-    const iconOpen = document.getElementById('menuIconOpen');
-    const iconClose = document.getElementById('menuIconClose');
-    if (btn && menu) {
-      btn.addEventListener('click', function () {
-        const isOpen = !menu.classList.contains('hidden');
-        menu.classList.toggle('hidden');
-        btn.setAttribute('aria-expanded', String(!isOpen));
-        if (iconOpen) iconOpen.classList.toggle('hidden', !isOpen);
-        if (iconClose) iconClose.classList.toggle('hidden', isOpen);
-      });
-    }
-  })();
-
-</script>
-
-{% include '_pwa_register.html' %}
-</body>
-</html>
+<script src="{{ asset_url('js/wallet.js') }}" defer></script>
+{% endblock %}

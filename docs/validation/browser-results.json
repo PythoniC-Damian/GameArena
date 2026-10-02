@@ -1,0 +1,814 @@
+{
+  "checks": [
+    {
+      "state": "guest",
+      "page": "home",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "tournaments",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "leaderboard",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "search",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "register",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "details",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "home",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "tournaments",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "leaderboard",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "search",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "register",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "details",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "home",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "tournaments",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "leaderboard",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "search",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "register",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "details",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "home",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "tournaments",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "leaderboard",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "search",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "register",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "state": "guest",
+      "page": "details",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "h1s": 1,
+      "guestBell": 0
+    },
+    {
+      "login_url": "http://127.0.0.1:5057/dashboard",
+      "login_success": true
+    },
+    {
+      "state": "authenticated",
+      "page": "profile",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "dashboard",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "wallet",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "settings",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "notifications",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "chat",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "player",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "support",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "payment",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "direct-chat",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "profile",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "dashboard",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "wallet",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "settings",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "notifications",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "chat",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "player",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "support",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "payment",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "direct-chat",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "profile",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "dashboard",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "wallet",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "settings",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "notifications",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "chat",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "player",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "support",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "payment",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "direct-chat",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "profile",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "dashboard",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "wallet",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "settings",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "notifications",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "chat",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "player",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "support",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "payment",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "state": "authenticated",
+      "page": "direct-chat",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1,
+      "bell": 1,
+      "badge": "1"
+    },
+    {
+      "menu_escape_closes": true,
+      "menu_focus_restored": true
+    },
+    {
+      "state": "admin",
+      "page": "admin",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "reports",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "create",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "edit",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "results",
+      "width": 360,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "admin",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "reports",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "create",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "edit",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "results",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "admin",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "reports",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "create",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "edit",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "results",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "admin",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "reports",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "create",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "edit",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "state": "admin",
+      "page": "results",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "headers": 1
+    }
+  ],
+  "page_errors": [],
+  "console_errors": []
+}
