@@ -1,4 +1,5 @@
 {% from '_icons.html' import icon %}
+{% include '_preloader.html' %}
 <a class="ga-skip" href="#main-content">Skip to content</a>
 <header class="ga-header" data-user-id="{{ current_user.id if current_user.is_authenticated else '' }}" data-unread-url="{{ url_for('notification_count') if current_user.is_authenticated else '' }}">
   <div class="ga-header-inner">
@@ -11,7 +12,10 @@
     <div class="ga-utilities">
       <a class="ga-icon-button" href="{{ url_for('search') }}" aria-label="Search GameArena" title="Search">{{ icon('search') }}</a>
       {% if current_user.is_authenticated %}
-      <a class="ga-icon-button ga-notifications" href="{{ url_for('notifications') }}" aria-label="Notifications{% if nav_unread_count %}, {{ nav_unread_count }} unread{% endif %}" title="Notifications">{{ icon('bell') }}<span class="ga-notification-badge" data-unread-badge {% if not nav_unread_count %}hidden{% endif %}>{{ nav_unread_count }}</span></a>
+      <details class="ga-notification-menu" data-menu data-notification-menu>
+      <summary class="ga-icon-button ga-notifications" aria-label="Notifications{% if nav_unread_count %}, {{ nav_unread_count }} unread{% endif %}" title="Notifications">{{ icon('bell') }}<span class="ga-notification-badge" data-unread-badge {% if not nav_unread_count %}hidden{% endif %}>{{ nav_unread_count }}</span></summary>
+      <section class="ga-menu ga-notification-panel" aria-label="Notification preview" data-preview-url="{{ url_for('notification_preview') }}"><div class="ga-preview-heading"><h2>Notifications</h2><button type="button" data-notifications-read-all data-url="{{ url_for('read_all_notifications') }}">Mark all read</button></div><div data-notification-preview role="status"><p class="ga-muted">Open to see recent updates.</p></div><a class="ga-button ga-button-secondary" href="{{ url_for('notifications') }}">View all notifications</a></section>
+      </details>
       <details class="ga-account ga-desktop-account" data-menu>
         <summary class="ga-icon-button" aria-label="Account menu" title="Account menu">{% if current_user.avatar_url %}<img src="{{ current_user.avatar_url }}" alt="" class="ga-avatar-small" width="32" height="32">{% else %}<span class="ga-avatar-small">{{ current_user.username[:1]|upper }}</span>{% endif %}</summary>
         <div class="ga-menu"><p class="ga-menu-identity">{{ current_user.username }}</p>{% include '_account_links.html' %}</div>

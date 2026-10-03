@@ -274,7 +274,8 @@ def test_dashboard_shows_scheduled_match_and_confirmed_stats():
 
         assert response.status_code == 200
         assert 'Matches played' in response.text
-        assert 'Wins / losses' in response.text
+        assert '<strong>1</strong><span>Wins</span>' in response.text
+        assert '<strong>0</strong><span>Losses</span>' in response.text
         assert 'Win rate' in response.text
         assert 'dashboard_opponent' in response.text
         assert 'Dashboard Tournament' in response.text

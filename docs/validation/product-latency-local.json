@@ -1,0 +1,62 @@
+{
+  "/": {
+    "http_median_ms": 242.9,
+    "app_median_ms": 232.2,
+    "db_query_median_ms": 78.2,
+    "http_samples_ms": [
+      418.8,
+      239.9,
+      242.9,
+      236.9,
+      248.8
+    ]
+  },
+  "/tournaments": {
+    "http_median_ms": 248.3,
+    "app_median_ms": 237.2,
+    "db_query_median_ms": 78.6,
+    "http_samples_ms": [
+      398.3,
+      244.6,
+      248.3,
+      256.9,
+      242.1
+    ]
+  },
+  "/leaderboard": {
+    "http_median_ms": 265.3,
+    "app_median_ms": 254.8,
+    "db_query_median_ms": 79.9,
+    "http_samples_ms": [
+      331.1,
+      246.8,
+      263.5,
+      265.3,
+      346.4
+    ]
+  },
+  "/profile": {
+    "http_median_ms": 734.6,
+    "app_median_ms": 724.4,
+    "db_query_median_ms": 308.0,
+    "http_samples_ms": [
+      968.1,
+      698.8,
+      734.6,
+      949.4,
+      728.8
+    ]
+  },
+  "/wallet": {
+    "http_median_ms": 375.9,
+    "app_median_ms": 365.2,
+    "db_query_median_ms": 118.7,
+    "http_samples_ms": [
+      375.9,
+      278.5,
+      385.4,
+      387.3,
+      287.4
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 /* Public static assets only. Never cache session-dependent pages or APIs. */
-const CACHE_NAME = 'gamearena-v4';
+const CACHE_NAME = 'gamearena-v5';
 const OFFLINE_URL = '/static/offline.html';
 const MAX_ENTRIES = 80;
 const APP_SHELL = [OFFLINE_URL, '/static/manifest.json', '/static/icons/icon-192.png', '/static/icons/icon-512.png'];
@@ -29,4 +29,24 @@ self.addEventListener('fetch', event => {
   const network = fetch(request);
   event.waitUntil(network.then(response => response.ok ? storeAsset(request, response.clone()) : undefined).catch(() => {}));
   event.respondWith(caches.match(request).then(cached => cached || network));
+});
+self.addEventListener('push', event => {
+  let data;
+  try { data = event.data.json(); } catch (_) { data = {body:'You have a new GameArena update.'}; }
+  let url = '/notifications';
+  try { const target = new URL(data.url, self.location.origin); if (target.origin === self.location.origin) url = target.pathname + target.search; } catch (_) {}
+  event.waitUntil(self.registration.showNotification(data.title || 'GameArena', {
+    body:data.body || 'You have a new update.', icon:'/static/icons/icon-192.png',
+    badge:'/static/icons/icon-192.png', tag:`gamearena-${data.id || 'update'}`, data:{url}
+  }));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || '/notifications', self.location.origin);
+  if (url.origin !== self.location.origin) return;
+  event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async clients => {
+    const client = clients.find(item => new URL(item.url).origin === self.location.origin);
+    if (client) { await client.navigate(url.href); return client.focus(); }
+    return self.clients.openWindow(url.href);
+  }));
 });

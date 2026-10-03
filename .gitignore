@@ -14,3 +14,4 @@ templates_backup_*/
 
 .env.local-postgres-backup
 .local-test/
+instance/avatars/

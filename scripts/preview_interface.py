@@ -15,8 +15,9 @@ parsed = urlparse(database)
 if parsed.scheme not in {'postgresql', 'postgres'} or parsed.hostname not in {'localhost', '127.0.0.1'} or not parsed.path.endswith('_preview'):
     raise SystemExit('Use an explicit loopback PostgreSQL database ending in _preview.')
 os.environ.update(GAMEARENA_TESTING='1', DATABASE_URL=database, GAMEARENA_SCHEMA_BOOTSTRAP='1', SECRET_KEY='isolated-ui-preview-only')
-for key in ('ADMIN_EMAIL', 'ADMIN_PASSWORD', 'PAYSTACK_SECRET_KEY', 'PAYSTACK_PUBLIC_KEY', 'RESEND_API_KEY', 'SMTP_SERVER', 'SMTP_USERNAME', 'SMTP_PASSWORD'):
-    os.environ.pop(key, None)
+for key in ('ADMIN_EMAIL', 'ADMIN_PASSWORD', 'PAYSTACK_SECRET_KEY', 'PAYSTACK_PUBLIC_KEY', 'RESEND_API_KEY', 'SMTP_SERVER', 'SMTP_USERNAME', 'SMTP_PASSWORD', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'):
+    # Empty values prevent dotenv from filling test settings with live secrets.
+    os.environ[key] = ''
 from app import app, db, socketio, User, Tournament, TournamentStat, UserTournament, TournamentMatch, Notification, GlobalChatMessage, UserSettings
 from werkzeug.security import generate_password_hash
 

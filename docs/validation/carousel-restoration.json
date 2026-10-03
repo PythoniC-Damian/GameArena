@@ -1,0 +1,35 @@
+{
+  "layouts": [
+    {
+      "width": 360,
+      "overflow": false,
+      "headers": 1,
+      "heroSlides": 5,
+      "cardSlides": 11
+    },
+    {
+      "width": 390,
+      "overflow": false,
+      "headers": 1,
+      "heroSlides": 5,
+      "cardSlides": 11
+    },
+    {
+      "width": 768,
+      "overflow": false,
+      "headers": 1,
+      "heroSlides": 5,
+      "cardSlides": 11
+    },
+    {
+      "width": 1440,
+      "overflow": false,
+      "headers": 1,
+      "heroSlides": 5,
+      "cardSlides": 11
+    }
+  ],
+  "card_rotation": true,
+  "reduced_motion": true,
+  "page_errors": []
+}

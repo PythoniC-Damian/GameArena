@@ -1,10 +1,11 @@
 {% extends '_base.html' %}
 {% block title %}GameArena | Mobile esports tournaments{% endblock %}
 {% block content %}
-<section class="ga-hero">
+<section class="ga-hero ga-hero-gallery" id="topHero">
+{% if carousel_images %}<div class="ga-hero-background" data-carousel data-interval="8000" aria-hidden="true">{% for image in carousel_images %}<img class="ga-slide{{ ' is-active' if loop.first else '' }}" {% if loop.first %}src{% else %}data-src{% endif %}="{{ image }}" {% if loop.first %}srcset{% else %}data-srcset{% endif %}="{{ image|replace('-1440.webp','-480.webp') }} 480w, {{ image|replace('-1440.webp','-960.webp') }} 960w, {{ image }} 1440w" sizes="(max-width:767px) calc(100vw - 32px), 1150px" alt="" decoding="async" {% if loop.first %}fetchpriority="high"{% endif %}>{% endfor %}</div>{% endif %}
 <div><p class="ga-eyebrow">Your next match starts here</p><h1>Find your game.<br><span class="text-emerald-300">Enter the arena.</span></h1><p>Join mobile esports tournaments, connect with players, and follow every match from entry to results.</p>
 <div class="ga-hero-actions"><a class="ga-button ga-button-primary" href="{{ url_for('tournaments_page') }}">Explore tournaments</a><a class="ga-button ga-button-secondary" href="{{ url_for('dashboard') if current_user.is_authenticated else url_for('register') }}">{{ 'My dashboard' if current_user.is_authenticated else 'Create account' }}</a></div></div>
-{% if tournaments %}{% set hero = tournaments[0] %}<a href="{{ url_for('tournament_details', tournament_id=hero.id) }}" aria-label="View {{ hero.name }}"><img src="{{ tournament_image(hero.game) }}" srcset="{{ tournament_image_small(hero.game) }} 480w, {{ tournament_image(hero.game) }} 960w, {{ tournament_image_large(hero.game) }} 1440w" sizes="(max-width:767px) 90vw, 520px" width="960" height="720" fetchpriority="high" alt="{{ hero.game }}"></a>{% else %}<img src="{{ asset_url('images/gaming-fallback.svg') }}" width="960" height="540" alt="GameArena">{% endif %}
+<button type="button" class="ga-icon-button ga-hero-pause" data-pause aria-label="Pause image carousels" aria-pressed="false">Ⅱ</button>
 </section>
 <section aria-labelledby="events-title"><div class="ga-page-heading"><div><p class="ga-eyebrow">Discover your next competition</p><h2 class="ga-section-title" id="events-title">Upcoming & active tournaments</h2></div><a class="ga-button ga-button-secondary" href="{{ url_for('tournaments_page') }}">All tournaments</a></div>
 <div class="ga-grid">{% for tournament in tournaments %}{% include '_tournament_card.html' %}{% else %}<p class="ga-empty">New tournaments will appear here when registration opens.</p>{% endfor %}</div></section>

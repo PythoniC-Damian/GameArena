@@ -19,6 +19,7 @@ MIGRATIONS = (
     ('20260919_query_performance_indexes',),
     ('20260920_wallet_withdrawal_transfer_state',),
     ('20261001_product_features',),
+    ('20261003_chat_replies_and_web_push',),
 )
 
 # These are deliberately additive. PostgreSQL's IF NOT EXISTS keeps deployment
@@ -195,6 +196,25 @@ def has_registration_constraint(connection):
     return False
 
 
+def ensure_chat_replies_and_push(connection):
+    for table in ('global_chat_message', 'direct_message'):
+        connection.execute(text(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS reply_to_id INTEGER REFERENCES {table}(id) ON DELETE SET NULL'))
+        connection.execute(text(f'CREATE INDEX IF NOT EXISTS ix_{table}_reply_to ON {table}(reply_to_id)'))
+    connection.execute(text('CREATE TABLE IF NOT EXISTS push_subscription ('
+        'id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES "user"(id), '
+        'endpoint_hash VARCHAR(64) NOT NULL UNIQUE, subscription JSON NOT NULL, '
+        'created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)'))
+    connection.execute(text('CREATE INDEX IF NOT EXISTS ix_push_subscription_user_id ON push_subscription(user_id)'))
+    # Supabase exposes public-schema tables through its API. These credentials
+    # are server-only; no browser role should be able to read subscriptions.
+    connection.execute(text('ALTER TABLE push_subscription ENABLE ROW LEVEL SECURITY'))
+    connection.execute(text('REVOKE ALL ON push_subscription FROM PUBLIC'))
+    connection.execute(text("DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN REVOKE ALL ON push_subscription FROM anon; END IF; "
+        "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN REVOKE ALL ON push_subscription FROM authenticated; END IF; "
+        "END $$"))
+
+
 def ensure_migration_table(connection):
     connection.execute(text(
         'CREATE TABLE IF NOT EXISTS schema_migration ('
@@ -271,6 +291,9 @@ def migrate(url=None):
         if '20261001_product_features' not in completed:
             ensure_product_features(connection)
             mark_migration_applied(connection, '20261001_product_features')
+        if '20261003_chat_replies_and_web_push' not in completed:
+            ensure_chat_replies_and_push(connection)
+            mark_migration_applied(connection, '20261003_chat_replies_and_web_push')
 
         # Keep this list near the migration declarations so a future migration
         # cannot silently be added without an implementation branch above.
@@ -280,6 +303,7 @@ def migrate(url=None):
             '20260919_query_performance_indexes',
             '20260920_wallet_withdrawal_transfer_state',
             '20261001_product_features',
+            '20261003_chat_replies_and_web_push',
         }
         if unknown:
             raise RuntimeError(f'Migration declarations without implementation: {sorted(unknown)}')

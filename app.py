@@ -9,14 +9,15 @@ import time
 from functools import lru_cache
 import urllib.parse
 from collections import defaultdict, deque
-from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify, session, g
+from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify, session, g, send_from_directory, has_request_context
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from sqlalchemy.pool import NullPool
-from sqlalchemy import or_
+from sqlalchemy import or_, event as sqlalchemy_event
+from sqlalchemy.engine import Engine
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import selectinload, joinedload
 
@@ -29,6 +30,8 @@ import random
 import smtplib
 import socket
 import ssl
+from user_media import store_avatar
+from web_push import push_configured, valid_subscription, deliver_push
 try:
     import requests
     REQUESTS_AVAILABLE = True 
@@ -82,6 +85,9 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "frame-src https://checkout.paystack.com",
     "font-src 'self' data:",
 ])
+supabase_media_origin = urlparse(os.environ.get('SUPABASE_URL', ''))
+if supabase_media_origin.scheme == 'https' and supabase_media_origin.hostname:
+    CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace('img-src \'self\' data:', f"img-src 'self' data: https://{supabase_media_origin.hostname}")
 SENSITIVE_CACHE_PATHS = (
     '/dashboard',
     '/wallet',
@@ -131,7 +137,9 @@ def add_response_security_headers(response):
     if is_production and (request.is_secure or forwarded_proto == 'https'):
         response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000')
 
-    if request.endpoint == 'static':
+    if request.endpoint == 'avatar_file':
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    elif request.endpoint == 'static':
         # The worker and manifest must be revalidated so PWA updates reach
         # clients promptly. Other static files are safe for a bounded shared
         # browser/CDN cache, but not immutable because URLs are unversioned.
@@ -159,6 +167,7 @@ def add_response_security_headers(response):
 def begin_request_timing():
     """Capture a request duration without recording query strings or request bodies."""
     g.request_started_at = time.perf_counter()
+    g.db_time_ms = 0
     g.request_id = request.headers.get('X-Request-ID', '').strip()[:64] or secrets.token_hex(8)
 
 
@@ -173,6 +182,8 @@ def log_completed_request(response):
             getattr(g, 'request_id', '-'), request.method, request.path, response.status_code, duration_ms,
         )
     response.headers.setdefault('X-Request-ID', getattr(g, 'request_id', secrets.token_hex(8)))
+    if started_at is not None:
+        response.headers['Server-Timing'] = f'app;dur={(time.perf_counter() - started_at) * 1000:.1f}, db;dur={getattr(g, "db_time_ms", 0):.1f}'
     return response
 
 
@@ -306,6 +317,21 @@ def active_participant_count(tournament):
     )
 
 db = SQLAlchemy(app)
+
+
+@sqlalchemy_event.listens_for(Engine, 'before_cursor_execute')
+def start_query_timing(connection, cursor, statement, parameters, context, executemany):
+    if has_request_context():
+        context.gamearena_query_start = time.perf_counter()
+
+
+@sqlalchemy_event.listens_for(Engine, 'after_cursor_execute')
+def finish_query_timing(connection, cursor, statement, parameters, context, executemany):
+    started = getattr(context, 'gamearena_query_start', None)
+    if started is not None and has_request_context():
+        g.db_time_ms = getattr(g, 'db_time_ms', 0) + (time.perf_counter() - started) * 1000
+
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 
@@ -376,6 +402,11 @@ def create_and_emit_notification(user_id: int, message: str, category='system', 
         },
         room=f'user:{int(user_id)}'
     )
+    if push_configured():
+        subscriptions = [record.subscription for record in PushSubscription.query.filter_by(user_id=int(user_id)).all()]
+        if subscriptions:
+            socketio.start_background_task(deliver_push, subscriptions,
+                {'title':'GameArena', 'body':message, 'url':target_url or '/notifications', 'id':notif.id}, app.logger)
 
 login_manager.login_view = "login"
 csrf = CSRFProtect(app)
@@ -481,6 +512,12 @@ HERO_IMAGE_FILENAMES = [
 ]
 
 
+@lru_cache(maxsize=1)
+def hero_image_catalog():
+    return tuple(f'images/{entry.name}' for entry in os.scandir(os.path.join(app.static_folder, 'images'))
+        if entry.is_file() and os.path.splitext(entry.name)[1].lower() in {'.png','.jpg','.jpeg','.webp'})
+
+
 @app.context_processor
 def utility_processor():
     def normalize_game_key(game_name):
@@ -530,14 +567,13 @@ def utility_processor():
         return [fallback]
 
     def carousel_images():
-        # These existing, smaller files are intentionally curated for the
-        # above-the-fold hero. Do not enumerate the directory here: that had
-        # selected multi-megabyte originals before optimized WebP/JPEG assets.
-        return [
-            url_for('static', filename=filename)
-            for filename in HERO_IMAGE_FILENAMES
-            if os.path.isfile(os.path.join(app.root_path, 'static', filename))
-        ]
+        # Use every game image, randomized per request; serve optimized variants.
+        filenames = sorted({filename for images in GAME_IMAGE_CAROUSEL_MAP.values() for filename in images})
+        filenames += [filename for filename in HERO_IMAGE_FILENAMES if filename not in filenames]
+        filenames += [filename for filename in hero_image_catalog() if filename not in filenames]
+        random.shuffle(filenames)
+        return [asset_url(optimized_image(filename, 1440)) for filename in filenames
+            if os.path.isfile(os.path.join(app.static_folder, filename))]
 
     return dict(
         tournament_image=tournament_image,
@@ -1213,6 +1249,8 @@ class GlobalChatMessage(db.Model):
     created_at = db.Column(db.DateTime, default=db.func.now())
 
     user = db.relationship('User')
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('global_chat_message.id', ondelete='SET NULL'), nullable=True)
+    reply_to = db.relationship('GlobalChatMessage', remote_side=[id], lazy='joined', join_depth=1)
 
     __table_args__ = (
         db.Index('ix_global_chat_message_created_at', 'created_at'),
@@ -1229,11 +1267,21 @@ class DirectMessage(db.Model):
     read_at = db.Column(db.DateTime, nullable=True)
     sender = db.relationship('User', foreign_keys=[sender_id])
     recipient = db.relationship('User', foreign_keys=[recipient_id])
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('direct_message.id', ondelete='SET NULL'), nullable=True)
+    reply_to = db.relationship('DirectMessage', remote_side=[id], lazy='joined', join_depth=1)
 
     __table_args__ = (
         db.Index('ix_direct_message_pair_created', 'sender_id', 'recipient_id', 'created_at'),
         db.Index('ix_direct_message_recipient_read', 'recipient_id', 'read_at'),
     )
+
+
+class PushSubscription(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    endpoint_hash = db.Column(db.String(64), nullable=False, unique=True)
+    subscription = db.Column(db.JSON, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
 
 
 class UserBlock(db.Model):
@@ -1301,7 +1349,7 @@ def can_direct_message(sender, recipient):
         return False
     if sender.suspended or recipient.suspended or users_have_block(sender.id, recipient.id):
         return False
-    recipient_settings = UserSettings.query.filter_by(user_id=recipient.id).first()
+    recipient_settings = recipient.settings
     return recipient_settings is None or recipient_settings.allow_direct_messages
 
 
@@ -1575,7 +1623,7 @@ def submit_match_result(match, user, room_code, room_password, player_profile_id
 @login_manager.user_loader
 def load_user(user_id):
     try:
-        return User.query.get(int(user_id))
+        return User.query.options(joinedload(User.settings)).filter_by(id=int(user_id)).first()
     except Exception as exc:
         app.logger.warning(f"Unable to load user {user_id}: {exc}")
         return None
@@ -1918,13 +1966,13 @@ def chat_history():
                 db.and_(DirectMessage.sender_id == partner_id, DirectMessage.recipient_id == current_user.id)),
         ).order_by(DirectMessage.id).limit(51).all()
         data = [{'id': row.id, 'sender_id': row.sender_id, 'username': row.sender.username if row.sender else 'Player',
-            'message': row.message, 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
+            'message': row.message, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
     else:
         rows = GlobalChatMessage.query.options(joinedload(GlobalChatMessage.user)).filter(
             GlobalChatMessage.id > after,
         ).order_by(GlobalChatMessage.id).limit(51).all()
         data = [{'id': row.id, 'user_id': row.user_id, 'username': row.user.username if row.user else 'Player',
-            'message': row.message, 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
+            'message': row.message, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
     return jsonify({'messages': data, 'has_more': len(rows) > 50})
 
 
@@ -2055,7 +2103,7 @@ def settings():
         if len(bio) > 500 or len(avatar_url) > 500:
             flash('Profile information is too long.', 'error')
             return redirect(url_for('settings'))
-        if avatar_url:
+        if avatar_url and avatar_url != current_user.avatar_url:
             avatar_parts = urlparse(avatar_url)
             local_avatar = avatar_url.startswith('/static/') and '..' not in avatar_parts.path.split('/')
             hosted_avatar = (
@@ -2080,6 +2128,12 @@ def settings():
         preferences.allow_direct_messages = request.form.get('allow_direct_messages') == 'on'
         preferences.reduce_motion = request.form.get('reduce_motion') == 'on'
         preferences.larger_text = request.form.get('larger_text') == 'on'
+        theme = request.form.get('theme', preferences.theme)
+        if theme not in {'dark', 'light'}:
+            db.session.rollback()
+            flash('Choose Dark or Light for your theme.', 'error')
+            return redirect(url_for('settings'))
+        preferences.theme = theme
         preferred_games = [
             game.strip()[:100] for game in request.form.getlist('preferred_games')
             if game.strip() and len(game) <= 100
@@ -2128,6 +2182,68 @@ def search():
     )
 
 
+@app.route('/profile/photo', methods=['POST'])
+@login_required
+def upload_profile_photo():
+    upload = request.files.get('avatar')
+    if not upload or not upload.filename:
+        flash('Choose a profile photo first.', 'error')
+    else:
+        try:
+            photo_url = store_avatar(upload, app)
+            current_user.avatar_url = photo_url
+            db.session.commit()
+            flash('Your profile photo was updated.', 'success')
+        except ValueError as error:
+            flash(str(error), 'error')
+    return redirect(url_for('profile'))
+
+
+@app.route('/media/avatars/<filename>')
+def avatar_file(filename):
+    if not re.fullmatch(r'[a-f0-9]{32}\.webp', filename):
+        abort(404)
+    folder = os.environ.get('AVATAR_UPLOAD_DIR') or os.path.join(app.instance_path, 'avatars')
+    return send_from_directory(folder, filename, mimetype='image/webp', max_age=31536000)
+
+
+@app.route('/notifications/preview')
+@login_required
+def notification_preview():
+    records = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc(), Notification.id.desc()).limit(6).all()
+    return jsonify({'unread':get_unread_notification_count(current_user.id), 'notifications':[
+        {'id':item.id, 'message':item.message, 'category':item.category, 'target_url':item.target_url,
+         'unread':item.read_at is None, 'created_at':item.created_at.isoformat() if item.created_at else None,
+         'read_url':url_for('mark_notification_read', notification_id=item.id)} for item in records]})
+
+
+@app.route('/notifications/push', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def push_subscription():
+    if request.method == 'GET':
+        return jsonify({'configured':push_configured(), 'public_key':os.environ.get('VAPID_PUBLIC_KEY', '') if push_configured() else ''})
+    data = request.get_json(silent=True) or {}
+    value = data.get('subscription')
+    if not valid_subscription(value):
+        return jsonify({'error':'This browser notification subscription is invalid.'}), 400
+    digest = hashlib.sha256(value['endpoint'].encode()).hexdigest()
+    if request.method == 'DELETE':
+        PushSubscription.query.filter_by(user_id=current_user.id, endpoint_hash=digest).delete()
+        db.session.commit(); session.pop('push_endpoint_hash', None)
+        return jsonify({'status':'removed'})
+    if not push_configured():
+        return jsonify({'error':'Phone notifications are not configured yet.'}), 503
+    existing = PushSubscription.query.filter_by(endpoint_hash=digest).first()
+    if existing and existing.user_id != current_user.id:
+        return jsonify({'error':'Sign out of the previous account on this browser first.'}), 409
+    if existing:
+        existing.subscription = value
+    else:
+        db.session.add(PushSubscription(user_id=current_user.id, endpoint_hash=digest, subscription=value))
+    db.session.commit(); session['push_endpoint_hash'] = digest
+    return jsonify({'status':'saved'})
+
+
 @app.route('/users/<int:user_id>/block', methods=['POST'])
 @login_required
 def block_user(user_id):
@@ -2146,6 +2262,21 @@ def block_user(user_id):
 def unblock_user(user_id):
     UserBlock.query.filter_by(blocker_id=current_user.id, blocked_id=user_id).delete()
     db.session.commit()
+    target = db.session.get(User, user_id)
+    if target:
+        remaining_block = users_have_block(current_user.id, target.id)
+        settings = target.settings
+        own_settings = current_user.settings
+        if remaining_block:
+            flash(f'You unblocked {target.username}. They still have you blocked.', 'success')
+        elif own_settings and not own_settings.allow_direct_messages:
+            flash(f'You unblocked {target.username}. Enable Allow direct messages in Settings to receive messages.', 'success')
+        elif settings and not settings.allow_direct_messages:
+            flash(f'You unblocked {target.username}. Their direct messages are disabled.', 'success')
+        else:
+            flash(f'{target.username} is unblocked. You can message each other again.', 'success')
+        for owner_id, partner_id in [(current_user.id, target.id), (target.id, current_user.id)]:
+            socketio.emit('conversation_access_changed', {'partner_id':partner_id}, room=f'user:{owner_id}')
     return redirect(safe_next_url(request.referrer) or url_for('settings'))
 
 
@@ -2250,6 +2381,13 @@ def direct_message_room_key(user_one_id, user_two_id):
     return f'direct:{lower_id}:{higher_id}'
 
 
+def quoted_message(parent):
+    if not parent:
+        return None
+    owner = parent.sender if isinstance(parent, DirectMessage) else parent.user
+    return {'id':parent.id, 'username':owner.username if owner else 'Player', 'message':parent.message[:200]}
+
+
 @app.route('/messages/<int:user_id>')
 @login_required
 def direct_message(user_id):
@@ -2281,6 +2419,19 @@ def direct_message(user_id):
             recipient_id=current_user.id, read_at=None,
         ).count(),
     )
+
+
+@app.route('/messages/<int:user_id>/read', methods=['POST'])
+@login_required
+def read_direct_messages(user_id):
+    partner = db.session.get(User, user_id)
+    if not can_direct_message(current_user, partner):
+        return jsonify({'error':'Conversation unavailable.'}), 403
+    DirectMessage.query.filter_by(sender_id=user_id, recipient_id=current_user.id, read_at=None).update({'read_at':datetime.utcnow()}, synchronize_session=False)
+    db.session.commit()
+    unread = DirectMessage.query.filter_by(recipient_id=current_user.id, read_at=None).count()
+    socketio.emit('unread_count', {'unread':unread}, room=f'user:{current_user.id}')
+    return jsonify({'unread':unread})
 
 
 # -------------------------
@@ -2745,6 +2896,8 @@ def notification_count():
 def read_all_notifications():
     unread = mark_notifications_read_for_user(current_user.id)
     socketio.emit('notification_unread_count', {'unread': unread}, room=f'user:{current_user.id}')
+    if request.accept_mimetypes.best == 'application/json':
+        return jsonify({'unread':unread})
     flash('All notifications marked as read.', 'success')
     return redirect(url_for('notifications'))
 
@@ -2769,6 +2922,8 @@ def mark_notification_read(notification_id):
         notification.read_at = datetime.utcnow()
         db.session.commit()
     socketio.emit('notification_unread_count', {'unread': get_unread_notification_count(current_user.id)}, room=f'user:{current_user.id}')
+    if request.accept_mimetypes.best == 'application/json':
+        return jsonify({'unread':get_unread_notification_count(current_user.id)})
     return redirect(safe_next_url(request.form.get('next')) or url_for('notifications'))
 
 
@@ -4138,6 +4293,10 @@ def wallet_withdraw():
 @app.route("/logout", methods=['GET', 'POST'])
 @login_required
 def logout():
+    digest = session.pop('push_endpoint_hash', None)
+    if digest and current_user.is_authenticated:
+        PushSubscription.query.filter_by(user_id=current_user.id, endpoint_hash=digest).delete()
+        db.session.commit()
     logout_user()
     return redirect(url_for("home"))
 
@@ -4193,6 +4352,7 @@ def on_connect():
     # mutation event already authorizes its own resource access as well.
     if not current_user.is_authenticated or current_user.suspended:
         return False
+    join_room(f'user:{current_user.id}')
 
 
 @socketio.on('join_user')
@@ -4244,7 +4404,11 @@ def on_send_global_chat_message(data):
     if len(message) > MAX_CHAT_MESSAGE_LENGTH:
         return
 
-    new_message = GlobalChatMessage(user_id=current_user.id, message=message)
+    reply_id = (data or {}).get('reply_to_id')
+    parent = db.session.get(GlobalChatMessage, reply_id) if isinstance(reply_id, int) and reply_id > 0 else None
+    if reply_id is not None and not parent:
+        return {'status':'error', 'message':'The message you are replying to is unavailable.'}
+    new_message = GlobalChatMessage(user_id=current_user.id, message=message, reply_to_id=parent.id if parent else None)
     db.session.add(new_message)
     db.session.commit()
 
@@ -4254,6 +4418,7 @@ def on_send_global_chat_message(data):
         'username': current_user.username,
         'message': message,
         'created_at': new_message.created_at.isoformat() if new_message.created_at else None,
+        'reply': quoted_message(parent),
     }, room='global_chat')
     return {'status': 'success', 'id': new_message.id}
 
@@ -4288,36 +4453,46 @@ def on_send_direct_message(data):
         recipient_id = int((data or {}).get('user_id'))
     except (TypeError, ValueError):
         return
-    recipient = db.session.get(User, recipient_id)
+    recipient = db.session.get(User, recipient_id, options=[joinedload(User.settings)])
     message = ((data or {}).get('message') or '').strip()
     if not message or len(message) > MAX_CHAT_MESSAGE_LENGTH:
         return emit('socket_error', {'message': 'Message must be 1,000 characters or fewer.'})
     if not can_direct_message(current_user, recipient):
-        return emit('socket_error', {'message': 'This conversation is unavailable.'})
+        emit('socket_error', {'message': 'This conversation is unavailable. Check blocking and direct-message settings.'})
+        return {'status':'error', 'message':'This conversation is unavailable. Check blocking and direct-message settings.'}
 
-    stored_message = DirectMessage(
-        sender_id=current_user.id, recipient_id=recipient.id, message=message,
-    )
+    reply_id = (data or {}).get('reply_to_id')
+    parent = db.session.get(DirectMessage, reply_id) if isinstance(reply_id, int) and reply_id > 0 else None
+    if reply_id is not None and (not parent or {parent.sender_id, parent.recipient_id} != {current_user.id, recipient.id}):
+        return {'status':'error', 'message':'Choose a message from this conversation to reply to.'}
+
+    sender_id, sender_name = current_user.id, current_user.username
+    recipient_id = recipient.id
+    reply = quoted_message(parent)
+    created_at = datetime.utcnow()
+    stored_message = DirectMessage(sender_id=sender_id, recipient_id=recipient_id,
+        message=message, reply_to_id=parent.id if parent else None, created_at=created_at)
     db.session.add(stored_message)
+    db.session.flush()
+    message_id = stored_message.id
     db.session.commit()
-    create_and_emit_notification(
-        recipient.id, f'{current_user.username} sent you a message.', 'chat',
-        f'/messages/{current_user.id}',
-    )
     payload = {
-        'id': stored_message.id,
-        'sender_id': current_user.id,
-        'username': current_user.username,
-        'message': stored_message.message,
-        'created_at': stored_message.created_at.isoformat() if stored_message.created_at else None,
+        'id': message_id, 'sender_id':sender_id, 'recipient_id':recipient_id,
+        'username':sender_name, 'message':message, 'created_at':created_at.isoformat() + 'Z', 'reply':reply,
     }
     socketio.emit(
         'new_direct_message', payload,
-        room=direct_message_room_key(current_user.id, recipient.id),
+        room=f'user:{recipient_id}',
     )
-    unread_count = DirectMessage.query.filter_by(recipient_id=recipient.id, read_at=None).count()
-    socketio.emit('unread_count', {'unread': unread_count}, room=f'user:{recipient.id}')
-    return {'status': 'success', 'id': stored_message.id}
+    socketio.emit('new_direct_message', payload, room=f'user:{sender_id}')
+    try:
+        create_and_emit_notification(recipient_id, f'{sender_name} sent you a message.', 'chat', f'/messages/{sender_id}')
+    except Exception as error:
+        db.session.rollback()
+        app.logger.warning('Chat notification creation failed (%s); message is already saved.', type(error).__name__)
+    unread_count = DirectMessage.query.filter_by(recipient_id=recipient_id, read_at=None).count()
+    socketio.emit('unread_count', {'unread': unread_count}, room=f'user:{recipient_id}')
+    return {'status': 'success', 'id': message_id}
 
 
 @socketio.on('mark_notification_read')

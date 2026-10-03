@@ -22,13 +22,14 @@
             <div class="mt-5 grid gap-4 sm:grid-cols-2">
                 <label class="text-sm text-slate-300">Username<input name="username" maxlength="150" required value="{{ current_user.username }}" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"></label>
                 <label class="text-sm text-slate-300">Email<input readonly value="{{ current_user.email }}" class="mt-2 w-full rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-slate-400"><span class="mt-1 block text-xs">{{ 'Verified' if current_user.email_verified else 'Not verified' }}</span></label>
-                <label class="text-sm text-slate-300 sm:col-span-2">Avatar URL<input name="avatar_url" maxlength="500" value="{{ current_user.avatar_url or '' }}" placeholder="/static/… or an Unsplash image URL" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"></label>
+                <div class="sm:col-span-2"><input type="hidden" name="avatar_url" value="{{ current_user.avatar_url or '' }}"><a class="ga-button ga-button-secondary" href="{{ url_for('profile') }}#profile-photo">Upload a profile photo</a></div>
                 <label class="text-sm text-slate-300 sm:col-span-2">Profile bio<textarea name="bio" maxlength="500" rows="3" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white">{{ current_user.bio or '' }}</textarea></label>
             </div>
 
         </section>
         <section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
             <h2 class="text-xl font-semibold">Notifications</h2>
+            <div class="ga-push-settings"><p class="ga-muted">Phone notifications can alert you even when GameArena is closed.</p><button type="button" class="ga-button ga-button-secondary" data-enable-push>Enable on this device</button><button type="button" class="ga-button ga-button-secondary" data-disable-push hidden>Disable on this device</button><p data-push-status class="ga-muted" role="status">Checking device notifications…</p></div>
             <div class="mt-4 grid gap-3 sm:grid-cols-2">
                 {% for field, label in [('tournament_notifications','Tournament updates'),('match_notifications','Match updates'),('wallet_notifications','Wallet and payment updates'),('chat_notifications','Chat updates'),('marketing_notifications','General and promotional updates')] %}
                 <label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm text-slate-200"><input type="checkbox" name="{{ field }}" {% if preferences|attr(field) %}checked{% endif %} class="h-4 w-4 accent-emerald-500">{{ label }}</label>
@@ -58,7 +59,7 @@
         </section>
         <section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
             <h2 class="text-xl font-semibold">Appearance & accessibility</h2>
-            <p class="mt-1 text-sm text-slate-400">GameArena currently uses its dark theme.</p>
+            <p class="mt-1 text-sm text-slate-400">Choose the look that feels right for you.</p><fieldset class="ga-theme-options"><legend>Theme</legend>{% for value, label in [('dark','Dark'),('light','Light')] %}<label class="ga-theme-choice ga-theme-{{ value }}"><input type="radio" name="theme" value="{{ value }}" {% if preferences.theme == value %}checked{% endif %}><span class="ga-theme-swatch"></span><strong>{{ label }}</strong></label>{% endfor %}</fieldset>
             <div class="mt-4 grid gap-3 sm:grid-cols-2">
                 <label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm"><input type="checkbox" name="reduce_motion" {% if preferences.reduce_motion %}checked{% endif %} class="h-4 w-4 accent-emerald-500">Reduce motion</label>
                 <label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm"><input type="checkbox" name="larger_text" {% if preferences.larger_text %}checked{% endif %} class="h-4 w-4 accent-emerald-500">Larger text</label>

@@ -1,0 +1,338 @@
+[
+  {
+    "route": "/",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/profile",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/settings",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/wallet",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/chat",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/leaderboard",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/profile",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/settings",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/wallet",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/chat",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/leaderboard",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/profile",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/settings",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/wallet",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/chat",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/leaderboard",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/profile",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/settings",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/wallet",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/chat",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/leaderboard",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "light"
+  },
+  {
+    "route": "/",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/profile",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/settings",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/wallet",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/chat",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/leaderboard",
+    "width": 360,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/profile",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/settings",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/wallet",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/chat",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/leaderboard",
+    "width": 390,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/profile",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/settings",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/wallet",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/chat",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/leaderboard",
+    "width": 768,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/profile",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/settings",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/wallet",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/chat",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  },
+  {
+    "route": "/leaderboard",
+    "width": 1440,
+    "overflow": false,
+    "headers": 1,
+    "theme": "dark"
+  }
+]
