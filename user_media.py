@@ -7,7 +7,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 import requests
 
 
-def store_avatar(upload, app):
+def store_avatar(upload, app, persist=None):
     data = upload.stream.read(4 * 1024 * 1024 + 1)
     if not data or len(data) > 4 * 1024 * 1024:
         raise ValueError('Choose a photo smaller than 4 MB.')
@@ -41,7 +41,9 @@ def store_avatar(upload, app):
         return f'{supabase_url}/storage/v1/object/public/{bucket}/{filename}'
     folder = os.environ.get('AVATAR_UPLOAD_DIR')
     if not folder and (os.environ.get('RENDER') or os.environ.get('FLASK_ENV') == 'production'):
-        raise ValueError('Profile photo storage is being set up. Please try again later.')
+        if persist:
+            return persist(filename, output.getvalue())
+        raise ValueError('Persistent photo storage is not available.')
     destination = Path(folder or Path(app.instance_path) / 'avatars')
     try:
         destination.mkdir(parents=True, exist_ok=True)

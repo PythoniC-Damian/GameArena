@@ -20,6 +20,7 @@ MIGRATIONS = (
     ('20260920_wallet_withdrawal_transfer_state',),
     ('20261001_product_features',),
     ('20261003_chat_replies_and_web_push',),
+    ('20261004_chat_delivery_and_profile_photos',),
 )
 
 # These are deliberately additive. PostgreSQL's IF NOT EXISTS keeps deployment
@@ -215,6 +216,17 @@ def ensure_chat_replies_and_push(connection):
         "END $$"))
 
 
+def ensure_chat_delivery_and_photos(connection):
+    for table in ('direct_message', 'global_chat_message'):
+        connection.execute(text(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS client_message_id VARCHAR(36)'))
+        connection.execute(text(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP'))
+        connection.execute(text(f'CREATE UNIQUE INDEX IF NOT EXISTS ix_{table}_client_message_id ON {table}(client_message_id)'))
+    connection.execute(text('CREATE TABLE IF NOT EXISTS profile_photo (id VARCHAR(32) PRIMARY KEY, user_id INTEGER NOT NULL UNIQUE REFERENCES "user"(id), image BYTEA NOT NULL)'))
+    connection.execute(text('ALTER TABLE profile_photo ENABLE ROW LEVEL SECURITY'))
+    connection.execute(text('REVOKE ALL ON profile_photo FROM PUBLIC'))
+    connection.execute(text("DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN REVOKE ALL ON profile_photo FROM anon; END IF; IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN REVOKE ALL ON profile_photo FROM authenticated; END IF; END $$"))
+
+
 def ensure_migration_table(connection):
     connection.execute(text(
         'CREATE TABLE IF NOT EXISTS schema_migration ('
@@ -295,6 +307,10 @@ def migrate(url=None):
             ensure_chat_replies_and_push(connection)
             mark_migration_applied(connection, '20261003_chat_replies_and_web_push')
 
+        if '20261004_chat_delivery_and_profile_photos' not in completed:
+            ensure_chat_delivery_and_photos(connection)
+            mark_migration_applied(connection, '20261004_chat_delivery_and_profile_photos')
+
         # Keep this list near the migration declarations so a future migration
         # cannot silently be added without an implementation branch above.
         unknown = {migration[0] for migration in MIGRATIONS} - {
@@ -304,6 +320,7 @@ def migrate(url=None):
             '20260920_wallet_withdrawal_transfer_state',
             '20261001_product_features',
             '20261003_chat_replies_and_web_push',
+            '20261004_chat_delivery_and_profile_photos',
         }
         if unknown:
             raise RuntimeError(f'Migration declarations without implementation: {sorted(unknown)}')

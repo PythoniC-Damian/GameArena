@@ -7,7 +7,9 @@
     status.textContent = 'Loading supported banks…'; retry.hidden = true;
     bankSelect.disabled = true;
     try {
-      const response = await fetch(bankSelect.dataset.url, {signal: AbortSignal.timeout(30000)});
+      const response = await fetch(bankSelect.dataset.url, {headers:{Accept:'application/json'},cache:'no-store',signal: AbortSignal.timeout(30000)});
+      if (response.redirected || response.status === 401) throw new Error('Your session has expired. Log in again to load banks.');
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('The bank service is temporarily unavailable. Please try again.');
       const data = await response.json();
       if (!response.ok || !data.banks?.length) throw new Error(data.message || 'No banks are available. Please try again.');
       bankSelect.replaceChildren(new Option('Choose your bank', ''));
@@ -65,7 +67,8 @@
       form.dataset.busy = 'true'; button.disabled = true; button.setAttribute('aria-busy', 'true');
       status.textContent = withdrawal ? 'Submitting withdrawal…' : 'Opening secure checkout…';
       try {
-        const response = await fetch(form.dataset.url, { method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': form.csrf_token.value}, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+        const response = await fetch(form.dataset.url, { method: 'POST', headers: {'Accept':'application/json', 'Content-Type': 'application/json', 'X-CSRFToken': form.csrf_token.value}, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+        if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('The service is unavailable. Check your session and transaction history before retrying.');
         const data = await response.json();
         if (withdrawal && data.withdrawal_status === 'failed') sessionStorage.removeItem('gamearena-withdrawal-idempotency-key');
         if (!response.ok || data.status !== 'success') throw new Error(data.message || 'Unable to complete this request.');

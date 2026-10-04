@@ -96,7 +96,8 @@ class NotificationFlowTests(unittest.TestCase):
         self.assertNotIn('Verification code is', ' '.join(messages))
 
     def test_resend_email_provider_request_and_success_logging(self):
-        response = MagicMock(status=202)
+        response = MagicMock(status=200)
+        response.read.return_value = b'{"id":"email-test-id"}'
         response.getheader.return_value = 'req_test_123'
         with patch.dict(os.environ, {'RESEND_API_KEY': 'test-api-key', 'EMAIL_FROM': 'noreply@example.com'}, clear=True):
             with patch('app.http.client.HTTPSConnection') as https_connection:
@@ -127,6 +128,7 @@ class NotificationFlowTests(unittest.TestCase):
     def test_email_provider_rejection_and_timeout_fail_safely(self):
         secret = 'test-api-key-must-not-be-logged'
         response = MagicMock(status=401)
+        response.read.return_value = b'{"message":"Unauthorized"}'
         response.getheader.return_value = 'req_rejected'
         with patch.dict(os.environ, {'RESEND_API_KEY': secret}, clear=True):
             with patch('app.http.client.HTTPSConnection') as https_connection:
@@ -149,7 +151,7 @@ class NotificationFlowTests(unittest.TestCase):
             str(call)
             for call in warning.call_args_list + timeout_warning.call_args_list
         )
-        self.assertIn('provider_rejected', messages)
+        self.assertIn('invalid_api_key', messages)
         self.assertIn('timeout', messages)
         self.assertNotIn(secret, messages)
         self.assertNotIn('123456', messages)

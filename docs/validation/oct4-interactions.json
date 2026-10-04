@@ -1,0 +1,12 @@
+{
+  "layouts": [],
+  "errors": [],
+  "typing": true,
+  "live_delivery_ms": 1564.8,
+  "confirmation": true,
+  "swipe_reply": true,
+  "live_deletion": true,
+  "long_press": true,
+  "http_recovery": true,
+  "bank_retry": true
+}

@@ -27,7 +27,7 @@
                     <div class="space-y-4">
                         <p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Secure registration</p>
                         <h1 class="text-4xl font-bold text-white">Enter your verification code</h1>
-                        <p class="max-w-xl text-slate-400">We sent a 6-digit verification code to your email. Confirm it to complete registration and unlock full account access.</p>
+                        <p class="max-w-xl text-slate-400">We sent a 6-digit verification code to your email. Confirm it to complete registration. You will then go to Login to enter your arena.</p>
                     </div>
                     <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
                         <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Need the code again?</p>
@@ -46,7 +46,7 @@
                     {% if messages %}
                     <div class="space-y-3 mb-6">
                     {% for category, message in messages %}
-                    <div class="rounded-2xl px-4 py-3 text-sm font-medium {{ 'bg-red-500 text-white' if category == 'error' else 'bg-emerald-500 text-slate-950' }}">
+                    <div role="{{ 'alert' if category == 'error' else 'status' }}" class="rounded-2xl px-4 py-3 text-sm font-medium {{ 'bg-red-500 text-white' if category == 'error' else 'bg-emerald-500 text-slate-950' }}">
                         {{ message }}
                     </div>
                     {% endfor %}
@@ -65,7 +65,7 @@
                         </div>
                         <div>
                             {{ form.code.label(class="block text-sm font-medium text-slate-300 mb-2") }}
-                            {{ form.code(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
+                            {{ form.code(inputmode="numeric", autocomplete="one-time-code", maxlength="6", pattern="[0-9]{6}", class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
                             {% if form.code.errors %}
                             <p class="mt-2 text-sm text-red-400">{{ form.code.errors[0] }}</p>
                             {% endif %}

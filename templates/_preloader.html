@@ -1,2 +1,6 @@
-<div id="gamearena-preloader" class="ga-splash" hidden aria-hidden="true"><span class="ga-brand-mark">G</span><strong>Game<span class="ga-brand-accent">Arena</span></strong></div>
+<div id="gamearena-preloader" class="ga-splash" hidden aria-hidden="true">
+    <div class="ga-splash-logo"><span class="ga-brand-mark">G</span></div>
+    <strong class="ga-splash-name">GAMEARENA</strong>
+    <div class="ga-splash-dots"><span></span><span></span><span></span></div>
+</div>
 <script>(() => { const splash = document.getElementById('gamearena-preloader'); try { if (performance.getEntriesByType('navigation')[0]?.type !== 'reload') return; splash.hidden = false; const start = performance.now(); const finish = () => setTimeout(() => { splash.hidden = true; }, Math.max(0, 350 - (performance.now() - start))); if (document.readyState === 'complete') finish(); else window.addEventListener('load', finish, {once:true}); setTimeout(() => { splash.hidden = true; }, 900); } catch (_) { splash.hidden = true; } })();</script>

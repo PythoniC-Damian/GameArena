@@ -9,7 +9,7 @@ import time
 from functools import lru_cache
 import urllib.parse
 from collections import defaultdict, deque
-from flask import Flask, render_template, redirect, url_for, request, flash, abort, jsonify, session, g, send_from_directory, has_request_context
+from flask import Response, Flask, render_template, redirect, url_for, request, flash, abort, jsonify, session, g, send_from_directory, has_request_context
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_wtf import FlaskForm
@@ -18,6 +18,7 @@ from flask_socketio import SocketIO, join_room, leave_room, emit
 from sqlalchemy.pool import NullPool
 from sqlalchemy import or_, event as sqlalchemy_event
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import selectinload, joinedload
 
@@ -137,7 +138,7 @@ def add_response_security_headers(response):
     if is_production and (request.is_secure or forwarded_proto == 'https'):
         response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000')
 
-    if request.endpoint == 'avatar_file':
+    if request.endpoint in {'avatar_file', 'database_avatar'}:
         response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
     elif request.endpoint == 'static':
         # The worker and manifest must be revalidated so PWA updates reach
@@ -256,6 +257,7 @@ SOCKET_EVENT_LIMITS = {
     'send_chat_message': (6, 10),
     'mark_notification_read': (15, 10),
     'send_direct_message': (8, 10),
+    'chat_typing': (12, 10),
 }
 socket_event_windows = defaultdict(deque)
 
@@ -263,7 +265,7 @@ socket_event_windows = defaultdict(deque)
 def socket_event_allowed(event_name):
     """Return whether the current Socket.IO connection may emit an event."""
     limit, window_seconds = SOCKET_EVENT_LIMITS.get(event_name, (20, 60))
-    key = (getattr(request, 'sid', 'unknown'), event_name)
+    key = (getattr(request, 'sid', f'http:{current_user.get_id()}'), event_name)
     now = time.monotonic()
     events = socket_event_windows[key]
     cutoff = now - window_seconds
@@ -276,7 +278,9 @@ def socket_event_allowed(event_name):
 
 
 def socket_rate_limit_error():
-    emit('socket_error', {'message': 'Too many requests. Please wait and try again.'})
+    if current_user.is_authenticated:
+        socketio.emit('socket_error', {'message': 'Too many requests. Please wait and try again.'}, room=f'user:{current_user.id}')
+    return {'status':'error', 'message':'Too many requests. Please wait and try again.'}
 
 
 def is_admin_user(user=None):
@@ -409,12 +413,19 @@ def create_and_emit_notification(user_id: int, message: str, category='system', 
                 {'title':'GameArena', 'body':message, 'url':target_url or '/notifications', 'id':notif.id}, app.logger)
 
 login_manager.login_view = "login"
+@login_manager.unauthorized_handler
+def unauthorized_response():
+    if request.accept_mimetypes.best == 'application/json':
+        return jsonify({'message':'Your session has expired. Log in again to continue.'}), 401
+    return redirect(url_for('login', next=request.full_path))
+
+
 csrf = CSRFProtect(app)
 
 
 @app.errorhandler(403)
 def forbidden_page(error):
-    if request.path.startswith('/api/'):
+    if request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json':
         return jsonify({'error': {'message': 'Access denied.', 'status': 403}}), 403
     return render_template(
         'error.html', code=403, title='Access denied',
@@ -424,7 +435,7 @@ def forbidden_page(error):
 
 @app.errorhandler(404)
 def not_found_page(error):
-    if request.path.startswith('/api/'):
+    if request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json':
         return jsonify({'error': {'message': 'The requested resource was not found.', 'status': 404}}), 404
     return render_template(
         'error.html', code=404, title='Page not found',
@@ -436,7 +447,7 @@ def not_found_page(error):
 def internal_error_page(error):
     db.session.rollback()
     app.logger.error('Unhandled application error request_id=%s', getattr(g, 'request_id', '-'))
-    if request.path.startswith('/api/'):
+    if request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json':
         return jsonify({'error': {'message': 'The request could not be completed.', 'status': 500}}), 500
     return render_template(
         'error.html', code=500, title='Something went wrong',
@@ -592,7 +603,11 @@ def generate_code(length=6):
 
 def send_email(subject, recipient, body):
     """Send email synchronously and report only provider-accepted delivery."""
-    email_from = os.environ.get('EMAIL_FROM') or os.environ.get('SMTP_USERNAME') or 'noreply@gamearena.com'
+    provider = (os.environ.get('EMAIL_PROVIDER') or ('resend' if os.environ.get('RENDER') else 'auto')).strip().lower()
+    resend_api_key = (os.environ.get('RESEND_API_KEY') or '').strip()
+    email_from = (os.environ.get('EMAIL_FROM') or
+        (os.environ.get('SMTP_USERNAME') if provider != 'resend' and not resend_api_key else None) or
+        'GameArena <noreply@gamearena01.com>')
     recipient_domain = recipient.rsplit('@', 1)[-1].lower() if '@' in recipient else 'unknown'
     if not re.fullmatch(r'[a-z0-9.-]{1,253}', recipient_domain):
         recipient_domain = 'unknown'
@@ -612,9 +627,17 @@ def send_email(subject, recipient, body):
         else:
             app.logger.warning(*details)
 
+    if provider not in {'auto', 'resend', 'smtp'}:
+        log_delivery('none', 'failure', time.perf_counter(), category='invalid_provider')
+        return False
+    # Use HTTPS on Render; its free services block the standard SMTP ports.
+    # Explicit SMTP remains available for environments that support it.
+    if provider == 'resend' and not resend_api_key:
+        log_delivery('resend', 'failure', time.perf_counter(), category='missing_api_key')
+        return False
+
     # --- Resend (preferred) ---
-    resend_api_key = os.environ.get('RESEND_API_KEY')
-    if resend_api_key:
+    if resend_api_key and provider != 'smtp':
         started_at = time.perf_counter()
         connection = None
         try:
@@ -636,14 +659,24 @@ def send_email(subject, recipient, body):
                     'Authorization': f'Bearer {resend_api_key}',
                     'Content-Type': 'application/json',
                     'Content-Length': str(len(body_bytes)),
+                    'Idempotency-Key': 'gamearena-email/' + hashlib.sha256(body_bytes).hexdigest(),
                 },
             )
             response = connection.getresponse()
             provider_request_id = response.getheader('x-request-id')
-            if 200 <= response.status < 300:
-                log_delivery('resend', 'success', started_at, response.status, provider_request_id)
+            # Never log the response body: provider errors can contain addresses.
+            try:
+                result = json.loads(response.read(65536).decode('utf-8'))
+            except (ValueError, UnicodeError):
+                result = {}
+            message_id = result.get('id') if isinstance(result, dict) else None
+            if 200 <= response.status < 300 and isinstance(message_id, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,100}', message_id):
+                log_delivery('resend', 'success', started_at, response.status, provider_request_id or message_id)
                 return True
-            log_delivery('resend', 'failure', started_at, response.status, provider_request_id, 'provider_rejected')
+            categories = {401:'invalid_api_key', 403:'sender_or_key_not_authorized',
+                422:'invalid_email_request', 429:'provider_rate_limited'}
+            category = 'invalid_provider_response' if 200 <= response.status < 300 else categories.get(response.status, 'provider_rejected')
+            log_delivery('resend', 'failure', started_at, response.status, provider_request_id, category)
         except Exception as error:
             category = 'timeout' if isinstance(error, (TimeoutError, socket.timeout)) else type(error).__name__
             log_delivery('resend', 'failure', started_at, category=category)
@@ -653,6 +686,10 @@ def send_email(subject, recipient, body):
                     connection.close()
                 except Exception:
                     pass
+
+    if provider == 'resend':
+        # Fail promptly and truthfully; do not add a blocked SMTP timeout.
+        return False
 
     smtp_server = os.environ.get('SMTP_SERVER')
     smtp_port = os.environ.get('SMTP_PORT')
@@ -1249,6 +1286,8 @@ class GlobalChatMessage(db.Model):
     created_at = db.Column(db.DateTime, default=db.func.now())
 
     user = db.relationship('User')
+    client_message_id = db.Column(db.String(36), nullable=True, unique=True)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     reply_to_id = db.Column(db.Integer, db.ForeignKey('global_chat_message.id', ondelete='SET NULL'), nullable=True)
     reply_to = db.relationship('GlobalChatMessage', remote_side=[id], lazy='joined', join_depth=1)
 
@@ -1267,6 +1306,8 @@ class DirectMessage(db.Model):
     read_at = db.Column(db.DateTime, nullable=True)
     sender = db.relationship('User', foreign_keys=[sender_id])
     recipient = db.relationship('User', foreign_keys=[recipient_id])
+    client_message_id = db.Column(db.String(36), nullable=True, unique=True)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     reply_to_id = db.Column(db.Integer, db.ForeignKey('direct_message.id', ondelete='SET NULL'), nullable=True)
     reply_to = db.relationship('DirectMessage', remote_side=[id], lazy='joined', join_depth=1)
 
@@ -1274,6 +1315,12 @@ class DirectMessage(db.Model):
         db.Index('ix_direct_message_pair_created', 'sender_id', 'recipient_id', 'created_at'),
         db.Index('ix_direct_message_recipient_read', 'recipient_id', 'read_at'),
     )
+
+
+class ProfilePhoto(db.Model):
+    id = db.Column(db.String(32), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
+    image = db.Column(db.LargeBinary, nullable=False)
 
 
 class PushSubscription(db.Model):
@@ -1966,14 +2013,18 @@ def chat_history():
                 db.and_(DirectMessage.sender_id == partner_id, DirectMessage.recipient_id == current_user.id)),
         ).order_by(DirectMessage.id).limit(51).all()
         data = [{'id': row.id, 'sender_id': row.sender_id, 'username': row.sender.username if row.sender else 'Player',
-            'message': row.message, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
+            'message': row.message, 'deleted':bool(row.deleted_at), 'client_message_id':row.client_message_id, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
     else:
         rows = GlobalChatMessage.query.options(joinedload(GlobalChatMessage.user)).filter(
             GlobalChatMessage.id > after,
         ).order_by(GlobalChatMessage.id).limit(51).all()
         data = [{'id': row.id, 'user_id': row.user_id, 'username': row.user.username if row.user else 'Player',
-            'message': row.message, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
-    return jsonify({'messages': data, 'has_more': len(rows) > 50})
+            'message': row.message, 'deleted':bool(row.deleted_at), 'client_message_id':row.client_message_id, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
+    model = DirectMessage if partner_id else GlobalChatMessage
+    removed = model.query.filter(model.deleted_at.isnot(None))
+    if partner_id:
+        removed = removed.filter(or_(db.and_(DirectMessage.sender_id == current_user.id, DirectMessage.recipient_id == partner_id), db.and_(DirectMessage.sender_id == partner_id, DirectMessage.recipient_id == current_user.id)))
+    return jsonify({'messages': data, 'has_more': len(rows) > 50, 'deleted_ids':[row.id for row in removed.order_by(model.deleted_at.desc()).limit(200)]})
 
 
 # -------------------------
@@ -2182,6 +2233,26 @@ def search():
     )
 
 
+def persist_profile_photo(filename, image):
+    # Store only one normalized, small photo per account in the existing DB.
+    ProfilePhoto.query.filter_by(user_id=current_user.id).delete()
+    db.session.add(ProfilePhoto(id=filename[:-5], user_id=current_user.id, image=image))
+    return url_for('database_avatar', photo_id=filename[:-5])
+
+
+@app.route('/media/profile/<photo_id>.webp')
+def database_avatar(photo_id):
+    if not re.fullmatch(r'[a-f0-9]{32}', photo_id):
+        abort(404)
+    photo = db.session.get(ProfilePhoto, photo_id)
+    if not photo:
+        abort(404)
+    response = Response(photo.image, mimetype='image/webp')
+    response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
 @app.route('/profile/photo', methods=['POST'])
 @login_required
 def upload_profile_photo():
@@ -2190,11 +2261,12 @@ def upload_profile_photo():
         flash('Choose a profile photo first.', 'error')
     else:
         try:
-            photo_url = store_avatar(upload, app)
+            photo_url = store_avatar(upload, app, persist=persist_profile_photo)
             current_user.avatar_url = photo_url
             db.session.commit()
             flash('Your profile photo was updated.', 'success')
         except ValueError as error:
+            db.session.rollback()
             flash(str(error), 'error')
     return redirect(url_for('profile'))
 
@@ -2385,7 +2457,7 @@ def quoted_message(parent):
     if not parent:
         return None
     owner = parent.sender if isinstance(parent, DirectMessage) else parent.user
-    return {'id':parent.id, 'username':owner.username if owner else 'Player', 'message':parent.message[:200]}
+    return {'id':parent.id, 'username':owner.username if owner else 'Player', 'message':parent.message[:200], 'deleted':bool(parent.deleted_at)}
 
 
 @app.route('/messages/<int:user_id>')
@@ -2723,7 +2795,7 @@ def verify_email():
         user.verification_expires_at = None
         db.session.commit()
 
-        flash('Email verified successfully! You can now log in.', 'success')
+        flash('Email verified! Log in below to enter your arena.', 'success')
         return redirect(url_for('login'))
 
     if email:
@@ -4394,33 +4466,53 @@ def on_join_global_chat(data):
         join_room('global_chat')
 
 
+def chat_client_id(data):
+    value = (data or {}).get('client_message_id')
+    if value is None:
+        return None
+    if not isinstance(value, str) or not re.fullmatch(r'[a-f0-9-]{36}', value):
+        raise ValueError('Invalid message identifier.')
+    return value
+
+
 @socketio.on('send_global_chat_message')
 def on_send_global_chat_message(data):
-    message = ((data or {}).get('message') or '').strip()
-    if not message or not current_user.is_authenticated:
-        return
+    data = data if isinstance(data, dict) else {}
+    if not current_user.is_authenticated or current_user.suspended:
+        return {'status':'error', 'message':'Log in to send messages.'}
     if not socket_event_allowed('send_global_chat_message'):
         return socket_rate_limit_error()
-    if len(message) > MAX_CHAT_MESSAGE_LENGTH:
-        return
-
-    reply_id = (data or {}).get('reply_to_id')
+    message = data.get('message', '')
+    if not isinstance(message, str) or not message.strip() or len(message) > MAX_CHAT_MESSAGE_LENGTH:
+        return {'status':'error', 'message':'Enter a message of up to 1,000 characters.'}
+    try:
+        client_id = chat_client_id(data)
+    except ValueError as error:
+        return {'status':'error', 'message':str(error)}
+    if client_id:
+        existing = GlobalChatMessage.query.filter_by(client_message_id=client_id).first()
+        if existing:
+            return {'status':'success', 'id':existing.id} if existing.user_id == current_user.id else {'status':'error', 'message':'Invalid message identifier.'}
+    reply_id = data.get('reply_to_id')
     parent = db.session.get(GlobalChatMessage, reply_id) if isinstance(reply_id, int) and reply_id > 0 else None
-    if reply_id is not None and not parent:
-        return {'status':'error', 'message':'The message you are replying to is unavailable.'}
-    new_message = GlobalChatMessage(user_id=current_user.id, message=message, reply_to_id=parent.id if parent else None)
-    db.session.add(new_message)
-    db.session.commit()
-
-    emit('new_global_chat_message', {
-        'id': new_message.id,
-        'user_id': current_user.id,
-        'username': current_user.username,
-        'message': message,
-        'created_at': new_message.created_at.isoformat() if new_message.created_at else None,
-        'reply': quoted_message(parent),
-    }, room='global_chat')
-    return {'status': 'success', 'id': new_message.id}
+    if reply_id is not None and (not parent or parent.deleted_at):
+        return {'status':'error', 'message':'That message is unavailable.'}
+    sender_id, username, created = current_user.id, current_user.username, datetime.utcnow()
+    new = GlobalChatMessage(user_id=sender_id, message=message.strip(), reply_to_id=parent.id if parent else None, client_message_id=client_id, created_at=created)
+    quoted = quoted_message(parent)
+    db.session.add(new)
+    try:
+        db.session.flush(); message_id = new.id; db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        existing = GlobalChatMessage.query.filter_by(client_message_id=client_id, user_id=sender_id).first() if client_id else None
+        if not existing:
+            raise
+        return {'status':'success', 'id':existing.id}
+    payload = {'id':message_id, 'user_id':sender_id, 'username':username, 'message':message.strip(), 'created_at':created.isoformat()+'Z', 'reply':quoted, 'client_message_id':client_id}
+    socketio.emit('new_global_chat_message', payload, room='global_chat')
+    socketio.emit('new_global_chat_message', payload, room=f'user:{sender_id}')
+    return {'status':'success', 'id':message_id}
 
 
 @socketio.on('join_direct_message')
@@ -4445,25 +4537,34 @@ def on_join_direct_message(data):
 
 @socketio.on('send_direct_message')
 def on_send_direct_message(data):
+    data = data if isinstance(data, dict) else {}
     if not current_user.is_authenticated or current_user.suspended:
-        return
+        return {'status':'error', 'message':'Log in to send messages.'}
     if not socket_event_allowed('send_direct_message'):
         return socket_rate_limit_error()
     try:
         recipient_id = int((data or {}).get('user_id'))
     except (TypeError, ValueError):
-        return
+        return {'status':'error', 'message':'Choose a valid conversation.'}
     recipient = db.session.get(User, recipient_id, options=[joinedload(User.settings)])
-    message = ((data or {}).get('message') or '').strip()
+    raw = data.get('message', '')
+    message = raw.strip() if isinstance(raw, str) else ''
     if not message or len(message) > MAX_CHAT_MESSAGE_LENGTH:
-        return emit('socket_error', {'message': 'Message must be 1,000 characters or fewer.'})
+        return {'status':'error', 'message':'Message must be 1,000 characters or fewer.'}
     if not can_direct_message(current_user, recipient):
-        emit('socket_error', {'message': 'This conversation is unavailable. Check blocking and direct-message settings.'})
         return {'status':'error', 'message':'This conversation is unavailable. Check blocking and direct-message settings.'}
 
-    reply_id = (data or {}).get('reply_to_id')
+    try:
+        client_id = chat_client_id(data)
+    except ValueError as error:
+        return {'status':'error', 'message':str(error)}
+    if client_id:
+        existing = DirectMessage.query.filter_by(client_message_id=client_id).first()
+        if existing:
+            return {'status':'success', 'id':existing.id} if existing.sender_id == current_user.id and existing.recipient_id == recipient.id else {'status':'error', 'message':'Invalid message identifier.'}
+    reply_id = data.get('reply_to_id')
     parent = db.session.get(DirectMessage, reply_id) if isinstance(reply_id, int) and reply_id > 0 else None
-    if reply_id is not None and (not parent or {parent.sender_id, parent.recipient_id} != {current_user.id, recipient.id}):
+    if reply_id is not None and (not parent or parent.deleted_at or {parent.sender_id, parent.recipient_id} != {current_user.id, recipient.id}):
         return {'status':'error', 'message':'Choose a message from this conversation to reply to.'}
 
     sender_id, sender_name = current_user.id, current_user.username
@@ -4471,28 +4572,89 @@ def on_send_direct_message(data):
     reply = quoted_message(parent)
     created_at = datetime.utcnow()
     stored_message = DirectMessage(sender_id=sender_id, recipient_id=recipient_id,
-        message=message, reply_to_id=parent.id if parent else None, created_at=created_at)
+        message=message, client_message_id=client_id, reply_to_id=parent.id if parent else None, created_at=created_at)
     db.session.add(stored_message)
-    db.session.flush()
-    message_id = stored_message.id
-    db.session.commit()
+    try:
+        db.session.flush()
+        message_id = stored_message.id
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        existing = DirectMessage.query.filter_by(client_message_id=client_id, sender_id=sender_id, recipient_id=recipient_id).first() if client_id else None
+        if not existing:
+            raise
+        return {'status':'success', 'id':existing.id}
     payload = {
         'id': message_id, 'sender_id':sender_id, 'recipient_id':recipient_id,
-        'username':sender_name, 'message':message, 'created_at':created_at.isoformat() + 'Z', 'reply':reply,
+        'username':sender_name, 'message':message, 'client_message_id':client_id, 'created_at':created_at.isoformat() + 'Z', 'reply':reply,
     }
     socketio.emit(
         'new_direct_message', payload,
         room=f'user:{recipient_id}',
     )
     socketio.emit('new_direct_message', payload, room=f'user:{sender_id}')
-    try:
-        create_and_emit_notification(recipient_id, f'{sender_name} sent you a message.', 'chat', f'/messages/{sender_id}')
-    except Exception as error:
-        db.session.rollback()
-        app.logger.warning('Chat notification creation failed (%s); message is already saved.', type(error).__name__)
-    unread_count = DirectMessage.query.filter_by(recipient_id=recipient_id, read_at=None).count()
-    socketio.emit('unread_count', {'unread': unread_count}, room=f'user:{recipient_id}')
+    socketio.start_background_task(chat_notification, recipient_id, sender_id, sender_name)
     return {'status': 'success', 'id': message_id}
+
+
+def chat_notification(recipient_id, sender_id, sender_name):
+    with app.app_context():
+        try:
+            create_and_emit_notification(recipient_id, f'{sender_name} sent you a message.', 'chat', f'/messages/{sender_id}')
+            count = DirectMessage.query.filter_by(recipient_id=recipient_id, read_at=None).count()
+            socketio.emit('unread_count', {'unread':count}, room=f'user:{recipient_id}')
+        except Exception as error:
+            db.session.rollback()
+            app.logger.warning('Chat notification failed (%s); message saved.', type(error).__name__)
+
+
+@app.route('/chat/send', methods=['POST'])
+@login_required
+def send_chat_http():
+    data = request.get_json(silent=True) or {}
+    result = on_send_direct_message(data) if data.get('user_id') else on_send_global_chat_message(data)
+    return jsonify(result)
+
+
+@app.route('/chat/message/<kind>/<int:message_id>/delete', methods=['POST'])
+@login_required
+def delete_chat_message(kind, message_id):
+    model = {'direct':DirectMessage, 'global':GlobalChatMessage}.get(kind)
+    if not model or current_user.suspended:
+        abort(403)
+    row = db.session.get(model, message_id)
+    if not row:
+        abort(404)
+    owner_id = row.sender_id if kind == 'direct' else row.user_id
+    if owner_id != current_user.id:
+        abort(403)
+    recipient_id = row.recipient_id if kind == 'direct' else None
+    row.message = 'This message was deleted.'
+    row.deleted_at = row.deleted_at or datetime.utcnow()
+    db.session.commit()
+    payload = {'id':message_id, 'kind':kind}
+    if kind == 'direct':
+        for uid in (owner_id, recipient_id):
+            socketio.emit('chat_message_deleted', payload, room=f'user:{uid}')
+    else:
+        socketio.emit('chat_message_deleted', payload, room='global_chat')
+    return jsonify({'status':'success'})
+
+
+@socketio.on('chat_typing')
+def chat_typing(data):
+    if not current_user.is_authenticated or current_user.suspended or not isinstance(data, dict):
+        return
+    if not socket_event_allowed('chat_typing'):
+        return
+    partner_id = data.get('user_id')
+    payload = {'user_id':current_user.id, 'username':current_user.username, 'typing':data.get('typing') is True}
+    if partner_id:
+        partner = db.session.get(User, partner_id)
+        if can_direct_message(current_user, partner):
+            socketio.emit('chat_typing', payload, room=f'user:{partner.id}')
+    else:
+        socketio.emit('chat_typing', payload, room='global_chat', skip_sid=request.sid)
 
 
 @socketio.on('mark_notification_read')

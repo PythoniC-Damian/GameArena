@@ -1,0 +1,181 @@
+{
+  "layouts": [
+    {
+      "route": "/",
+      "width": 360,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/messages/2",
+      "width": 360,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/wallet",
+      "width": 360,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/",
+      "width": 390,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/messages/2",
+      "width": 390,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/wallet",
+      "width": 390,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/",
+      "width": 768,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/messages/2",
+      "width": 768,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/wallet",
+      "width": 768,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/messages/2",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/wallet",
+      "width": 1440,
+      "theme": "dark",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/",
+      "width": 360,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/messages/2",
+      "width": 360,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/wallet",
+      "width": 360,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/",
+      "width": 390,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/messages/2",
+      "width": 390,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/wallet",
+      "width": 390,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/",
+      "width": 768,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/messages/2",
+      "width": 768,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/wallet",
+      "width": 768,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/",
+      "width": 1440,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/messages/2",
+      "width": 1440,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    },
+    {
+      "route": "/wallet",
+      "width": 1440,
+      "theme": "light",
+      "overflow": false,
+      "headers": 1
+    }
+  ],
+  "errors": [],
+  "typing": true,
+  "live_delivery_ms": 1564.8,
+  "confirmation": true,
+  "swipe_reply": true,
+  "live_deletion": true,
+  "long_press": true,
+  "http_recovery": true,
+  "bank_retry": true
+}

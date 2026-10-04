@@ -62,7 +62,7 @@
                 {% if messages %}
                 <div class="space-y-3 mb-6">
                 {% for category, message in messages %}
-                <div class="rounded-2xl px-4 py-3 text-sm font-medium {{ 'bg-red-500 text-white' if category == 'error' else 'bg-emerald-500 text-slate-950' }}">
+                <div role="{{ 'alert' if category == 'error' else 'status' }}" class="rounded-2xl px-4 py-3 text-sm font-medium {{ 'bg-red-500 text-white' if category == 'error' else 'bg-emerald-500 text-slate-950' }}">
                     {{ message }}
                 </div>
                 {% endfor %}

@@ -139,7 +139,14 @@ def test_achievement_award_is_server_calculated_and_idempotent():
         assert len(unlock_notifications) == 1
 
 
-def test_direct_messages_are_persisted_and_blocked_conversations_are_rejected():
+def test_direct_messages_are_persisted_and_blocked_conversations_are_rejected(monkeypatch):
+    tasks = []
+    start_background_task = socketio.start_background_task
+    def capture_task(*args, **kwargs):
+        task = start_background_task(*args, **kwargs)
+        tasks.append(task)
+        return task
+    monkeypatch.setattr(socketio, 'start_background_task', capture_task)
     with app.app_context():
         sender = make_user('dm_sender')
         recipient = make_user('dm_recipient')
@@ -154,6 +161,9 @@ def test_direct_messages_are_persisted_and_blocked_conversations_are_rejected():
             sender_id=sender.id, recipient_id=recipient.id,
         ).one()
         assert stored.message == 'Hello privately'
+        # Delivery is acknowledged before background notification processing.
+        assert len(tasks) == 1
+        tasks[0].join()
         assert Notification.query.filter_by(
             user_id=recipient.id, category='chat',
         ).count() == 1

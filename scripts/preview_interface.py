@@ -44,4 +44,4 @@ with app.app_context():
         db.session.commit()
 app.config['TESTING'] = False
 app.jinja_env.auto_reload = True
-socketio.run(app, host='127.0.0.1', port=5057, debug=False, use_reloader=False)
+socketio.run(app, host='127.0.0.1', port=int(os.environ.get('GAMEARENA_PREVIEW_PORT', '5057')), debug=False, use_reloader=False)
