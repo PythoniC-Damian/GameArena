@@ -47,10 +47,17 @@ def fresh_test_session_user():
 
 
 @pytest.fixture(autouse=True)
-def clean_test_database():
+def clean_test_database(monkeypatch):
     """Keep each test independent without touching the normal database."""
-    from app import app, db
+    from app import app, db, socketio
 
+    tasks = []
+    start_background_task = socketio.start_background_task
+    def track_task(*args, **kwargs):
+        task = start_background_task(*args, **kwargs)
+        tasks.append(task)
+        return task
+    monkeypatch.setattr(socketio, 'start_background_task', track_task)
     with app.app_context():
         table_names = ', '.join(
             f'"{table.name}"' for table in db.metadata.sorted_tables
@@ -58,5 +65,8 @@ def clean_test_database():
         db.session.execute(text(f'TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE'))
         db.session.commit()
     yield
+    # Complete asynchronous notifications before the next test truncates tables.
+    for task in tasks:
+        if task is not None: task.join()
     with app.app_context():
         db.session.rollback()

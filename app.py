@@ -195,7 +195,10 @@ socketio_cors_origins = [
     for origin in (os.environ.get('SOCKETIO_CORS_ALLOWED_ORIGINS') or '').split(',')
     if origin.strip()
 ]
-socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins or None)
+# Optional shared pub/sub for multiple single-worker instances. Tests stay isolated.
+socketio_message_queue = None if os.environ.get('GAMEARENA_TESTING') == '1' else (os.environ.get('SOCKETIO_MESSAGE_QUEUE') or None)
+socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins or None,
+    message_queue=socketio_message_queue, channel='gamearena-socketio')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -4480,8 +4483,6 @@ def on_send_global_chat_message(data):
     data = data if isinstance(data, dict) else {}
     if not current_user.is_authenticated or current_user.suspended:
         return {'status':'error', 'message':'Log in to send messages.'}
-    if not socket_event_allowed('send_global_chat_message'):
-        return socket_rate_limit_error()
     message = data.get('message', '')
     if not isinstance(message, str) or not message.strip() or len(message) > MAX_CHAT_MESSAGE_LENGTH:
         return {'status':'error', 'message':'Enter a message of up to 1,000 characters.'}
@@ -4493,6 +4494,8 @@ def on_send_global_chat_message(data):
         existing = GlobalChatMessage.query.filter_by(client_message_id=client_id).first()
         if existing:
             return {'status':'success', 'id':existing.id} if existing.user_id == current_user.id else {'status':'error', 'message':'Invalid message identifier.'}
+    if not socket_event_allowed('send_global_chat_message'):
+        return socket_rate_limit_error()
     reply_id = data.get('reply_to_id')
     parent = db.session.get(GlobalChatMessage, reply_id) if isinstance(reply_id, int) and reply_id > 0 else None
     if reply_id is not None and (not parent or parent.deleted_at):
@@ -4540,8 +4543,6 @@ def on_send_direct_message(data):
     data = data if isinstance(data, dict) else {}
     if not current_user.is_authenticated or current_user.suspended:
         return {'status':'error', 'message':'Log in to send messages.'}
-    if not socket_event_allowed('send_direct_message'):
-        return socket_rate_limit_error()
     try:
         recipient_id = int((data or {}).get('user_id'))
     except (TypeError, ValueError):
@@ -4562,6 +4563,8 @@ def on_send_direct_message(data):
         existing = DirectMessage.query.filter_by(client_message_id=client_id).first()
         if existing:
             return {'status':'success', 'id':existing.id} if existing.sender_id == current_user.id and existing.recipient_id == recipient.id else {'status':'error', 'message':'Invalid message identifier.'}
+    if not socket_event_allowed('send_direct_message'):
+        return socket_rate_limit_error()
     reply_id = data.get('reply_to_id')
     parent = db.session.get(DirectMessage, reply_id) if isinstance(reply_id, int) and reply_id > 0 else None
     if reply_id is not None and (not parent or parent.deleted_at or {parent.sender_id, parent.recipient_id} != {current_user.id, recipient.id}):

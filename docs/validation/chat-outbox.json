@@ -1,0 +1,44 @@
+{
+  "deliberatelyDelayed": true,
+  "composerAfterEachSend": [
+    {
+      "composer": "",
+      "pending": 1,
+      "sendDisabled": false
+    },
+    {
+      "composer": "",
+      "pending": 2,
+      "sendDisabled": false
+    },
+    {
+      "composer": "",
+      "pending": 3,
+      "sendDisabled": false
+    },
+    {
+      "composer": "",
+      "pending": 4,
+      "sendDisabled": false
+    },
+    {
+      "composer": "",
+      "pending": 5,
+      "sendDisabled": false
+    }
+  ],
+  "afterAcknowledgements": {
+    "draft": "My next draft stays while earlier messages arrive",
+    "remainingPending": 0,
+    "statuses": [
+      "Sent",
+      "Sent",
+      "Sent",
+      "Sent",
+      "Sent"
+    ]
+  },
+  "backendTests": "10 passed",
+  "productionLatency": "not measured",
+  "redisBackplane": "opt-in support only; no service provisioned"
+}

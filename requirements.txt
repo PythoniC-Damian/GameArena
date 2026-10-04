@@ -16,3 +16,4 @@ gevent-websocket==0.10.1
 psycopg2-binary==2.9.9
 Pillow==12.3.0
 pywebpush==2.1.2
+redis==5.2.1

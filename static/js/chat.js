@@ -10,7 +10,7 @@
   const pending = new Map();
   const dialog = document.getElementById('messageActions');
   let actionRow, typingTimer, typingClear, lastTyping = 0;
-  let lastId = Math.max(0, ...Array.from(ids).map(Number)), sending = false, reply = null, catchingUp = false;
+  let lastId = Math.max(0, ...Array.from(ids).map(Number)), reply = null, catchingUp = false;
   function clearReply() { reply = null; preview.hidden = true; preview.querySelector("strong").textContent = ""; preview.querySelector("p").textContent = ""; }
   function chooseReply(row) {
     if (row.dataset.deleted === 'true') return;
@@ -25,13 +25,13 @@
     block.append(name,text); return block;
   }
   function render(message) {
-    if (message.client_message_id && pending.has(message.client_message_id)) { pending.get(message.client_message_id).confirm(message); }
+    if (message.client_message_id && pending.has(message.client_message_id) && message.id) { pending.get(message.client_message_id).confirm(message); return; }
     if (ids.has(String(message.id))) { if (message.deleted) removeMessage(message.id); return; }
     if (message.id) { ids.add(String(message.id)); lastId = Math.max(lastId, Number(message.id)); }
     const sender = Number(message.sender_id || message.user_id), own = sender === userId;
     const nearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 100;
     messages.querySelector('[data-chat-empty]')?.remove();
-    const row = document.createElement('div'); row.dataset.messageId = message.id; row.dataset.username = message.username || 'Player'; row.dataset.senderId = sender; row.dataset.deleted = String(Boolean(message.deleted)); row.tabIndex = 0; row.setAttribute('aria-label', 'Message from '+row.dataset.username+'. Swipe to reply, or press Enter for actions.');
+    const row = document.createElement('div'); if (message.id) row.dataset.messageId = message.id; row.dataset.username = message.username || 'Player'; row.dataset.senderId = sender; row.dataset.deleted = String(Boolean(message.deleted)); row.tabIndex = 0; row.setAttribute('aria-label', 'Message from '+row.dataset.username+'. Swipe to reply, or press Enter for actions.');
     row.className = `${own ? 'ml-auto bg-emerald-500/10 text-emerald-200 border-emerald-500/10' : 'bg-slate-900/80 text-slate-300 border-slate-800'} w-fit max-w-[85%] break-words rounded-[28px] border p-4 shadow-sm`;
     const heading = document.createElement('div'); heading.className = 'flex items-center justify-between gap-3';
     const username = document.createElement('strong'); username.textContent = row.dataset.username;
@@ -40,6 +40,7 @@
     row.append(heading); if (message.reply) row.append(quote(message.reply)); row.append(body);
     messages.append(row); if (own || nearBottom) messages.scrollTop = messages.scrollHeight;
     if (!own && partnerId && !document.hidden) markRead();
+    return row;
   }
   async function markRead() {
     if (!partnerId) return;
@@ -62,9 +63,9 @@
   function joinChat() {
     socket.emit('join_user',{user_id:userId});
     socket.emit(partnerId ? 'join_direct_message' : 'join_global_chat', partnerId ? {user_id:partnerId} : {});
-    status.textContent = ''; catchUp();
+    status.textContent = ''; catchUp(); pumpOutbox();
   }
-  socket.on('connect',joinChat); if (socket.connected) joinChat();
+  socket.on('connect',joinChat); if (socket.connected) queueMicrotask(joinChat);
   socket.on('disconnect',() => { status.textContent = 'Reconnecting… Your draft is saved here.'; });
   socket.on('new_global_chat_message',message => { if (!partnerId) render(message); });
   socket.on('new_direct_message',message => {
@@ -144,41 +145,100 @@
     indicator.hidden=!event.typing; indicator.querySelector('[data-typing-name]').textContent=`${event.username} is typing`;
     typingClear=setTimeout(() => { indicator.hidden=true; },3500);
   });
-  form.addEventListener('submit',event => {
-    event.preventDefault(); const text = input.value.trim(); if (!text || sending) return;
-    const selectedReply = reply, key = crypto.randomUUID();
-    const payload = {message:text,client_message_id:key};
-    if (partnerId) payload.user_id = partnerId; if (selectedReply) payload.reply_to_id = selectedReply.id;
-    const button=form.querySelector('button[type=submit]'); sending=true; button.disabled=true; status.textContent='Sending…'; emitTyping(false);
-    let finished=false, recovery;
-    function confirm(message) {
-      if (finished) return; finished=true; clearTimeout(recovery); pending.delete(key);
-      sending=false; button.disabled=false;
-      if (input.value.trim() === text) input.value=''; if (reply === selectedReply) clearReply();
-      status.textContent='';
-      if (message.id && !ids.has(String(message.id))) render({...message,sender_id:userId,recipient_id:partnerId,username:main.dataset.username,message:text,reply:selectedReply,created_at:message.created_at || new Date().toISOString()});
+  // Each message owns its transport, UUID and status. The composer never waits for an ACK.
+  const outboxKey = `gamearena-outbox:${userId}:${partnerId || 'global'}`;
+  let inFlight = 0;
+  function saveOutbox() {
+    try { sessionStorage.setItem(outboxKey, JSON.stringify([...pending.values()].map(item => ({payload:item.payload,reply:item.reply,created:item.created,state:item.state})))); } catch (_) {}
+  }
+  function pumpOutbox() {
+    for (const item of pending.values()) {
+      if (inFlight >= 4) break;
+      if (item.state === 'queued') item.send();
     }
+  }
+  function addOutgoing(payload, selectedReply, created = new Date().toISOString(), failed = false) {
+    const key = payload.client_message_id;
+    const row = render({sender_id:userId,username:main.dataset.username,message:payload.message,reply:selectedReply,created_at:created});
+    row.dataset.clientMessageId = key; row.removeAttribute('tabindex'); row.setAttribute('aria-label','Outgoing message');
+    const delivery = document.createElement('div'); delivery.className = 'ga-message-delivery';
+    const label = document.createElement('small'); label.setAttribute('role','status');
+    const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Retry'; retry.hidden = true; retry.setAttribute('aria-label','Retry sending this message');
+    delivery.append(label,retry); row.append(delivery);
+    const item = {payload,reply:selectedReply,created,state:failed ? 'failed' : 'queued',row};
+    let recovery, active = false, finished = false, recovering = false;
+    function release() {
+      clearTimeout(recovery);
+      if (active) { active = false; inFlight--; }
+    }
+    item.confirm = message => {
+      if (finished || !message.id) return;
+      finished = true; release(); pending.delete(key);
+      const id = String(message.id);
+      if (ids.has(id)) row.remove();
+      else {
+        ids.add(id); lastId = Math.max(lastId, Number(message.id));
+        row.dataset.messageId = id; row.dataset.deleted = String(Boolean(message.deleted)); row.tabIndex = 0;
+        row.setAttribute('aria-label','Message from '+main.dataset.username+'. Swipe to reply, or press Enter for actions.');
+        label.textContent = 'Sent'; retry.hidden = true;
+        if (message.deleted) removeMessage(message.id);
+      }
+      saveOutbox(); pumpOutbox();
+    };
     function fail(message) {
-      if (finished) return; finished=true; pending.delete(key); clearTimeout(recovery); sending=false; button.disabled=false; status.textContent=message;
+      if (finished) return;
+      release(); item.state = 'failed'; label.textContent = message; retry.hidden = false;
+      saveOutbox(); pumpOutbox();
     }
     async function recover() {
-      if (finished) return;
+      if (finished || recovering) return;
+      recovering = true;
       try {
-        // The same UUID makes transport recovery safe even if the socket save succeeded.
-        const response=await fetch(main.dataset.sendUrl,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]').content},body:JSON.stringify(payload),signal:AbortSignal.timeout(20000)});
-        if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('The messaging service is unavailable. Your draft is saved.');
-        const result=await response.json();
-        if (result.status==='success') confirm(result); else fail(result.message || 'Unable to send. Your draft is saved.');
-      } catch (error) { if (!finished) { await catchUp(); if (!finished) fail(error.name === 'TimeoutError' ? 'Still reconnecting. Your draft is saved; check recent messages before retrying.' : error.message); } }
+        // Reuse the same UUID even after a lost response or a manual Retry.
+        const response = await fetch(main.dataset.sendUrl,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]').content},body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
+        if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Connection interrupted. Your message is kept here.');
+        const result = await response.json();
+        if (result.status === 'success') item.confirm(result);
+        else fail(result.message || 'Could not send. Retry this message.');
+      } catch (_) {
+        if (!finished) { await catchUp(); if (!finished) fail('Not confirmed yet. Your message is kept here; tap Retry.'); }
+      } finally { recovering = false; }
     }
-    pending.set(key,{confirm});
-    if (socket.connected) {
-      socket.emit(partnerId ? 'send_direct_message' : 'send_global_chat_message',payload,result => {
-        if (result?.status==='success') confirm(result); else if (result?.status==='error') fail(result.message);
-      });
-      recovery=setTimeout(recover,5000);
-    } else recover();
+    item.send = () => {
+      if (finished || active || recovering) return;
+      active = true; inFlight++; item.state = 'sending'; label.textContent = 'Sending…'; retry.hidden = true; saveOutbox();
+      if (socket.connected) {
+        socket.emit(partnerId ? 'send_direct_message' : 'send_global_chat_message',payload,result => {
+          if (result?.status === 'success') item.confirm(result);
+          else if (result?.status === 'error') fail(result.message || 'Could not send. Retry this message.');
+        });
+        if (!finished && active) recovery = setTimeout(recover,1500);
+      } else recover();
+    };
+    retry.addEventListener('click', () => {
+      if (active || recovering || finished) return;
+      item.state = 'queued'; label.textContent = 'Queued'; retry.hidden = true; saveOutbox(); pumpOutbox();
+    });
+    label.textContent = failed ? 'Not confirmed yet. Tap Retry.' : 'Queued'; retry.hidden = !failed;
+    pending.set(key,item); return item;
+  }
+  form.addEventListener('submit',event => {
+    event.preventDefault(); const text = input.value.trim(); if (!text) return;
+    if (pending.size >= 50) { status.textContent = 'You have 50 unsent messages. Retry them before sending more.'; return; }
+    const selectedReply = reply, payload = {message:text,client_message_id:crypto.randomUUID()};
+    if (partnerId) payload.user_id = partnerId; if (selectedReply) payload.reply_to_id = selectedReply.id;
+    addOutgoing(payload,selectedReply);
+    input.value = ''; clearReply(); emitTyping(false); status.textContent = '';
+    // Retain keyboard focus so the player can immediately write the next message.
+    input.focus(); saveOutbox(); pumpOutbox();
   });
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(outboxKey) || '[]');
+    if (Array.isArray(saved)) saved.slice(0,50).forEach(item => {
+      const payload = item?.payload;
+      if (typeof payload?.message === 'string' && payload.message.length <= 1000 && /^[a-f0-9-]{36}$/.test(payload.client_message_id) && (payload.user_id || null) === partnerId) addOutgoing(payload,item.reply,item.created,true);
+    });
+  } catch (_) {}
   document.addEventListener('visibilitychange',() => { if (!document.hidden) { catchUp(); markRead(); } });
   // Also recover missed events on deployments with intermittent socket transport.
   setInterval(catchUp,12000);
