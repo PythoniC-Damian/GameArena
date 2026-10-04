@@ -10,7 +10,7 @@
       {% endfor %}
     </nav>
     <div class="ga-utilities">
-      <a class="ga-icon-button" href="{{ url_for('search') }}" aria-label="Search GameArena" title="Search">{{ icon('search') }}</a>
+      <a class="ga-icon-button ga-search-control" href="{{ url_for('search') }}" aria-label="Search GameArena" title="Search">{{ icon('search') }}</a>
       {% if current_user.is_authenticated %}
       <details class="ga-notification-menu" data-menu data-notification-menu>
       <summary class="ga-icon-button ga-notifications" aria-label="Notifications{% if nav_unread_count %}, {{ nav_unread_count }} unread{% endif %}" title="Notifications">{{ icon('bell') }}<span class="ga-notification-badge" data-unread-badge {% if not nav_unread_count %}hidden{% endif %}>{{ nav_unread_count }}</span></summary>

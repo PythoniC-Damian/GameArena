@@ -1,0 +1,47 @@
+{
+  "layouts": [
+    {
+      "hasPause": false,
+      "heroRadius": "24px",
+      "overflow": false,
+      "searchBorder": "0px",
+      "secondaryRadius": "999px",
+      "width": 360
+    },
+    {
+      "hasPause": false,
+      "heroRadius": "24px",
+      "overflow": false,
+      "searchBorder": "0px",
+      "secondaryRadius": "999px",
+      "width": 390
+    },
+    {
+      "hasPause": false,
+      "heroRadius": "28px",
+      "overflow": false,
+      "searchBorder": "0px",
+      "secondaryRadius": "999px",
+      "width": 768
+    },
+    {
+      "hasPause": false,
+      "heroRadius": "28px",
+      "overflow": false,
+      "searchBorder": "0px",
+      "secondaryRadius": "999px",
+      "width": 1440
+    }
+  ],
+  "tests": "3 passed",
+  "autoplay": "Observed active slide advance",
+  "removedOriginals": 4,
+  "removedDerivatives": 12,
+  "missingRequestedNames": [
+    "cod mw.png",
+    "freefire featured match.png",
+    "original efb.png",
+    "efb.png",
+    "free fire.webp"
+  ]
+}

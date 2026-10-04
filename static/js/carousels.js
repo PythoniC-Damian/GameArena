@@ -1,8 +1,6 @@
 /* Rotate hero and game-card artwork without downloading every image at once. */
 (() => {
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
-  let paused = false;
-  const instances = [];
   document.querySelectorAll('[data-carousel]').forEach(root => {
     const slides = Array.from(root.querySelectorAll('.ga-slide'));
     if (!slides.length) return;
@@ -20,19 +18,25 @@
         slide.classList.toggle('is-active', i === index);
         if (slide.matches('img')) slide.setAttribute('aria-hidden', 'true');
       });
-      dots.forEach((dot, i) => dot.setAttribute('aria-current', String(i === index)));
+      const firstDot = Math.max(0, Math.min(index - Math.floor(dots.length / 2), slides.length - dots.length));
+      dots.forEach((dot, i) => {
+        const target = firstDot + i;
+        dot.dataset.slide = target;
+        dot.setAttribute('aria-label', `Show hero image ${target + 1}`);
+        dot.setAttribute('aria-current', String(target === index));
+      });
       const title = root.querySelector('[data-carousel-title]');
       if (title) title.textContent = slides[index].dataset.title;
     }
     function restart() {
       clearInterval(timer);
-      if (slides.length > 1 && visible && !hovering && !paused && !document.hidden && !motion.matches && document.body.dataset.reduceMotion !== 'true' && !root.contains(document.activeElement)) {
+      if (slides.length > 1 && visible && !hovering && !document.hidden && !motion.matches && document.body.dataset.reduceMotion !== 'true' && !root.contains(document.activeElement)) {
         timer = setInterval(() => show(index + 1, 1), Number(root.dataset.interval) || 6000);
       }
     }
     root.querySelector('[data-prev]')?.addEventListener('click', () => show(index - 1, -1));
     root.querySelector('[data-next]')?.addEventListener('click', () => show(index + 1, 1));
-    dots.forEach((dot, i) => dot.addEventListener('click', () => show(i)));
+    dots.forEach(dot => dot.addEventListener('click', () => show(Number(dot.dataset.slide))));
     root.addEventListener('mouseenter', () => { hovering = true; restart(); });
     root.addEventListener('mouseleave', () => { hovering = false; restart(); });
     root.addEventListener('focusin', restart);
@@ -48,15 +52,6 @@
     document.addEventListener('visibilitychange', restart);
     motion.addEventListener('change', restart);
 
-    show(0, 0); restart(); instances.push(restart);
+    show(0, 0); restart();
   });
-  document.querySelectorAll('[data-pause]').forEach(button => button.addEventListener('click', () => {
-    paused = !paused;
-    document.querySelectorAll('[data-pause]').forEach(control => {
-      control.setAttribute('aria-pressed', String(paused));
-      control.setAttribute('aria-label', `${paused ? 'Resume' : 'Pause'} image carousels`);
-      control.textContent = paused ? '▷' : 'Ⅱ';
-    });
-    instances.forEach(restart => restart());
-  }));
 })();

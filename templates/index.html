@@ -1,13 +1,17 @@
 {% extends '_base.html' %}
 {% block title %}GameArena | Mobile esports tournaments{% endblock %}
 {% block content %}
-<section class="ga-hero ga-hero-gallery" id="topHero">
-{% if carousel_images %}<div class="ga-hero-background" data-carousel data-interval="8000" aria-hidden="true">{% for image in carousel_images %}<img class="ga-slide{{ ' is-active' if loop.first else '' }}" {% if loop.first %}src{% else %}data-src{% endif %}="{{ image }}" {% if loop.first %}srcset{% else %}data-srcset{% endif %}="{{ image|replace('-1440.webp','-480.webp') }} 480w, {{ image|replace('-1440.webp','-960.webp') }} 960w, {{ image }} 1440w" sizes="(max-width:767px) calc(100vw - 32px), 1150px" alt="" decoding="async" {% if loop.first %}fetchpriority="high"{% endif %}>{% endfor %}</div>{% endif %}
+{% from "_icons.html" import icon %}
+<section class="ga-hero ga-hero-gallery" id="topHero" data-carousel data-interval="8000">
+{% if carousel_images %}<div class="ga-hero-background" aria-hidden="true">{% for image in carousel_images %}<img class="ga-slide{{ ' is-active' if loop.first else '' }}" {% if loop.first %}src{% else %}data-src{% endif %}="{{ image }}" {% if loop.first %}srcset{% else %}data-srcset{% endif %}="{{ image|replace('-1440.webp','-480.webp') }} 480w, {{ image|replace('-1440.webp','-960.webp') }} 960w, {{ image }} 1440w" sizes="(max-width:767px) calc(100vw - 32px), 1150px" alt="" decoding="async" {% if loop.first %}fetchpriority="high"{% endif %}>{% endfor %}</div>{% endif %}
 <div><p class="ga-eyebrow">Your next match starts here</p><h1>Find your game.<br><span class="text-emerald-300">Enter the arena.</span></h1><p>Join mobile esports tournaments, connect with players, and follow every match from entry to results.</p>
 <div class="ga-hero-actions"><a class="ga-button ga-button-primary" href="{{ url_for('tournaments_page') }}">Explore tournaments</a><a class="ga-button ga-button-secondary" href="{{ url_for('dashboard') if current_user.is_authenticated else url_for('register') }}">{{ 'My dashboard' if current_user.is_authenticated else 'Create account' }}</a></div></div>
-<button type="button" class="ga-icon-button ga-hero-pause" data-pause aria-label="Pause image carousels" aria-pressed="false">Ⅱ</button>
+{% if carousel_images|length > 1 %}
+<div class="ga-carousel-arrows"><button type="button" data-prev aria-label="Previous hero image">{{ icon('chevron-left') }}</button><button type="button" data-next aria-label="Next hero image">{{ icon('chevron-right') }}</button></div>
+<div class="ga-carousel-dots" aria-label="Hero images">{% for image in carousel_images[:5] %}<button type="button" data-slide="{{ loop.index0 }}" aria-label="Show hero image {{ loop.index }}" aria-current="{{ 'true' if loop.first else 'false' }}"></button>{% endfor %}</div>
+{% endif %}
 </section>
-<section aria-labelledby="events-title"><div class="ga-page-heading"><div><p class="ga-eyebrow">Discover your next competition</p><h2 class="ga-section-title" id="events-title">Upcoming & active tournaments</h2></div><a class="ga-button ga-button-secondary" href="{{ url_for('tournaments_page') }}">All tournaments</a></div>
+<section aria-labelledby="events-title"><div class="ga-page-heading"><div><p class="ga-eyebrow">Discover your next competition</p><h2 class="ga-section-title" id="events-title">Upcoming tournaments</h2></div><a class="ga-view-all" href="{{ url_for('tournaments_page') }}">View all {{ icon('chevron-right') }}</a></div>
 <div class="ga-grid">{% for tournament in tournaments %}{% include '_tournament_card.html' %}{% else %}<p class="ga-empty">New tournaments will appear here when registration opens.</p>{% endfor %}</div></section>
 <section class="ga-card mt-8" aria-labelledby="how-title"><h2 id="how-title" class="ga-section-title">From signup to the scoreboard</h2><ol class="grid gap-5 md:grid-cols-3"><li><strong class="text-emerald-300">01 · Create your profile</strong><p class="ga-description">Verify your email and add your game IDs.</p></li><li><strong class="text-emerald-300">02 · Choose a tournament</strong><p class="ga-description">Check the schedule, rules, entry fee, and published prizes.</p></li><li><strong class="text-emerald-300">03 · Play and follow results</strong><p class="ga-description">Access your match, submit results, and track your placement.</p></li></ol></section>
 {% endblock %}

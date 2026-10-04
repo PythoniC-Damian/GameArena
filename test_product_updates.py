@@ -110,7 +110,9 @@ def test_hero_uses_all_local_images_and_has_no_cube():
         assert len(images)==len(application.hero_image_catalog())
         assert all('optimized/' in image for image in images)
     page=app.test_client().get('/').text
-    assert 'featuredCube' not in page and 'data-pause' in page
+    assert 'featuredCube' not in page and 'data-pause' not in page
+    assert 'data-next' in page and 'data-slide=' in page
+    assert 'ga-search-control' in page and 'ga-view-all' in page
 
 
 def test_configured_push_is_owner_scoped_csrf_protected_and_removed_on_logout(monkeypatch):
