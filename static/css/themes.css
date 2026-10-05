@@ -78,3 +78,27 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=submit
 @media(max-width:767px){.ga-hero-gallery{border-radius:24px;min-height:600px;padding:260px 24px 70px;align-items:flex-end}.ga-hero-gallery h1{font-size:clamp(30px,8.5vw,40px)!important}.ga-hero-gallery .ga-hero-background::after{background:linear-gradient(180deg,#050d1a05 15%,#050d1a55 40%,#050d1aee 75%)}.ga-hero-actions{display:grid;grid-template-columns:1fr;width:100%;gap:12px;margin-top:24px}.ga-carousel-arrows{display:none}.ga-carousel-dots button{width:44px}.ga-page-heading:has(.ga-view-all){flex-direction:row;align-items:center;gap:12px}.ga-page-heading:has(.ga-view-all) .ga-eyebrow{display:none}.ga-page-heading:has(.ga-view-all) .ga-section-title{font-size:22px;margin-bottom:0}}
 
 .ga-message-delivery{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:6px;color:var(--ga-muted);font-size:11px}.ga-message-delivery button{min-height:44px;min-width:44px;padding:6px 10px;border:1px solid var(--ga-border);border-radius:999px;color:var(--ga-accent);background:var(--ga-soft)}
+
+/* Fit native file pickers and show complete carousel artwork without cropping. */
+.ga-photo-editor,.ga-photo-editor form,.ga-photo-editor form>*{min-width:0;max-width:100%}.ga-photo-editor form{grid-template-columns:minmax(0,1fr)}.ga-photo-editor input[type=file]{width:100%;min-width:0;max-width:100%;overflow:hidden;font-size:14px}.ga-photo-editor input[type=file]::file-selector-button{max-width:100%;margin-right:8px;padding:8px 12px;border:1px solid var(--ga-border);border-radius:999px;background:var(--ga-soft);color:var(--ga-text)}.ga-profile-identity p,.ga-profile-identity h1,.ga-photo-editor p{overflow-wrap:anywhere}
+/* Reference hero: full artwork behind existing copy, with responsive rounded edges. */
+.ga-hero-gallery{display:flex;align-items:flex-end;gap:0;width:100%;margin-inline:0;min-height:clamp(520px,55vw,700px);padding:clamp(28px,5vw,64px) clamp(24px,5vw,64px) 80px;border-radius:28px;overflow:hidden;background:#050d1a}
+.ga-hero-gallery .ga-hero-background{position:absolute;inset:0;z-index:0;aspect-ratio:auto;width:100%;height:100%;border-radius:inherit;overflow:hidden;pointer-events:auto;touch-action:pan-y;background:#050d1a}
+.ga-hero-gallery .ga-hero-background img{width:100%;height:100%;max-height:none;object-fit:contain;object-position:center top;border-radius:0}
+.ga-hero-gallery .ga-hero-background::after{display:block;pointer-events:none;background:linear-gradient(180deg,transparent 10%,#050d1a25 35%,#050d1ac9 70%,#050d1af5 100%)}
+.ga-hero-gallery>div:not(.ga-hero-background):not(.ga-carousel-arrows):not(.ga-carousel-dots){position:relative;z-index:1;max-width:600px;min-width:0;padding:0;overflow-wrap:anywhere}
+.ga-hero-gallery .ga-carousel-dots{position:absolute!important;bottom:12px;left:50%;transform:translateX(-50%);max-width:calc(100% - 32px)!important;margin:0}
+.ga-hero-gallery .ga-carousel-arrows{left:0;bottom:0}
+@media(max-width:767px){
+ .ga-hero-gallery{min-height:620px;padding:clamp(180px,55vw,300px) 24px 72px;border-radius:24px}
+ .ga-hero-gallery .ga-hero-background::after{background:linear-gradient(180deg,transparent 12%,#050d1a15 28%,#050d1acc 58%,#050d1a 88%)}
+ .ga-hero-gallery h1{margin-top:10px}
+ .ga-hero-actions{margin-top:20px}
+}
+
+/* Edge-to-edge color fill keeps the complete foreground artwork uncropped. */
+.ga-hero-gallery .ga-hero-background .ga-slide{position:absolute;inset:0;overflow:hidden}
+.ga-hero-gallery .ga-hero-background img.ga-hero-fill{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:cover;object-position:center;filter:blur(16px);transform:scale(1.06);opacity:.8}
+.ga-hero-gallery .ga-hero-background img.ga-hero-artwork{position:absolute;inset:0 0 auto;width:100%;height:auto;max-height:100%;object-fit:contain;object-position:center top;mask-image:linear-gradient(#000 0%,#000 82%,transparent 100%);-webkit-mask-image:linear-gradient(#000 0%,#000 82%,transparent 100%)}
+.ga-hero-gallery .ga-hero-background::after{background:linear-gradient(180deg,#050d1a08 10%,#050d1a25 38%,#050d1a9c 70%,#050d1ab8 100%)}
+@media(max-width:767px){.ga-hero-gallery .ga-hero-background::after{background:linear-gradient(180deg,#050d1a05 12%,#050d1a20 32%,#050d1a9c 62%,#050d1ab8 100%)}}

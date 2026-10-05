@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-05",
+  "regression_suite": {
+    "passed": 127,
+    "warnings": 108,
+    "seconds": 606.47
+  },
+  "final_targeted_checks": {
+    "passed": 19,
+    "warnings": 9
+  },
+  "asset_build": {
+    "typecheck": "passed",
+    "vite": "passed",
+    "javascript_kb": 2.15,
+    "javascript_gzip_kb": 0.9,
+    "css_kb": 57.43,
+    "css_gzip_kb": 12.17
+  },
+  "model_form_ast_preservation": {
+    "models": 20,
+    "forms": 8,
+    "result": "unchanged"
+  },
+  "isolated_migration_command": "passed including postgres URL alias",
+  "dependency_check": "passed",
+  "browser_checks": "not run: browser control timed out",
+  "github_workflow": "authored; not run",
+  "redis_tests": "fakeredis with Lua; live persistence and multiple instances not tested",
+  "production_deployed": false,
+  "live_configuration_changed": false,
+  "remaining": [
+    "provision trusted Redis and delivery worker",
+    "configure Supabase avatar bucket",
+    "apply reviewed Cloudflare static cache rule",
+    "choose hosting resources and asset build environment",
+    "verify production gevent/WebSocket startup, sticky routing, capacity and delivery",
+    "complete browser screenshots and responsive checks"
+  ]
+}

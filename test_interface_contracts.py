@@ -141,13 +141,13 @@ def test_rankings_and_payouts_do_not_invent_data():
         ranking = viewer.get('/leaderboard').text
         assert 'View all tournaments' not in ranking and 'No player rankings' in ranking
         details = viewer.get(f'/tournament/{tournament.id}').text
-        assert '₦10,000' in details and '₦5,000' not in details and '₦2,500' not in details
+        assert 'â‚¦10,000' in details and 'â‚¦5,000' not in details and 'â‚¦2,500' not in details
 
 
 def test_cache_is_versioned_and_private_pages_are_not_cacheable():
     with app.app_context():
         page = app.test_client().get('/')
-        asset = re.search(r'href="([^"]*css/app.css\?v=[^"]+)"', page.text).group(1)
+        asset = re.search(r'href="([^"]*(?:css/app.css\?v=[^"]+|build/assets/[^"]+\.css))"', page.text).group(1)
         assert 'immutable' in app.test_client().get(asset).headers['Cache-Control']
         assert 'immutable' not in app.test_client().get('/static/css/app.css?v=wrong').headers['Cache-Control']
         assert 'no-store' in client(player('cache_owner')).get('/profile').headers['Cache-Control']

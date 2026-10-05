@@ -1,0 +1,25 @@
+{
+  "scope": "local Flask responses only; excludes browser, network and production latency",
+  "routes": {
+    "/": {
+      "samples": 20,
+      "p50_ms": 360.11,
+      "p95_ms": 736.89
+    },
+    "/tournaments": {
+      "samples": 20,
+      "p50_ms": 298.98,
+      "p95_ms": 515.27
+    },
+    "/api/v1/tournaments": {
+      "samples": 20,
+      "p50_ms": 311.8,
+      "p95_ms": 745.96
+    },
+    "/health": {
+      "samples": 20,
+      "p50_ms": 211.86,
+      "p95_ms": 533.21
+    }
+  }
+}

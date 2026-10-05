@@ -1,9 +1,15 @@
 <script>try { const savedTheme = {{ (nav_preferences.theme if nav_preferences else ('dark' if current_user.is_authenticated else none))|tojson }}; const browserTheme = localStorage.getItem('gamearenaTheme'); const theme = savedTheme || browserTheme || 'dark'; document.documentElement.dataset.theme = ['dark','light'].includes(theme) ? theme : 'dark'; if (savedTheme) localStorage.setItem('gamearenaTheme', savedTheme); } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
+{% set compiled_frontend = frontend_assets() %}
+{% if compiled_frontend %}
+{% for style in compiled_frontend.styles %}<link rel="stylesheet" href="{{ style }}">{% endfor %}
+{% else %}
 <link rel="stylesheet" href="{{ asset_url('css/tailwind.css') }}">
 <link rel="stylesheet" href="{{ asset_url('css/app.css') }}">
 <link rel="stylesheet" href="{{ asset_url('css/themes.css') }}">
+{% endif %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
 {% if current_user.is_authenticated %}<script src="{{ asset_url('js/socket.io.min.js') }}"></script>{% endif %}
 <script defer src="{{ asset_url('js/app.js') }}"></script>
-<script defer src="{{ asset_url('js/carousels.js') }}"></script>
+{% if compiled_frontend %}<script type="module" src="{{ compiled_frontend.script }}"></script>
+{% else %}<script defer src="{{ asset_url('js/carousels.js') }}"></script>{% endif %}
 {% if current_user.is_authenticated %}<script defer src="{{ asset_url('js/push.js') }}"></script>{% endif %}

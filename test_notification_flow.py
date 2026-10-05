@@ -453,6 +453,7 @@ class NotificationFlowTests(unittest.TestCase):
         with patch.dict(app_module.RATE_LIMITS, {'payment_user': (1, 60), 'payment_verification': (1, 60)}, clear=False):
             token = self.csrf_token('/wallet')
             with patch('app.requests.post') as mock_post:
+                mock_post.return_value.status_code = 200
                 mock_post.return_value.json.return_value = {'status': True, 'data': {'authorization_url': 'https://paystack.test/pay'}}
                 first = self.client.post(f'/initialize-payment/{tournament.id}', data={'csrf_token': token})
                 second = self.client.post(f'/initialize-payment/{tournament.id}', data={'csrf_token': token})
@@ -529,6 +530,7 @@ class NotificationFlowTests(unittest.TestCase):
         csrf_token = re.search(r'name="csrf_token" value="([^"]+)"', wallet_page.text).group(1)
 
         with patch('app.requests.post') as mock_post:
+            mock_post.return_value.status_code = 200
             mock_post.return_value.json.return_value = {
                 'status': True,
                 'data': {'authorization_url': 'https://paystack.test/pay'},

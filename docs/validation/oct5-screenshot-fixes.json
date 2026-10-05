@@ -1,0 +1,8 @@
+{
+  "backend_tests_passed": 8,
+  "payment_client_checks_passed": 5,
+  "syntax_and_whitespace_checks": "passed",
+  "visual_checks": "blocked: browser control timed out",
+  "live_checkout": "not confirmed",
+  "deployed": false
+}

@@ -15,3 +15,9 @@ templates_backup_*/
 .env.local-postgres-backup
 .local-test/
 instance/avatars/
+
+node_modules/
+static/build/
+playwright-report/
+test-results/
+.pnpm-store/

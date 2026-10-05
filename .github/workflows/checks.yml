@@ -1,0 +1,76 @@
+name: GameArena checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gamearena_test
+          POSTGRES_USER: gamearena_test
+          POSTGRES_PASSWORD: isolated-ci-only
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GAMEARENA_TEST_DATABASE_URL: postgresql://gamearena_test:isolated-ci-only@127.0.0.1:5432/gamearena_test
+      SECRET_KEY: isolated-ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -c "from geventwebsocket.gunicorn.workers import GeventWebSocketWorker"
+      - run: python -m pytest -q
+  frontend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gamearena_preview
+          POSTGRES_USER: gamearena_test
+          POSTGRES_PASSWORD: isolated-ci-only
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GAMEARENA_TESTING: '1'
+      DATABASE_URL: postgresql://gamearena_test:isolated-ci-only@127.0.0.1:5432/gamearena_preview
+      GAMEARENA_PREVIEW_DATABASE_URL: postgresql://gamearena_test:isolated-ci-only@127.0.0.1:5432/gamearena_preview
+      GAMEARENA_PREVIEW_PORT: '8084'
+      GAMEARENA_UI_BASE_URL: http://127.0.0.1:8084
+      SECRET_KEY: isolated-ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium webkit
+      - run: python scripts/migrate.py
+      - name: Start isolated preview
+        run: |
+          python scripts/preview_interface.py > /tmp/gamearena-preview.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8084/health > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/gamearena-preview.log
+          exit 1
+      - run: pnpm test:ui
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: responsive-browser-results
+          path: test-results/

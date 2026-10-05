@@ -31,6 +31,11 @@ import random
 import smtplib
 import socket
 import ssl
+from gamearena.bootstrap import create_base_app
+from gamearena.services.email import account_email_content
+from gamearena.services.jobs import queue_account_email, queue_push
+from gamearena.services.redis_support import shared_socket_allowed
+from gamearena.assets import frontend_assets, is_built_asset
 from user_media import store_avatar
 from web_push import push_configured, valid_subscription, deliver_push
 try:
@@ -48,8 +53,9 @@ base_dir = os.path.abspath(os.path.dirname(__file__))
 test_mode = os.environ.get('GAMEARENA_TESTING') == '1'
 load_dotenv(os.path.join(base_dir, '.env'), override=not test_mode)
 
-app = Flask(__name__)
+app = create_base_app(base_dir, testing=test_mode)
 app.config['TESTING'] = test_mode
+app.jinja_env.globals['frontend_assets'] = frontend_assets
 
 # Configuration
 secret_key = (os.environ.get('SECRET_KEY') or '').strip()
@@ -105,6 +111,8 @@ if not database_url:
     raise RuntimeError('DATABASE_URL must be configured for local and production PostgreSQL use.')
 if not database_url.lower().startswith(('postgresql://', 'postgres://', 'postgresql+')):
     raise RuntimeError('DATABASE_URL must point to PostgreSQL.')
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
 RATE_LIMITS = {
     'login_ip': (10, 15 * 60),
     'login_account': (5, 15 * 60),
@@ -146,7 +154,7 @@ def add_response_security_headers(response):
         # browser/CDN cache, but not immutable because URLs are unversioned.
         if request.path.endswith(('/sw.js', '/manifest.json')):
             response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
-        elif request.args.get('v') == asset_fingerprint((request.view_args or {}).get('filename', '')):
+        elif response.status_code == 200 and (is_built_asset((request.view_args or {}).get('filename', '')) or request.args.get('v') == asset_fingerprint((request.view_args or {}).get('filename', ''))):
             response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
         else:
             response.headers['Cache-Control'] = (
@@ -164,28 +172,8 @@ def add_response_security_headers(response):
     return response
 
 
-@app.before_request
-def begin_request_timing():
-    """Capture a request duration without recording query strings or request bodies."""
-    g.request_started_at = time.perf_counter()
-    g.db_time_ms = 0
-    g.request_id = request.headers.get('X-Request-ID', '').strip()[:64] or secrets.token_hex(8)
-
-
-@app.after_request
-def log_completed_request(response):
-    """Emit a compact, non-sensitive production log entry for dynamic requests."""
-    started_at = getattr(g, 'request_started_at', None)
-    if started_at is not None and not request.path.startswith('/static/'):
-        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
-        app.logger.info(
-            'request_completed request_id=%s method=%s path=%s status=%s duration_ms=%s',
-            getattr(g, 'request_id', '-'), request.method, request.path, response.status_code, duration_ms,
-        )
-    response.headers.setdefault('X-Request-ID', getattr(g, 'request_id', secrets.token_hex(8)))
-    if started_at is not None:
-        response.headers['Server-Timing'] = f'app;dur={(time.perf_counter() - started_at) * 1000:.1f}, db;dur={getattr(g, "db_time_ms", 0):.1f}'
-    return response
+from gamearena.observability import init_observability
+init_observability(app)
 
 
 # Socket.IO (WebSockets)
@@ -208,7 +196,7 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 # QueuePool's condition lock at runtime ("cannot wait on un-acquired lock"),
 # causing a 500 on every DB query. NullPool opens a fresh connection per check
 # out and avoids the threading lock entirely.
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'poolclass': NullPool}
+# Pool options are validated in gamearena.database; NullPool remains default.
 
 # Paystack Configuration
 PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY')
@@ -244,7 +232,7 @@ def safe_next_url(target):
     return target if is_safe_local_redirect(target) else None
 
 
-MAX_CHAT_MESSAGE_LENGTH = 1000
+from gamearena.constants import MAX_CHAT_MESSAGE_LENGTH
 MAX_MATCH_PROOF_LENGTH = 2000
 
 # Socket events are authenticated, but a connected browser can otherwise send
@@ -268,6 +256,9 @@ socket_event_windows = defaultdict(deque)
 def socket_event_allowed(event_name):
     """Return whether the current Socket.IO connection may emit an event."""
     limit, window_seconds = SOCKET_EVENT_LIMITS.get(event_name, (20, 60))
+    shared = shared_socket_allowed(current_user.get_id(), event_name, limit, window_seconds)
+    if shared is not None:
+        return shared
     key = (getattr(request, 'sid', f'http:{current_user.get_id()}'), event_name)
     now = time.monotonic()
     events = socket_event_windows[key]
@@ -323,20 +314,10 @@ def active_participant_count(tournament):
         if membership.payment_status in {'paid', 'free'}
     )
 
-db = SQLAlchemy(app)
-
-
-@sqlalchemy_event.listens_for(Engine, 'before_cursor_execute')
-def start_query_timing(connection, cursor, statement, parameters, context, executemany):
-    if has_request_context():
-        context.gamearena_query_start = time.perf_counter()
-
-
-@sqlalchemy_event.listens_for(Engine, 'after_cursor_execute')
-def finish_query_timing(connection, cursor, statement, parameters, context, executemany):
-    started = getattr(context, 'gamearena_query_start', None)
-    if started is not None and has_request_context():
-        g.db_time_ms = getattr(g, 'db_time_ms', 0) + (time.perf_counter() - started) * 1000
+from gamearena.extensions import db
+db.init_app(app)
+from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, ProfilePhoto, PushSubscription, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
+from gamearena.forms import (RegistrationForm, LoginForm, EmailVerificationForm, ForgotPasswordForm, ResetPasswordForm, TournamentForm, TournamentSetupForm, LeaderboardEntryForm)
 
 
 login_manager = LoginManager()
@@ -409,7 +390,7 @@ def create_and_emit_notification(user_id: int, message: str, category='system', 
         },
         room=f'user:{int(user_id)}'
     )
-    if push_configured():
+    if push_configured() and not queue_push(notif.id):
         subscriptions = [record.subscription for record in PushSubscription.query.filter_by(user_id=int(user_id)).all()]
         if subscriptions:
             socketio.start_background_task(deliver_push, subscriptions,
@@ -491,7 +472,7 @@ def application_navigation():
 @app.template_filter('naira')
 def format_naira(value):
     try:
-        return f'₦{int(value or 0):,}'
+        return f'â‚¦{int(value or 0):,}'
     except (TypeError, ValueError):
         return 'Not specified'
 
@@ -605,140 +586,9 @@ def generate_code(length=6):
 
 
 def send_email(subject, recipient, body):
-    """Send email synchronously and report only provider-accepted delivery."""
-    provider = (os.environ.get('EMAIL_PROVIDER') or ('resend' if os.environ.get('RENDER') else 'auto')).strip().lower()
-    resend_api_key = (os.environ.get('RESEND_API_KEY') or '').strip()
-    email_from = (os.environ.get('EMAIL_FROM') or
-        (os.environ.get('SMTP_USERNAME') if provider != 'resend' and not resend_api_key else None) or
-        'GameArena <noreply@gamearena01.com>')
-    recipient_domain = recipient.rsplit('@', 1)[-1].lower() if '@' in recipient else 'unknown'
-    if not re.fullmatch(r'[a-z0-9.-]{1,253}', recipient_domain):
-        recipient_domain = 'unknown'
-    request_id = getattr(g, 'request_id', '-')
-
-    def log_delivery(provider, outcome, started_at, status=None, provider_request_id=None, category=None):
-        provider_request_id = re.sub(r'[^A-Za-z0-9_.:-]', '', str(provider_request_id or ''))[:100] or '-'
-        details = (
-            'email_delivery provider=%s recipient_domain=%s outcome=%s status=%s '
-            'provider_request_id=%s request_id=%s duration_ms=%s category=%s',
-            provider, recipient_domain, outcome, status if status is not None else '-',
-            provider_request_id, request_id,
-            round((time.perf_counter() - started_at) * 1000, 2), category or '-',
-        )
-        if outcome == 'success':
-            app.logger.info(*details)
-        else:
-            app.logger.warning(*details)
-
-    if provider not in {'auto', 'resend', 'smtp'}:
-        log_delivery('none', 'failure', time.perf_counter(), category='invalid_provider')
-        return False
-    # Use HTTPS on Render; its free services block the standard SMTP ports.
-    # Explicit SMTP remains available for environments that support it.
-    if provider == 'resend' and not resend_api_key:
-        log_delivery('resend', 'failure', time.perf_counter(), category='missing_api_key')
-        return False
-
-    # --- Resend (preferred) ---
-    if resend_api_key and provider != 'smtp':
-        started_at = time.perf_counter()
-        connection = None
-        try:
-            payload = {
-                'from': email_from,
-                'to': recipient,
-                'subject': subject,
-                'text': body,
-            }
-            body_bytes = json.dumps(payload).encode('utf-8')
-            connection = http.client.HTTPSConnection(
-                'api.resend.com', timeout=EMAIL_NETWORK_TIMEOUT_SECONDS,
-            )
-            connection.request(
-                'POST',
-                '/emails',
-                body=body_bytes,
-                headers={
-                    'Authorization': f'Bearer {resend_api_key}',
-                    'Content-Type': 'application/json',
-                    'Content-Length': str(len(body_bytes)),
-                    'Idempotency-Key': 'gamearena-email/' + hashlib.sha256(body_bytes).hexdigest(),
-                },
-            )
-            response = connection.getresponse()
-            provider_request_id = response.getheader('x-request-id')
-            # Never log the response body: provider errors can contain addresses.
-            try:
-                result = json.loads(response.read(65536).decode('utf-8'))
-            except (ValueError, UnicodeError):
-                result = {}
-            message_id = result.get('id') if isinstance(result, dict) else None
-            if 200 <= response.status < 300 and isinstance(message_id, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,100}', message_id):
-                log_delivery('resend', 'success', started_at, response.status, provider_request_id or message_id)
-                return True
-            categories = {401:'invalid_api_key', 403:'sender_or_key_not_authorized',
-                422:'invalid_email_request', 429:'provider_rate_limited'}
-            category = 'invalid_provider_response' if 200 <= response.status < 300 else categories.get(response.status, 'provider_rejected')
-            log_delivery('resend', 'failure', started_at, response.status, provider_request_id, category)
-        except Exception as error:
-            category = 'timeout' if isinstance(error, (TimeoutError, socket.timeout)) else type(error).__name__
-            log_delivery('resend', 'failure', started_at, category=category)
-        finally:
-            if connection is not None:
-                try:
-                    connection.close()
-                except Exception:
-                    pass
-
-    if provider == 'resend':
-        # Fail promptly and truthfully; do not add a blocked SMTP timeout.
-        return False
-
-    smtp_server = os.environ.get('SMTP_SERVER')
-    smtp_port = os.environ.get('SMTP_PORT')
-    smtp_username = os.environ.get('SMTP_USERNAME')
-    smtp_password = os.environ.get('SMTP_PASSWORD')
-    smtp_use_tls = os.environ.get('SMTP_USE_TLS', 'true').lower() in ('1', 'true', 'yes')
-
-
-    if smtp_server and smtp_port and smtp_username and smtp_password:
-        started_at = time.perf_counter()
-        try:
-            msg = EmailMessage()
-            msg['Subject'] = subject
-            msg['From'] = email_from
-            msg['To'] = recipient
-            msg.set_content(body)
-            if smtp_use_tls:
-                context = ssl.create_default_context()
-                with smtplib.SMTP(smtp_server, int(smtp_port), timeout=EMAIL_NETWORK_TIMEOUT_SECONDS) as server:
-                    server.starttls(context=context)
-                    server.login(smtp_username, smtp_password)
-                    refused = server.send_message(msg)
-            else:
-                context = ssl.create_default_context()
-                with smtplib.SMTP_SSL(
-                    smtp_server, int(smtp_port), context=context,
-                    timeout=EMAIL_NETWORK_TIMEOUT_SECONDS,
-                ) as server:
-                    server.login(smtp_username, smtp_password)
-                    refused = server.send_message(msg)
-            if recipient in refused:
-                refusal = refused[recipient]
-                status = refusal[0] if isinstance(refusal, tuple) and refusal else None
-                log_delivery('smtp', 'failure', started_at, status, category='recipient_rejected')
-                return False
-            log_delivery('smtp', 'success', started_at)
-            return True
-        except Exception as error:
-            category = 'timeout' if isinstance(error, (TimeoutError, socket.timeout)) else type(error).__name__
-            log_delivery('smtp', 'failure', started_at, category=category)
-            return False
-
-    if not resend_api_key:
-        started_at = time.perf_counter()
-        log_delivery('none', 'failure', started_at, category='not_configured')
-    return False
+    # Compatibility entry point used by existing callers and provider tests.
+    from gamearena.services.email import send_email as deliver_email
+    return deliver_email(subject, recipient, body)
 
 
 def send_verification_code(user):
@@ -751,389 +601,49 @@ def send_verification_code(user):
     db.session.commit()
 
     verification_url = url_for('verify_email', email=user.email, _external=True)
-    
-    subject = 'Verify your GameArena email'
-    body = (
-        f'Hi {user.username},\n\n'
-        f'Use the code below to verify your email address on GameArena:\n\n'
-        f'{user.verification_code}\n\n'
-        f'Open the verification page: {verification_url}\n\n'
-        'This code expires in 15 minutes.\n\n'
-        'If you did not request this, please ignore this message.\n\n'
-        'Thanks,\nGameArena Team'
-    )
+    subject, body = account_email_content(user, 'verification', verification_url)
+    if queue_account_email(user, 'verification'):
+        return True  # Accepted into a durable queue; provider delivery follows.
     return send_email(subject, user.email, body)
 
 
 def send_password_reset_code(user):
-    """Generate reset code and send email"""
     create_and_emit_notification(user.id, 'Password reset code generated.')
     user.reset_code = generate_code(6)
     user.reset_expires_at = datetime.utcnow() + timedelta(minutes=15)
     db.session.commit()
-    
-    subject = 'Reset your GameArena password'
-    body = (
-        f'Hi {user.username},\n\n'
-        f'Use the code below to reset your GameArena password:\n\n'
-        f'{user.reset_code}\n\n'
-        'This code expires in 15 minutes.\n\n'
-        'If you did not request this, please ignore this message.\n\n'
-        'Thanks,\nGameArena Team'
-    )
+    subject, body = account_email_content(user, 'reset')
+    if queue_account_email(user, 'reset'):
+        return True
     return send_email(subject, user.email, body)
 
 
 # Form Classes
-class RegistrationForm(FlaskForm):
-    username = StringField('Username', [
-        validators.DataRequired(),
-        validators.Length(min=3, max=150),
-        validators.Regexp(r'^[a-zA-Z0-9_]+$', message="Username can only contain letters, numbers, and underscores")
-    ])
-    email = StringField('Email', [
-        validators.DataRequired(),
-        validators.Email(),
-        validators.Length(max=150)
-    ])
-    password = PasswordField('Password', [
-        validators.DataRequired(),
-        validators.Length(min=6, message="Password must be at least 6 characters long")
-    ])
-    submit = SubmitField('Register')
-
-class LoginForm(FlaskForm):
-    email = StringField('Email', [
-        validators.DataRequired(),
-        validators.Email()
-    ])
-    password = PasswordField('Password', [validators.DataRequired()])
-    submit = SubmitField('Login')
-
-class EmailVerificationForm(FlaskForm):
-    email = StringField('Email', [
-        validators.DataRequired(),
-        validators.Email()
-    ])
-    code = StringField('Verification Code', [
-        validators.DataRequired(),
-        validators.Length(min=4, max=10)
-    ])
-    submit = SubmitField('Verify Email')
-
-class ForgotPasswordForm(FlaskForm):
-    email = StringField('Email', [
-        validators.DataRequired(),
-        validators.Email()
-    ])
-    submit = SubmitField('Send Reset Code')
-
-class ResetPasswordForm(FlaskForm):
-    email = StringField('Email', [
-        validators.DataRequired(),
-        validators.Email()
-    ])
-    code = StringField('Reset Code', [
-        validators.DataRequired(),
-        validators.Length(min=4, max=10)
-    ])
-    new_password = PasswordField('New Password', [
-        validators.DataRequired(),
-        validators.Length(min=6, message="Password must be at least 6 characters long")
-    ])
-    submit = SubmitField('Reset Password')
-
-class TournamentForm(FlaskForm):
-    game = StringField('Game Name', [
-        validators.DataRequired(),
-        validators.Length(min=3, max=100)
-    ])
-    entry_fee = StringField('Entry Fee (₦)', [
-        validators.DataRequired(),
-        validators.Regexp(r'^\d+$', message="Entry fee must be a number")
-    ])
-    prize_pool = StringField('Prize Pool (₦)', [
-        validators.DataRequired(),
-        validators.Regexp(r'^\d+$', message="Prize pool must be a number")
-    ])
-    match_time = StringField('Match Time (YYYY-MM-DD HH:MM)', [
-        validators.Optional(),
-        validators.Length(max=50)
-    ])
-    max_participants = StringField('Max Participants', [
-        validators.DataRequired(),
-        validators.Regexp(r'^\d+$', message="Max participants must be a number")
-    ])
-    submit = SubmitField('Create Tournament')
-
-
-class TournamentSetupForm(FlaskForm):
-    entry_fee = StringField('Entry Fee (₦)', [
-        validators.DataRequired(),
-        validators.Regexp(r'^\d+$', message="Entry fee must be a number")
-    ])
-    prize_pool = StringField('Prize Pool (₦)', [
-        validators.DataRequired(),
-        validators.Regexp(r'^\d+$', message="Prize pool must be a number")
-    ])
-    max_participants = StringField('Max Participants', [
-        validators.DataRequired(),
-        validators.Regexp(r'^\d+$', message="Max participants must be a number")
-    ])
-    room_id = StringField('Room ID', [
-        validators.Optional(),
-        validators.Length(max=50)
-    ])
-    room_password = StringField('Room Password', [
-        validators.Optional(),
-        validators.Length(max=100)
-    ])
-    match_time = StringField('Match Time (YYYY-MM-DD HH:MM)', [
-        validators.Optional(),
-        validators.Length(max=50)
-    ])
-    status = SelectField('Status', choices=[
-        ('open', 'Open'),
-        ('ongoing', 'Ongoing'),
-        ('finished', 'Finished'),
-        ('cancelled', 'Cancelled')
-    ], default='open')
-    first_place = StringField('1st Place', [
-        validators.Optional(),
-        validators.Length(max=150)
-    ])
-    second_place = StringField('2nd Place', [
-        validators.Optional(),
-        validators.Length(max=150)
-    ])
-    third_place = StringField('3rd Place', [
-        validators.Optional(),
-        validators.Length(max=150)
-    ])
-    submit = SubmitField('Save Tournament Setup')
-
-
-class LeaderboardEntryForm(FlaskForm):
-    user_id = SelectField('Player', coerce=int, validators=[validators.DataRequired()])
-    wins = IntegerField('Wins', [validators.DataRequired(), validators.NumberRange(min=0)])
-    kills = IntegerField('Kills', [validators.DataRequired(), validators.NumberRange(min=0)])
-    points = IntegerField('Points', [validators.DataRequired(), validators.NumberRange(min=0)])
-    rank = IntegerField('Rank', [validators.DataRequired(), validators.NumberRange(min=1)])
-    submit = SubmitField('Save Entry')
 
 
 # -------------------------
 # USER MODEL
 # -------------------------
-class User(db.Model, UserMixin):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(150), unique=True, nullable=False)
-    email = db.Column(db.String(150), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)
-    is_admin = db.Column(db.Boolean, default=False)  # Admin flag
-    suspended = db.Column(db.Boolean, default=False)
-    email_verified = db.Column(db.Boolean, default=False)
-    verification_code = db.Column(db.String(10))
-    verification_expires_at = db.Column(db.DateTime)
-    reset_code = db.Column(db.String(10))
-    reset_expires_at = db.Column(db.DateTime)
-
-    # Profile (Phase 1)
-    avatar_url = db.Column(db.String(500), nullable=True)
-    bio = db.Column(db.Text, nullable=True)
-
-    # Wallet balance for deposits/withdrawals
-    wallet_balance = db.Column(db.Integer, default=0)
-
-    # Payout / prize receiving details (needed for Paystack transfers)
-    payout_bank = db.Column(db.String(120), nullable=True)
-    payout_account_number = db.Column(db.String(40), nullable=True)
-    payout_account_name = db.Column(db.String(200), nullable=True)
-
-    tournaments_joined = db.relationship('UserTournament', back_populates='user')
-    tournament_stats = db.relationship('TournamentStat', back_populates='user', cascade='all, delete-orphan')
-
-    def set_password(self, password):
-        self.password = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password, password)
-
-
-class UserSettings(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
-    tournament_notifications = db.Column(db.Boolean, nullable=False, default=True)
-    match_notifications = db.Column(db.Boolean, nullable=False, default=True)
-    wallet_notifications = db.Column(db.Boolean, nullable=False, default=True)
-    chat_notifications = db.Column(db.Boolean, nullable=False, default=True)
-    marketing_notifications = db.Column(db.Boolean, nullable=False, default=False)
-    profile_public = db.Column(db.Boolean, nullable=False, default=True)
-    allow_direct_messages = db.Column(db.Boolean, nullable=False, default=True)
-    theme = db.Column(db.String(20), nullable=False, default='dark')
-    reduce_motion = db.Column(db.Boolean, nullable=False, default=False)
-    larger_text = db.Column(db.Boolean, nullable=False, default=False)
-    preferred_games = db.Column(db.JSON, nullable=False, default=list)
-    game_ids = db.Column(db.JSON, nullable=False, default=dict)
-    match_preferences = db.Column(db.JSON, nullable=False, default=dict)
-    user = db.relationship('User', backref=db.backref('settings', uselist=False))
-
-
-class Achievement(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    key = db.Column(db.String(80), unique=True, nullable=False)
-    name = db.Column(db.String(120), nullable=False)
-    description = db.Column(db.String(300), nullable=False)
-    icon = db.Column(db.String(40), nullable=False, default='trophy')
-    category = db.Column(db.String(40), nullable=False, default='milestone')
-    rule_type = db.Column(db.String(40), nullable=False)
-    threshold = db.Column(db.Integer, nullable=False, default=1)
-    hidden = db.Column(db.Boolean, nullable=False, default=False)
-    enabled = db.Column(db.Boolean, nullable=False, default=True)
-
-
-class UserAchievement(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    achievement_id = db.Column(db.Integer, db.ForeignKey('achievement.id'), nullable=False)
-    progress = db.Column(db.Integer, nullable=False, default=0)
-    unlocked_at = db.Column(db.DateTime, nullable=True)
-    achievement = db.relationship('Achievement')
-    user = db.relationship('User', backref=db.backref('achievement_records', lazy=True))
-
-    __table_args__ = (
-        db.UniqueConstraint('user_id', 'achievement_id', name='unique_user_achievement'),
-        db.Index('ix_user_achievement_user_unlocked', 'user_id', 'unlocked_at'),
-    )
-
 
 
 # -------------------------
 # TOURNAMENT MODEL
 # -------------------------
-class Tournament(db.Model):
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(200), nullable=False)
-    game = db.Column(db.String(100), nullable=False)
-    entry_fee = db.Column(db.Integer, default=100)
-    prize = db.Column(db.Integer, default=5000)
-    max_participants = db.Column(db.Integer, default=50)
-    description = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=db.func.now())
-    status = db.Column(db.String(20), default='open')
-    room_id = db.Column(db.String(50))
-    room_password = db.Column(db.String(100))
-    match_time = db.Column(db.DateTime)
-    first_place = db.Column(db.String(150))
-    second_place = db.Column(db.String(150))
-    third_place = db.Column(db.String(150))
-    participants = db.relationship('UserTournament', back_populates='tournament')
-    leaderboard = db.relationship('TournamentStat', back_populates='tournament', cascade='all, delete-orphan', order_by='TournamentStat.rank')
-
-    __table_args__ = (
-        db.Index('ix_tournament_status_match_time', 'status', 'match_time'),
-    )
-
-    @property
-    def prize_pool(self):
-        return self.prize
 
 
 # -------------------------
 # LEADERBOARD MODEL
 # -------------------------
-class TournamentStat(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=False)
-    wins = db.Column(db.Integer, default=0)
-    kills = db.Column(db.Integer, default=0)
-    points = db.Column(db.Integer, default=0)
-    rank = db.Column(db.Integer, default=0)
-
-    # Prize distribution tracking
-    prize_code = db.Column(db.String(20), nullable=True)
-    prize_code_sent_at = db.Column(db.DateTime, nullable=True)
-    prize_status = db.Column(db.String(20), default='not_started')  # not_started, pending, paid, failed
-    paystack_transfer_ref = db.Column(db.String(100), nullable=True)
-    prize_paid_at = db.Column(db.DateTime, nullable=True)
-
-    user = db.relationship('User', back_populates='tournament_stats')
-    tournament = db.relationship('Tournament', back_populates='leaderboard')
-
-    __table_args__ = (
-        db.UniqueConstraint('user_id', 'tournament_id', name='unique_user_tournament_stat'),
-        db.Index('ix_tournament_stat_tournament_rank', 'tournament_id', 'rank'),
-        db.Index('ix_tournament_stat_user_id', 'user_id'),
-    )
-
-
-
 
 
 # -------------------------
 # USER-TOURNAMENT MODEL
 # -------------------------
-class UserTournament(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=False)
-    joined_at = db.Column(db.DateTime, default=db.func.now())
-    payment_status = db.Column(db.String(20), default='pending')  # pending, paid, failed, refunded
-    transaction_ref = db.Column(db.String(100), unique=True)
-    amount_paid = db.Column(db.Integer, default=0)
-
-    user = db.relationship('User', back_populates='tournaments_joined')
-    tournament = db.relationship('Tournament', back_populates='participants')
-
-    __table_args__ = (
-        db.UniqueConstraint('user_id', 'tournament_id', name='unique_user_tournament_registration'),
-        db.Index('ix_user_tournament_user_joined_at', 'user_id', 'joined_at'),
-        db.Index('ix_user_tournament_tournament_payment_status', 'tournament_id', 'payment_status'),
-    )
 
 
 # -------------------------
 # WALLET TRANSACTIONS MODEL
 # -------------------------
-class WalletTransaction(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    type = db.Column(db.String(20), nullable=False)  # 'deposit' or 'withdrawal'
-    amount = db.Column(db.Integer, nullable=False, default=0)
-    # Deposits retain their existing pending/completed/failed lifecycle.
-    # Withdrawals use pending -> processing -> completed, with failed for a
-    # definitive provider failure after the reserved funds have been released.
-    status = db.Column(db.String(20), default='completed')
-    transaction_ref = db.Column(db.String(100), unique=True, nullable=True)
-    bank_name = db.Column(db.String(120), nullable=True)
-    bank_code = db.Column(db.String(20), nullable=True)
-    account_number = db.Column(db.String(40), nullable=True)
-    account_name = db.Column(db.String(200), nullable=True)
-    idempotency_key = db.Column(db.String(100), unique=True, nullable=True)
-    provider_recipient_code = db.Column(db.String(100), nullable=True)
-    provider_transfer_code = db.Column(db.String(100), unique=True, nullable=True)
-    failure_reason = db.Column(db.String(500), nullable=True)
-    processing_at = db.Column(db.DateTime, nullable=True)
-    completed_at = db.Column(db.DateTime, nullable=True)
-    failed_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=db.func.now())
-
-    user = db.relationship('User', backref=db.backref('wallet_transactions', lazy=True))
-
-    __table_args__ = (
-        db.Index('ix_wallet_transaction_user_created_at', 'user_id', 'created_at'),
-        db.Index('ix_wallet_transaction_user_status', 'user_id', 'status'),
-        db.Index('ix_wallet_transaction_withdrawal_state', 'type', 'status', 'created_at'),
-    )
-
-
-class RateLimitBucket(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    bucket_key = db.Column(db.String(255), unique=True, nullable=False)
-    window_started = db.Column(db.DateTime, nullable=False)
-    count = db.Column(db.Integer, nullable=False, default=0)
 
 
 def client_rate_limit_key():
@@ -1248,126 +758,11 @@ def apply_rate_limits():
 # -------------------------
 # NOTIFICATIONS (Phase 1)
 # -------------------------
-class Notification(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    message = db.Column(db.String(500), nullable=False)
-    category = db.Column(db.String(30), nullable=False, default='system')
-    target_url = db.Column(db.String(500), nullable=True)
-    read_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=db.func.now())
-
-    user = db.relationship('User', backref=db.backref('notifications', lazy=True))
-
-    __table_args__ = (
-        db.Index('ix_notification_user_read_created_at', 'user_id', 'read_at', 'created_at'),
-    )
 
 
 # -------------------------
 # TOURNAMENT CHAT (Phase 1)
 # -------------------------
-class TournamentChatMessage(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    message = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.now())
-
-    user = db.relationship('User')
-    tournament = db.relationship('Tournament', backref=db.backref('chat_messages', lazy=True))
-
-    __table_args__ = (
-        db.Index('ix_tournament_chat_message_tournament_created_at', 'tournament_id', 'created_at'),
-    )
-
-
-class GlobalChatMessage(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    message = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.now())
-
-    user = db.relationship('User')
-    client_message_id = db.Column(db.String(36), nullable=True, unique=True)
-    deleted_at = db.Column(db.DateTime, nullable=True)
-    reply_to_id = db.Column(db.Integer, db.ForeignKey('global_chat_message.id', ondelete='SET NULL'), nullable=True)
-    reply_to = db.relationship('GlobalChatMessage', remote_side=[id], lazy='joined', join_depth=1)
-
-    __table_args__ = (
-        db.Index('ix_global_chat_message_created_at', 'created_at'),
-        db.Index('ix_global_chat_message_user_created_at', 'user_id', 'created_at'),
-    )
-
-
-class DirectMessage(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    recipient_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    message = db.Column(db.String(MAX_CHAT_MESSAGE_LENGTH), nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
-    read_at = db.Column(db.DateTime, nullable=True)
-    sender = db.relationship('User', foreign_keys=[sender_id])
-    recipient = db.relationship('User', foreign_keys=[recipient_id])
-    client_message_id = db.Column(db.String(36), nullable=True, unique=True)
-    deleted_at = db.Column(db.DateTime, nullable=True)
-    reply_to_id = db.Column(db.Integer, db.ForeignKey('direct_message.id', ondelete='SET NULL'), nullable=True)
-    reply_to = db.relationship('DirectMessage', remote_side=[id], lazy='joined', join_depth=1)
-
-    __table_args__ = (
-        db.Index('ix_direct_message_pair_created', 'sender_id', 'recipient_id', 'created_at'),
-        db.Index('ix_direct_message_recipient_read', 'recipient_id', 'read_at'),
-    )
-
-
-class ProfilePhoto(db.Model):
-    id = db.Column(db.String(32), primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
-    image = db.Column(db.LargeBinary, nullable=False)
-
-
-class PushSubscription(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
-    endpoint_hash = db.Column(db.String(64), nullable=False, unique=True)
-    subscription = db.Column(db.JSON, nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
-
-
-class UserBlock(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    blocker_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    blocked_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
-    blocker = db.relationship('User', foreign_keys=[blocker_id])
-    blocked = db.relationship('User', foreign_keys=[blocked_id])
-
-    __table_args__ = (
-        db.UniqueConstraint('blocker_id', 'blocked_id', name='unique_user_block'),
-        db.CheckConstraint('blocker_id <> blocked_id', name='check_user_block_not_self'),
-        db.Index('ix_user_block_blocked_id', 'blocked_id'),
-    )
-
-
-class UserReport(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    reporter_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    target_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    content_type = db.Column(db.String(30), nullable=False, default='player')
-    content_id = db.Column(db.Integer, nullable=True)
-    reason = db.Column(db.String(2000), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default='pending')
-    created_at = db.Column(db.DateTime, default=db.func.now(), nullable=False)
-    reviewed_at = db.Column(db.DateTime, nullable=True)
-    reviewed_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    reporter = db.relationship('User', foreign_keys=[reporter_id])
-    target_user = db.relationship('User', foreign_keys=[target_user_id])
-    reviewed_by = db.relationship('User', foreign_keys=[reviewed_by_id])
-
-    __table_args__ = (
-        db.Index('ix_user_report_status_created', 'status', 'created_at'),
-        db.Index('ix_user_report_target_user', 'target_user_id', 'created_at'),
-    )
 
 
 def get_or_create_user_settings(user_id):
@@ -1492,69 +887,6 @@ def award_achievements_for_user(user_id):
                 target_url='/profile#achievements',
             ))
     db.session.commit()
-
-
-class TournamentMatch(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=False)
-    player_one_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    player_two_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    status = db.Column(db.String(30), default='scheduled')
-    round_number = db.Column(db.Integer, nullable=True)
-    match_order = db.Column(db.Integer, nullable=True)
-    room_code = db.Column(db.String(100), nullable=True)
-    room_password = db.Column(db.String(100), nullable=True)
-    player_one_profile_id = db.Column(db.String(150), nullable=True)
-    player_two_profile_id = db.Column(db.String(150), nullable=True)
-    winner_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    proof_note = db.Column(db.Text, nullable=True)
-    submitted_by_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=db.func.now())
-    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
-
-    tournament = db.relationship('Tournament', backref=db.backref('matches', lazy=True))
-    player_one = db.relationship('User', foreign_keys=[player_one_user_id])
-    player_two = db.relationship('User', foreign_keys=[player_two_user_id])
-    winner = db.relationship('User', foreign_keys=[winner_user_id])
-    submitted_by = db.relationship('User', foreign_keys=[submitted_by_user_id])
-
-    __table_args__ = (
-        db.Index('ix_tournament_match_tournament_status', 'tournament_id', 'status'),
-        db.Index('ix_tournament_match_player_one_status', 'player_one_user_id', 'status'),
-        db.Index('ix_tournament_match_player_two_status', 'player_two_user_id', 'status'),
-        db.UniqueConstraint('tournament_id', 'round_number', 'match_order', name='unique_tournament_bracket_match'),
-    )
-
-
-class TournamentMatchChatMessage(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    match_id = db.Column(db.Integer, db.ForeignKey('tournament_match.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    message = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.now())
-
-    user = db.relationship('User')
-    match = db.relationship('TournamentMatch', backref=db.backref('chat_messages', lazy=True))
-
-    __table_args__ = (
-        db.Index('ix_match_chat_message_match_created_at', 'match_id', 'created_at'),
-    )
-
-
-class TournamentMatchDispute(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    match_id = db.Column(db.Integer, db.ForeignKey('tournament_match.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    reason = db.Column(db.Text, nullable=False)
-    status = db.Column(db.String(20), default='pending')
-    created_at = db.Column(db.DateTime, default=db.func.now())
-
-    user = db.relationship('User')
-    match = db.relationship('TournamentMatch', backref=db.backref('disputes', lazy=True))
-
-    __table_args__ = (
-        db.Index('ix_match_dispute_match_status', 'match_id', 'status'),
-    )
 
 
 def create_tournament_matches(tournament):
@@ -1731,134 +1063,12 @@ def health():
 # -------------------------
 # PUBLIC JSON API (migration-ready frontend boundary)
 # -------------------------
-API_MAX_PAGE_SIZE = 50
-PUBLIC_TOURNAMENT_STATUSES = {'open', 'ongoing', 'live', 'finished', 'cancelled'}
-
-
-def api_error(message, status_code=400):
-    return jsonify({'error': {'message': message, 'status': status_code}}), status_code
-
-
-def api_pagination(page, per_page, total):
-    return {
-        'page': page,
-        'per_page': per_page,
-        'total': total,
-        'total_pages': (total + per_page - 1) // per_page if total else 0,
-    }
-
-
-def tournament_image_url(game_name):
-    key = (game_name or '').strip().lower()
-    image = GAME_IMAGE_MAP.get(key)
-    return url_for('static', filename=image) if image else None
-
-
-def serialize_tournament(tournament, include_description=True):
-    participant_count = sum(
-        1 for membership in tournament.participants
-        if membership.payment_status in {'paid', 'free'}
-    )
-    payload = {
-        'id': tournament.id,
-        'name': tournament.name,
-        'game': tournament.game,
-        'entry_fee': tournament.entry_fee,
-        'prize': tournament.prize,
-        'max_participants': tournament.max_participants,
-        'participant_count': participant_count,
-        'status': tournament.status,
-        'match_time': tournament.match_time.isoformat() if tournament.match_time else None,
-        'created_at': tournament.created_at.isoformat() if tournament.created_at else None,
-        'image_url': tournament_image_url(tournament.game),
-    }
-    if include_description:
-        payload['description'] = tournament.description
-    return payload
-
-
-def public_api_response(payload, status_code=200):
-    response = jsonify(payload)
-    response.status_code = status_code
-    # This data is public and changes infrequently; keep browser caching brief
-    # while allowing a CDN to absorb repeated listing requests.
-    response.headers['Cache-Control'] = 'public, max-age=30, s-maxage=60, stale-while-revalidate=60'
-    response.headers['Vary'] = 'Accept'
-    return response
-
-
-@app.route('/api/v1/tournaments')
-def api_tournaments():
-    page = max(request.args.get('page', 1, type=int) or 1, 1)
-    per_page = min(max(request.args.get('per_page', 20, type=int) or 20, 1), API_MAX_PAGE_SIZE)
-    status = (request.args.get('status') or '').strip().lower()
-    if status and status not in PUBLIC_TOURNAMENT_STATUSES:
-        return api_error('Unsupported tournament status.')
-
-    query = Tournament.query.options(selectinload(Tournament.participants))
-    if status:
-        query = query.filter(Tournament.status == status)
-    pagination = query.order_by(Tournament.match_time.asc().nullslast(), Tournament.id.desc()).paginate(
-        page=page, per_page=per_page, error_out=False,
-    )
-    return public_api_response({
-        'data': [serialize_tournament(tournament) for tournament in pagination.items],
-        'pagination': api_pagination(page, per_page, pagination.total),
-    })
-
-
-@app.route('/api/v1/tournaments/<int:tournament_id>')
-def api_tournament_detail(tournament_id):
-    tournament = Tournament.query.options(
-        selectinload(Tournament.participants),
-        selectinload(Tournament.leaderboard).joinedload(TournamentStat.user),
-        selectinload(Tournament.matches).joinedload(TournamentMatch.player_one),
-        selectinload(Tournament.matches).joinedload(TournamentMatch.player_two),
-    ).filter_by(id=tournament_id).first()
-    if not tournament:
-        return api_error('Tournament not found.', 404)
-
-    payload = serialize_tournament(tournament)
-    payload['leaderboard'] = [
-        {
-            'rank': entry.rank, 'points': entry.points, 'wins': entry.wins, 'kills': entry.kills,
-            'player': {'id': entry.user.id, 'username': entry.user.username} if entry.user else None,
-        }
-        for entry in tournament.leaderboard
-    ]
-    # Room credentials, proof, and disputes deliberately remain private.
-    payload['matches'] = [
-        {
-            'id': match.id, 'status': match.status,
-            'player_one': {'id': match.player_one.id, 'username': match.player_one.username} if match.player_one else None,
-            'player_two': {'id': match.player_two.id, 'username': match.player_two.username} if match.player_two else None,
-            'winner_user_id': match.winner_user_id if match.status == 'confirmed' else None,
-        }
-        for match in tournament.matches
-    ]
-    return public_api_response({'data': payload})
-
-
-@app.route('/api/v1/leaderboard')
-def api_leaderboard():
-    page = max(request.args.get('page', 1, type=int) or 1, 1)
-    per_page = min(max(request.args.get('per_page', 20, type=int) or 20, 1), API_MAX_PAGE_SIZE)
-    query = TournamentStat.query.options(
-        joinedload(TournamentStat.user), joinedload(TournamentStat.tournament),
-    ).order_by(TournamentStat.rank.asc(), TournamentStat.points.desc(), TournamentStat.id.asc())
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    return public_api_response({
-        'data': [
-            {
-                'id': entry.id, 'rank': entry.rank, 'points': entry.points,
-                'wins': entry.wins, 'kills': entry.kills,
-                'player': {'id': entry.user.id, 'username': entry.user.username} if entry.user else None,
-                'tournament': {'id': entry.tournament.id, 'name': entry.tournament.name, 'game': entry.tournament.game} if entry.tournament else None,
-            }
-            for entry in pagination.items
-        ],
-        'pagination': api_pagination(page, per_page, pagination.total),
-    })
+from gamearena.public_api import (
+    API_MAX_PAGE_SIZE, PUBLIC_TOURNAMENT_STATUSES, api_error, api_pagination,
+    serialize_tournament, public_api_response, api_tournaments,
+    api_tournament_detail, api_leaderboard, register_public_api,
+)
+register_public_api(app, Tournament, TournamentStat, TournamentMatch, GAME_IMAGE_MAP)
 
 
 # -------------------------
@@ -2510,7 +1720,7 @@ def read_direct_messages(user_id):
 
 
 # -------------------------
-# NEW: TOURNAMENT DETAILS PAGE 🔥
+# NEW: TOURNAMENT DETAILS PAGE ðŸ”¥
 # -------------------------
 @app.route("/tournament/<int:tournament_id>")
 def tournament_details(tournament_id):
@@ -2597,7 +1807,7 @@ def register():
             db.session.add(new_user)
             db.session.commit()
             if send_verification_code(new_user):
-                flash('Verification code sent. Please check your inbox and spam folder.', 'success')
+                flash('Verification email requested. Please check your inbox and spam folder.', 'success')
             else:
                 flash("Your account was created, but we couldn't send the verification email right now. Please try again shortly.", 'error')
             return redirect(url_for("verify_email", email=new_user.email))
@@ -2630,7 +1840,7 @@ def login():
 
             if not user.email_verified and not getattr(user, "is_admin", False):
                 if send_verification_code(user):
-                    flash('Verification code sent. Please check your inbox and spam folder.', 'success')
+                    flash('Verification email requested. Please check your inbox and spam folder.', 'success')
                 else:
                     flash("Your email isn't verified, and we couldn't send a new code right now. Please try again shortly.", 'error')
                 return redirect(url_for("verify_email", email=user.email))
@@ -2765,7 +1975,7 @@ def verify_email():
         user = User.query.filter_by(email=email).first() if email else None
         if user and not user.email_verified:
             if send_verification_code(user):
-                flash('Verification code sent. Please check your inbox and spam folder.', 'success')
+                flash('Verification email requested. Please check your inbox and spam folder.', 'success')
             else:
                 flash("We couldn't send the verification email right now. Please try again shortly.", 'error')
         else:
@@ -3724,7 +2934,7 @@ def apply_wallet_deposit(wallet_transaction, transaction):
     db.session.commit()
     create_and_emit_notification(
         wallet_transaction.user_id,
-        f'Your wallet deposit of ₦{wallet_transaction.amount:,} is complete.',
+        f'Your wallet deposit of â‚¦{wallet_transaction.amount:,} is complete.',
         'wallet', '/wallet',
     )
     return True, 'processed'
@@ -3753,6 +2963,28 @@ def pay_for_tournament(tournament_id):
         return redirect(url_for("home"))
 
     return render_template("payment.html", tournament=tournament, paystack_public_key=PAYSTACK_PUBLIC_KEY)
+
+
+def validated_checkout_url(payload, status_code):
+    if status_code != 200 or not isinstance(payload, dict) or payload.get('status') is not True:
+        app.logger.warning('Checkout response rejected provider_status=%s reason=provider_rejection', status_code)
+        return None
+    data = payload.get('data')
+    value = data.get('authorization_url') if isinstance(data, dict) else None
+    if not isinstance(value, str):
+        app.logger.warning('Checkout response rejected provider_status=%s reason=missing_checkout_url', status_code)
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password:
+        return value
+    app.logger.warning('Checkout response rejected provider_status=%s reason=invalid_checkout_url', status_code)
+    return None
+
+
+def checkout_failure_message(status_code):
+    if status_code in (401, 403):
+        return 'Payments are temporarily unavailable. Please contact GameArena support.'
+    return 'Checkout could not be opened. Please try again shortly.'
 
 
 @app.route("/initialize-payment/<int:tournament_id>", methods=['POST'])
@@ -3806,16 +3038,17 @@ def initialize_payment(tournament_id):
 
             response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=data, headers=headers, timeout=(5, 15))
             response_data = response.json()
+            checkout_url = validated_checkout_url(response_data, response.status_code)
 
-            if response_data['status']:
+            if checkout_url:
                 db.session.commit()
                 return jsonify({
                     'status': 'success',
-                    'authorization_url': response_data['data']['authorization_url'],
+                    'authorization_url': checkout_url,
                     'reference': transaction_ref
                 })
             db.session.rollback()
-            return jsonify({'status': 'error', 'message': 'Payment initialization failed'}), 502
+            return jsonify({'status': 'error', 'message': checkout_failure_message(response.status_code)}), 502
 
         if active_participant_count(tournament) >= tournament.max_participants:
             return jsonify({'status': 'error', 'message': 'Tournament is full'})
@@ -3847,8 +3080,9 @@ def initialize_payment(tournament_id):
 
         response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=data, headers=headers, timeout=(5, 15))
         response_data = response.json()
+        checkout_url = validated_checkout_url(response_data, response.status_code)
 
-        if response_data['status']:
+        if checkout_url:
             # Create pending UserTournament record
             join = UserTournament(
                 user_id=current_user.id,
@@ -3862,12 +3096,19 @@ def initialize_payment(tournament_id):
 
             return jsonify({
                 'status': 'success',
-                'authorization_url': response_data['data']['authorization_url'],
+                'authorization_url': checkout_url,
                 'reference': transaction_ref
             })
         else:
-            return jsonify({'status': 'error', 'message': 'Payment initialization failed'})
+            db.session.rollback()
+            return jsonify({'status': 'error', 'message': checkout_failure_message(response.status_code)}), 502
 
+    except requests.Timeout:
+        db.session.rollback()
+        return jsonify({'status':'error','message':'Checkout timed out. Please check your entry and try again.'}), 504
+    except ValueError:
+        db.session.rollback()
+        return jsonify({'status':'error','message':'The payment provider returned an invalid response. Please try again shortly.'}), 502
     except Exception:
         db.session.rollback()
         app.logger.exception('Payment initialization failed')
@@ -4104,7 +3345,7 @@ def wallet_verify_deposit():
         flash(result, 'error')
         return redirect(url_for('wallet'))
 
-    flash(f'₦{wt.amount:,} deposited successfully!', 'success')
+    flash(f'â‚¦{wt.amount:,} deposited successfully!', 'success')
     return redirect(url_for('wallet'))
 
 
@@ -4171,7 +3412,7 @@ def release_failed_withdrawal(withdrawal_id, reason, provider_transfer_code=None
     db.session.commit()
     create_and_emit_notification(
         withdrawal.user_id,
-        f'Your withdrawal of ₦{withdrawal.amount:,} failed and the funds were returned to your wallet.',
+        f'Your withdrawal of â‚¦{withdrawal.amount:,} failed and the funds were returned to your wallet.',
         'wallet', '/wallet',
     )
     return withdrawal
@@ -4190,7 +3431,7 @@ def complete_withdrawal(withdrawal_id, provider_transfer_code=None):
     db.session.commit()
     create_and_emit_notification(
         withdrawal.user_id,
-        f'Your withdrawal of ₦{withdrawal.amount:,} is complete.',
+        f'Your withdrawal of â‚¦{withdrawal.amount:,} is complete.',
         'wallet', '/wallet',
     )
     return withdrawal
@@ -4341,7 +3582,7 @@ def wallet_withdraw():
     balance = wallet_owner.wallet_balance or 0
 
     if amount > balance:
-        return jsonify({'status': 'error', 'message': f'Insufficient balance. You have ₦{balance:,} in your wallet.'})
+        return jsonify({'status': 'error', 'message': f'Insufficient balance. You have â‚¦{balance:,} in your wallet.'})
 
     import uuid
     transaction_ref = str(uuid.uuid4())
@@ -4362,7 +3603,7 @@ def wallet_withdraw():
     db.session.add(wt)
     db.session.commit()
 
-    return jsonify({'status': 'success', 'message': f'₦{amount:,} withdrawn successfully to {account_name} ({bank_name} - {account_number}).'})
+    return jsonify({'status': 'success', 'message': f'â‚¦{amount:,} withdrawn successfully to {account_name} ({bank_name} - {account_number}).'})
 
 # LOGOUT
 @app.route("/logout", methods=['GET', 'POST'])

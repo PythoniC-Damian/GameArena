@@ -252,78 +252,85 @@ def mark_migration_applied(connection, migration_id):
 
 def migrate(url=None):
     url = url or database_url()
+    if url.startswith('postgres://'):
+        url = url.replace('postgres://', 'postgresql://', 1)
     engine = create_engine(url, future=True)
     dialect = engine.dialect.name
     if dialect != 'postgresql':
         raise RuntimeError(f'Unsupported database dialect: {dialect}')
 
-    with engine.begin() as connection:
-        inspector = inspect(connection)
-        if not inspector.has_table('user_tournament'):
-            bootstrap_baseline_schema(connection)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text('SELECT pg_advisory_xact_lock(718425109)'))
+            inspector = inspect(connection)
+            if not inspector.has_table('user_tournament'):
+                bootstrap_baseline_schema(connection)
 
-        ensure_migration_table(connection)
-        completed = applied_migrations(connection)
+            ensure_migration_table(connection)
+            completed = applied_migrations(connection)
 
-        if '20260920_baseline_schema' not in completed:
-            mark_migration_applied(connection, '20260920_baseline_schema')
+            if '20260920_baseline_schema' not in completed:
+                mark_migration_applied(connection, '20260920_baseline_schema')
 
-        if '20260919_rate_limit_and_registration_constraint' not in completed:
-            connection.execute(text(
-                'CREATE TABLE IF NOT EXISTS rate_limit_bucket ('
-                'id SERIAL PRIMARY KEY, '
-                'bucket_key VARCHAR(255) NOT NULL UNIQUE, '
-                'window_started TIMESTAMP NOT NULL, '
-                'count INTEGER NOT NULL DEFAULT 0)'
-            ))
-
-            duplicates = duplicate_registrations(connection)
-            if duplicates:
-                print('ERROR: duplicate user/tournament registrations found; no constraint was added.', file=sys.stderr)
-                for user_id, tournament_id, count in duplicates:
-                    print(f'  user_id={user_id}, tournament_id={tournament_id}, count={count}', file=sys.stderr)
-                raise RuntimeError('Resolve duplicate registrations explicitly before migration.')
-
-            if not has_registration_constraint(connection):
+            if '20260919_rate_limit_and_registration_constraint' not in completed:
                 connection.execute(text(
-                    f'ALTER TABLE user_tournament ADD CONSTRAINT {CONSTRAINT_NAME} '
-                    'UNIQUE (user_id, tournament_id)'
+                    'CREATE TABLE IF NOT EXISTS rate_limit_bucket ('
+                    'id SERIAL PRIMARY KEY, '
+                    'bucket_key VARCHAR(255) NOT NULL UNIQUE, '
+                    'window_started TIMESTAMP NOT NULL, '
+                    'count INTEGER NOT NULL DEFAULT 0)'
                 ))
-            mark_migration_applied(connection, '20260919_rate_limit_and_registration_constraint')
 
-        if '20260919_query_performance_indexes' not in completed:
-            for statement in PERFORMANCE_INDEXES:
-                connection.execute(text(statement))
-            mark_migration_applied(connection, '20260919_query_performance_indexes')
+                duplicates = duplicate_registrations(connection)
+                if duplicates:
+                    print('ERROR: duplicate user/tournament registrations found; no constraint was added.', file=sys.stderr)
+                    for user_id, tournament_id, count in duplicates:
+                        print(f'  user_id={user_id}, tournament_id={tournament_id}, count={count}', file=sys.stderr)
+                    raise RuntimeError('Resolve duplicate registrations explicitly before migration.')
 
-        if '20260920_wallet_withdrawal_transfer_state' not in completed:
-            ensure_wallet_withdrawal_columns(connection)
-            mark_migration_applied(connection, '20260920_wallet_withdrawal_transfer_state')
+                if not has_registration_constraint(connection):
+                    connection.execute(text(
+                        f'ALTER TABLE user_tournament ADD CONSTRAINT {CONSTRAINT_NAME} '
+                        'UNIQUE (user_id, tournament_id)'
+                    ))
+                mark_migration_applied(connection, '20260919_rate_limit_and_registration_constraint')
 
-        if '20261001_product_features' not in completed:
-            ensure_product_features(connection)
-            mark_migration_applied(connection, '20261001_product_features')
-        if '20261003_chat_replies_and_web_push' not in completed:
-            ensure_chat_replies_and_push(connection)
-            mark_migration_applied(connection, '20261003_chat_replies_and_web_push')
+            if '20260919_query_performance_indexes' not in completed:
+                for statement in PERFORMANCE_INDEXES:
+                    connection.execute(text(statement))
+                mark_migration_applied(connection, '20260919_query_performance_indexes')
 
-        if '20261004_chat_delivery_and_profile_photos' not in completed:
-            ensure_chat_delivery_and_photos(connection)
-            mark_migration_applied(connection, '20261004_chat_delivery_and_profile_photos')
+            if '20260920_wallet_withdrawal_transfer_state' not in completed:
+                ensure_wallet_withdrawal_columns(connection)
+                mark_migration_applied(connection, '20260920_wallet_withdrawal_transfer_state')
 
-        # Keep this list near the migration declarations so a future migration
-        # cannot silently be added without an implementation branch above.
-        unknown = {migration[0] for migration in MIGRATIONS} - {
-            '20260920_baseline_schema',
-            '20260919_rate_limit_and_registration_constraint',
-            '20260919_query_performance_indexes',
-            '20260920_wallet_withdrawal_transfer_state',
-            '20261001_product_features',
-            '20261003_chat_replies_and_web_push',
-            '20261004_chat_delivery_and_profile_photos',
-        }
-        if unknown:
-            raise RuntimeError(f'Migration declarations without implementation: {sorted(unknown)}')
+            if '20261001_product_features' not in completed:
+                ensure_product_features(connection)
+                mark_migration_applied(connection, '20261001_product_features')
+            if '20261003_chat_replies_and_web_push' not in completed:
+                ensure_chat_replies_and_push(connection)
+                mark_migration_applied(connection, '20261003_chat_replies_and_web_push')
+
+            if '20261004_chat_delivery_and_profile_photos' not in completed:
+                ensure_chat_delivery_and_photos(connection)
+                mark_migration_applied(connection, '20261004_chat_delivery_and_profile_photos')
+
+            # Keep this list near the migration declarations so a future migration
+            # cannot silently be added without an implementation branch above.
+            unknown = {migration[0] for migration in MIGRATIONS} - {
+                '20260920_baseline_schema',
+                '20260919_rate_limit_and_registration_constraint',
+                '20260919_query_performance_indexes',
+                '20260920_wallet_withdrawal_transfer_state',
+                '20261001_product_features',
+                '20261003_chat_replies_and_web_push',
+                '20261004_chat_delivery_and_profile_photos',
+            }
+            if unknown:
+                raise RuntimeError(f'Migration declarations without implementation: {sorted(unknown)}')
+
+    finally:
+        engine.dispose()
 
     print('Database schema check completed successfully.')
 

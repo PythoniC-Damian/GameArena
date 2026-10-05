@@ -1,0 +1,40 @@
+# Review-only template: applying it creates billed resources.
+# Keep web, worker and Redis in the same region. This does not create Postgres.
+# Use the same DATABASE_URL, SECRET_KEY and sender/VAPID secrets as the web app.
+services:
+  - type: keyvalue
+    name: gamearena-infrastructure
+    plan: 256mb
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+  - type: worker
+    name: gamearena-delivery
+    runtime: python
+    plan: 0.5c-512mb
+    autoDeploy: false
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/run_worker.py
+    envVars:
+      - key: JOB_REDIS_URL
+        fromService:
+          name: gamearena-infrastructure
+          type: keyvalue
+          property: connectionString
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: PUBLIC_BASE_URL
+        value: https://gamearena01.com
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false

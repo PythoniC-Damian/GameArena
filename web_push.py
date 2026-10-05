@@ -27,6 +27,7 @@ def deliver_push(subscriptions, payload, logger):
     if not push_configured():
         return
     from pywebpush import webpush, WebPushException
+    retry = False
     for subscription in subscriptions:
         try:
             webpush(subscription_info=subscription, data=json.dumps(payload),
@@ -34,4 +35,10 @@ def deliver_push(subscriptions, payload, logger):
                 vapid_claims={'sub':os.environ['VAPID_SUBJECT']}, timeout=10, ttl=300)
         except WebPushException as error:
             # Provider endpoints and encryption credentials are deliberately not logged.
-            logger.warning('Push delivery failed (status=%s).', getattr(error.response,'status_code',None))
+            status = getattr(error.response, 'status_code', None)
+            logger.warning('Push delivery failed (status=%s).', status)
+            retry = retry or status is None or status == 429 or status >= 500
+        except Exception as error:
+            logger.warning('Push delivery failed (%s).', type(error).__name__)
+            retry = True
+    return {'retry': retry}
