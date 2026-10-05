@@ -25,6 +25,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: python -c "from geventwebsocket.gunicorn.workers import GeventWebSocketWorker"
+      - run: GAMEARENA_TESTING=1 DATABASE_URL="$GAMEARENA_TEST_DATABASE_URL" python scripts/serve.py --check-config --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker app:app
       - run: python -m pytest -q
   frontend:
     runs-on: ubuntu-latest
