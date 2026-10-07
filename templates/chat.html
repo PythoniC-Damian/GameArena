@@ -30,7 +30,10 @@
                 <div>
                     {% if conversation_user %}
                     <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Private conversation</p>
-                    <h1 class="mt-2 break-words text-3xl font-bold text-white">{{ conversation_user.username }}</h1>
+                    <a href="{{ url_for('public_profile', user_id=conversation_user.id) }}" class="ga-chat-person" aria-label="View {{ conversation_user.username }}'s profile">
+                        {% if conversation_user.avatar_url %}<img src="{{ conversation_user.avatar_url }}" alt="" class="ga-chat-avatar" width="52" height="52">{% else %}<span class="ga-chat-avatar">{{ conversation_user.username[:1]|upper }}</span>{% endif %}
+                        <h1 class="break-words text-3xl font-bold text-white">{{ conversation_user.username }}</h1>
+                    </a>
                     <p id="dmUnreadCount" class="mt-1 text-xs text-slate-400">{{ dm_unread_count }} unread messages across your inbox</p>
                     {% else %}
                     <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Global chat</p>
@@ -45,6 +48,7 @@
                     <div aria-label="Message from {{ message.sender.username if conversation_user else message.user.username }}. Swipe to reply, or press Enter for actions." tabindex="0" data-deleted="{{ 'true' if message.deleted_at else 'false' }}" data-sender-id="{{ message.sender_id if conversation_user else message.user_id }}" data-message-id="{{ message.id }}" data-username="{{ message.sender.username if conversation_user else message.user.username }}" class="{{ 'ml-auto bg-emerald-500/10 text-emerald-200 border-emerald-500/10' if message.sender_id == current_user.id else 'bg-slate-900/80 text-slate-300 border-slate-800' }} w-fit max-w-[85%] break-words rounded-[28px] border p-4 shadow-sm">
                         <div class="flex items-center justify-between gap-3"><span class="text-sm font-semibold text-white">{{ message.sender.username }}</span><span class="text-xs text-slate-500">{{ message.created_at.strftime('%H:%M') if message.created_at else '' }}</span></div>
                         {% if message.reply_to %}<blockquote class="ga-chat-quote" data-quote-id="{{ message.reply_to.id }}"><strong>{{ message.reply_to.sender.username if message.reply_to.sender else 'Player' }}</strong><p>{{ message.reply_to.message[:200] }}</p></blockquote>{% endif %}<p data-message-body class="mt-2 whitespace-pre-wrap text-sm leading-6">{{ message.message }}</p>
+                        {% if message.sender_id == current_user.id and not message.deleted_at %}<div class="ga-message-delivery"><small data-read-receipt class="{{ 'ga-message-seen' if message.read_at else '' }}">{{ '✓✓ Seen' if message.read_at else '✓ Sent' }}</small></div>{% endif %}
                     </div>
 {% else %}<p data-chat-empty class="p-5 text-center text-sm text-slate-400">No messages yet. Start the conversation.</p>
 {% endfor %}
@@ -71,30 +75,28 @@
                 </form><p id="chatStatus" class="ga-inline-status ga-muted" role="status" aria-live="polite"></p>
             </div>
         </section>
-        <aside class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
+        <aside class="ga-conversations-panel rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Conversations</p>
-                    <h2 class="mt-2 text-2xl font-semibold text-white">Recent players</h2>
+                    <h2 class="mt-2 text-2xl font-semibold text-white">Your inbox</h2>
                 </div>
-                <span class="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-200">{{ chat_partners|length }}</span>
+                <span id="conversationCount" class="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-200">{{ conversations|length }}</span>
             </div>
-            <div class="mt-6 space-y-3">
+            <div class="mt-6">
                 <a href="{{ url_for('chat') }}" class="block rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-4 text-white">Global chat</a>
-                {% for partner in chat_partners[:6] %}
-                <a href="{{ url_for('direct_message', user_id=partner.id) }}" class="block rounded-[28px] border border-slate-800 bg-slate-950/80 p-4 hover:border-emerald-500/40">
-                    <div class="flex items-center gap-3">
-                        <div class="flex h-12 w-12 items-center justify-center rounded-3xl bg-slate-800 text-emerald-300">{{ partner.username[:1]|upper }}</div>
-                        <div>
-                            <p class="font-semibold text-white">{{ partner.username }}</p>
-                            <p class="text-sm text-slate-400">Open conversation</p>
-                        </div>
-                    </div>
+            </div>
+            <nav id="conversationList" class="ga-conversation-list" aria-label="Private conversations" tabindex="0" data-url="{{ url_for('chat_conversations') }}">
+                {% for item in conversations %}{% set partner = item.user %}
+                <a href="{{ url_for('direct_message', user_id=partner.id) }}" class="ga-conversation-row {{ 'is-active' if conversation_user and conversation_user.id == partner.id else '' }}" {% if conversation_user and conversation_user.id == partner.id %}aria-current="page"{% endif %}>
+                    {% if partner.avatar_url %}<img src="{{ partner.avatar_url }}" alt="" class="ga-chat-avatar" width="48" height="48" loading="lazy">{% else %}<span class="ga-chat-avatar">{{ partner.username[:1]|upper }}</span>{% endif %}
+                    <span class="ga-conversation-copy"><strong>{{ partner.username }}</strong><span>{{ 'You: ' if item.own else '' }}{{ item.preview }}</span></span>
+                    <span class="ga-conversation-meta"><time>{{ item.created_at.strftime('%H:%M') }}</time>{% if item.unread %}<span class="ga-conversation-unread" aria-label="{{ item.unread }} unread messages">{{ item.unread }}</span>{% elif item.own and item.seen %}<span class="ga-message-seen" aria-label="Seen">✓✓</span>{% endif %}</span>
                 </a>
                 {% else %}
                 <div class="rounded-[28px] border border-dashed border-slate-700 bg-slate-950/70 p-5 text-slate-400">Start chatting and connect with other players.</div>
                 {% endfor %}
-            </div>
+            </nav>
             {% if conversation_user %}
             <div class="mt-5 flex flex-wrap gap-2">
                 {% if is_blocked %}

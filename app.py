@@ -16,7 +16,7 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from sqlalchemy.pool import NullPool
-from sqlalchemy import or_, event as sqlalchemy_event
+from sqlalchemy import or_, case, event as sqlalchemy_event
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -1289,30 +1289,8 @@ def chat():
     # prevents an AttributeError -> HTTP 500 when rendering the template.
     messages = [m for m in all_messages if m.user is not None]
 
-    # Most recent 10 distinct chatting users.
-    # Use a grouped aggregate query so the ordering is valid on PostgreSQL.
-    from sqlalchemy import func
-    # Select user_id first, then the aggregated last_seen (row[0] = user_id).
-    distinct_user_ids = [
-        row[0] for row in db.session.query(
-            GlobalChatMessage.user_id,
-            func.max(GlobalChatMessage.created_at).label('last_seen'),
-        )
-        .filter(GlobalChatMessage.user_id != current_user.id)
-        .group_by(GlobalChatMessage.user_id)
-        .order_by(func.max(GlobalChatMessage.created_at).desc())
-        .limit(10).all()
-    ]
-    # Preserve order of most-recent first
-    chat_partners = []
-    if distinct_user_ids:
-        partners = User.query.filter(User.id.in_(distinct_user_ids)).all()
-        partner_map = {u.id: u for u in partners}
-        chat_partners = [partner_map[uid] for uid in distinct_user_ids
-            if uid in partner_map and can_direct_message(current_user, partner_map[uid])]
-
     return render_template(
-        'chat.html', messages=messages, chat_partners=chat_partners,
+        'chat.html', messages=messages, conversations=chat_inbox(),
         dm_unread_count=DirectMessage.query.filter_by(
             recipient_id=current_user.id, read_at=None,
         ).count(),
@@ -1334,7 +1312,7 @@ def chat_history():
                 db.and_(DirectMessage.sender_id == partner_id, DirectMessage.recipient_id == current_user.id)),
         ).order_by(DirectMessage.id).limit(51).all()
         data = [{'id': row.id, 'sender_id': row.sender_id, 'username': row.sender.username if row.sender else 'Player',
-            'message': row.message, 'deleted':bool(row.deleted_at), 'client_message_id':row.client_message_id, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
+            'message': row.message, 'read_at':row.read_at.isoformat()+'Z' if row.read_at else None, 'deleted':bool(row.deleted_at), 'client_message_id':row.client_message_id, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
     else:
         rows = GlobalChatMessage.query.options(joinedload(GlobalChatMessage.user)).filter(
             GlobalChatMessage.id > after,
@@ -1345,7 +1323,8 @@ def chat_history():
     removed = model.query.filter(model.deleted_at.isnot(None))
     if partner_id:
         removed = removed.filter(or_(db.and_(DirectMessage.sender_id == current_user.id, DirectMessage.recipient_id == partner_id), db.and_(DirectMessage.sender_id == partner_id, DirectMessage.recipient_id == current_user.id)))
-    return jsonify({'messages': data, 'has_more': len(rows) > 50, 'deleted_ids':[row.id for row in removed.order_by(model.deleted_at.desc()).limit(200)]})
+    read_ids = [row.id for row in DirectMessage.query.filter_by(sender_id=current_user.id, recipient_id=partner_id).filter(DirectMessage.read_at.isnot(None)).order_by(DirectMessage.id.desc()).limit(200)] if partner_id else []
+    return jsonify({'messages': data, 'read_ids':read_ids, 'has_more': len(rows) > 50, 'deleted_ids':[row.id for row in removed.order_by(model.deleted_at.desc()).limit(200)]})
 
 
 # -------------------------
@@ -1781,6 +1760,34 @@ def quoted_message(parent):
     return {'id':parent.id, 'username':owner.username if owner else 'Player', 'message':parent.message[:200], 'deleted':bool(parent.deleted_at)}
 
 
+def chat_inbox():
+    """One latest message and unread count per private conversation."""
+    user_id = current_user.id
+    partner_id = case((DirectMessage.sender_id == user_id, DirectMessage.recipient_id), else_=DirectMessage.sender_id)
+    grouped = db.session.query(partner_id.label('partner_id'),
+        db.func.max(DirectMessage.id).label('latest_id'),
+        db.func.sum(case((db.and_(DirectMessage.recipient_id == user_id, DirectMessage.read_at.is_(None)), 1), else_=0)).label('unread')
+    ).filter(or_(DirectMessage.sender_id == user_id, DirectMessage.recipient_id == user_id)).group_by(partner_id).subquery()
+    rows = db.session.query(User, DirectMessage, grouped.c.unread).join(grouped, User.id == grouped.c.partner_id).join(
+        DirectMessage, DirectMessage.id == grouped.c.latest_id).options(joinedload(User.settings)).order_by(
+        DirectMessage.created_at.desc(), DirectMessage.id.desc()).all()
+    blocks = UserBlock.query.filter(or_(UserBlock.blocker_id == user_id, UserBlock.blocked_id == user_id)).all()
+    blocked_ids = {b.blocked_id if b.blocker_id == user_id else b.blocker_id for b in blocks}
+    return [{'user':partner, 'preview':'This message was deleted.' if message.deleted_at else message.message,
+        'own':message.sender_id == user_id, 'unread':int(unread), 'created_at':message.created_at,
+        'seen':bool(message.read_at)} for partner, message, unread in rows
+        if partner.id not in blocked_ids and not partner.suspended and (not partner.settings or partner.settings.allow_direct_messages)]
+
+
+@app.route('/chat/conversations')
+@login_required
+def chat_conversations():
+    return jsonify({'conversations':[{'id':item['user'].id, 'username':item['user'].username,
+        'avatar_url':item['user'].avatar_url, 'url':url_for('direct_message', user_id=item['user'].id),
+        'preview':item['preview'], 'own':item['own'], 'unread':item['unread'], 'seen':item['seen'],
+        'created_at':item['created_at'].isoformat()+'Z'} for item in chat_inbox()]})
+
+
 @app.route('/messages/<int:user_id>')
 @login_required
 def direct_message(user_id):
@@ -1796,16 +1803,12 @@ def direct_message(user_id):
         DirectMessage.created_at.desc(), DirectMessage.id.desc(),
     ).limit(100).all()
     messages = list(reversed(recent_messages))
-    DirectMessage.query.filter_by(
-        sender_id=recipient.id, recipient_id=current_user.id, read_at=None,
-    ).update({'read_at': datetime.utcnow()}, synchronize_session=False)
-    db.session.commit()
     unread_count = DirectMessage.query.filter_by(
         recipient_id=current_user.id, read_at=None,
     ).count()
     socketio.emit('unread_count', {'unread': unread_count}, room=f'user:{current_user.id}')
     return render_template(
-        'chat.html', messages=[], chat_partners=[], conversation_user=recipient,
+        'chat.html', messages=[], conversations=chat_inbox(), conversation_user=recipient,
         direct_messages=messages,
         is_blocked=users_have_block(current_user.id, recipient.id),
         dm_unread_count=DirectMessage.query.filter_by(
@@ -1820,11 +1823,20 @@ def read_direct_messages(user_id):
     partner = db.session.get(User, user_id)
     if not can_direct_message(current_user, partner):
         return jsonify({'error':'Conversation unavailable.'}), 403
-    DirectMessage.query.filter_by(sender_id=user_id, recipient_id=current_user.id, read_at=None).update({'read_at':datetime.utcnow()}, synchronize_session=False)
+    payload = request.get_json(silent=True)
+    ids = payload.get('ids') if isinstance(payload, dict) else None
+    if not isinstance(ids, list) or len(ids) > 100 or any(type(id_) is not int or id_ <= 0 for id_ in ids):
+        return jsonify({'error':'Choose the viewed messages.'}), 400
+    viewed = DirectMessage.query.filter_by(sender_id=user_id, recipient_id=current_user.id, read_at=None).filter(DirectMessage.id.in_(ids)).all()
+    now = datetime.utcnow()
+    for message in viewed:
+        message.read_at = now
     db.session.commit()
+    if viewed:
+        socketio.emit('direct_messages_read', {'reader_id':current_user.id, 'ids':[message.id for message in viewed]}, room=f'user:{user_id}')
     unread = DirectMessage.query.filter_by(recipient_id=current_user.id, read_at=None).count()
     socketio.emit('unread_count', {'unread':unread}, room=f'user:{current_user.id}')
-    return jsonify({'unread':unread})
+    return jsonify({'unread':unread, 'read_ids':[message.id for message in viewed]})
 
 
 # -------------------------
@@ -4034,10 +4046,6 @@ def on_join_direct_message(data):
     if not can_direct_message(current_user, recipient):
         return emit('socket_error', {'message': 'This conversation is unavailable.'})
     join_room(direct_message_room_key(current_user.id, recipient.id))
-    DirectMessage.query.filter_by(
-        sender_id=recipient.id, recipient_id=current_user.id, read_at=None,
-    ).update({'read_at': datetime.utcnow()}, synchronize_session=False)
-    db.session.commit()
 
 
 @socketio.on('send_direct_message')
