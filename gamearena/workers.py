@@ -11,6 +11,9 @@ def deliver_account_email(user_id, purpose, version):
     if purpose not in {'verification', 'reset'}:
         raise ValueError('Unsupported account email purpose.')
     with app.app_context():
+        from gamearena.services.auth import enabled
+        if enabled():
+            return  # Do not deliver queued local codes after managed auth cutover.
         user = db.session.get(User, user_id)
         if not user:
             return

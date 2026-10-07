@@ -488,6 +488,7 @@ class NotificationFlowTests(unittest.TestCase):
                 mock_post.return_value.json.return_value = {'access_token': 'google-token'}
                 mock_get.return_value.json.return_value = {
                     'email': 'googleuser@example.com',
+                    'verified_email': True,
                     'name': 'Google User',
                     'picture': 'https://example.com/avatar.png'
                 }

@@ -10,6 +10,11 @@ document.getElementById('paymentForm').addEventListener('submit', async event =>
     let data;
     try { data = await response.json(); } catch (_) { throw new Error('Checkout returned an invalid response. Please try again shortly.'); }
     if (!response.ok || data.status !== 'success') throw new Error(data.message || 'Unable to open checkout.');
+    if (data.already_paid) {
+      status.textContent = 'Payment confirmed. Opening your dashboard…';
+      window.location.assign('/dashboard');
+      return;
+    }
     let url;
     try { url = new URL(data.authorization_url); } catch (_) { throw new Error('Checkout did not return a valid payment link. Please try again.'); }
     if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) throw new Error('Checkout did not return a secure payment link. Please try again.');

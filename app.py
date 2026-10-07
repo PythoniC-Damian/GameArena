@@ -33,6 +33,7 @@ import socket
 import ssl
 from gamearena.bootstrap import create_base_app
 from gamearena.services.email import account_email_content
+from gamearena.services import auth as managed_auth
 from gamearena.services.jobs import queue_account_email, queue_push
 from gamearena.services.redis_support import shared_socket_allowed
 from gamearena.assets import frontend_assets, is_built_asset
@@ -74,6 +75,12 @@ app.config['SECRET_KEY'] = secret_key
 app.config['SESSION_COOKIE_SECURE'] = is_production
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=12)
+auth_provider = os.environ.get('AUTH_PROVIDER', 'local').strip().lower()
+if auth_provider not in {'local', 'supabase'}:
+    raise RuntimeError('AUTH_PROVIDER must be local or supabase.')
+if managed_auth.enabled():
+    managed_auth.configuration()
 # Static filenames are not content-fingerprinted in the current Jinja setup.
 # Keep their cache lifetime useful but bounded so a deployment that replaces an
 # asset at the same URL can be picked up without a forced cache purge.
@@ -206,7 +213,6 @@ PAYSTACK_CURRENCY = 'NGN'
 PAYSTACK_REFERENCE_PATTERN = re.compile(r'^[A-Za-z0-9._-]{1,100}$')
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', 'http://localhost:5000/auth/google/callback')
 GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 GOOGLE_USER_INFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo'
@@ -216,8 +222,58 @@ def get_google_oauth_config():
     return {
         'client_id': os.environ.get('GOOGLE_CLIENT_ID') or GOOGLE_CLIENT_ID,
         'client_secret': os.environ.get('GOOGLE_CLIENT_SECRET') or GOOGLE_CLIENT_SECRET,
-        'redirect_uri': os.environ.get('GOOGLE_REDIRECT_URI') or GOOGLE_REDIRECT_URI,
+        'redirect_uri': auth_callback_url('/auth/google/callback'),
     }
+
+
+def auth_callback_url(path):
+    base = app.config['PUBLIC_BASE_URL'] if is_production else request.url_root.rstrip('/')
+    return base.rstrip('/') + path
+
+
+def reserve_account_email(user, purpose):
+    """The DB bucket serializes simultaneous requests across all send routes."""
+    email_key = hashlib.sha256(user.email.strip().lower().encode()).hexdigest()
+    wait = consume_rate_limit(f'account_email:{purpose}:{email_key}', 1, 60)
+    g.account_email_wait = wait
+    session['account_email_until'] = time.time() + (wait or 60)
+    session['account_email_address'] = user.email
+    return wait is None
+
+
+def verification_request_notice():
+    wait = getattr(g, 'account_email_wait', None)
+    if wait:
+        return f'A code was recently requested. Please wait {wait} seconds before requesting another.'
+    return 'Verification email requested. Please check your inbox and spam folder.'
+
+
+def managed_identity(data):
+    identity = data.get('user') or data
+    if not identity.get('id') or not identity.get('email') or not identity.get('email_confirmed_at'):
+        raise managed_auth.AuthError('Verify your email before signing in.', 400)
+    email = identity['email'].strip().lower()
+    user = User.query.filter_by(supabase_auth_id=identity['id']).first()
+    if not user:
+        user = User.query.filter_by(email=email).with_for_update().first()
+        if user and user.supabase_auth_id and user.supabase_auth_id != identity['id']:
+            raise managed_auth.AuthError('This identity does not match your account.', 400)
+        if not user:
+            metadata = identity.get('user_metadata') or {}
+            base = re.sub(r'[^a-zA-Z0-9_]', '_', metadata.get('username') or email.split('@')[0])[:130] or 'player'
+            candidate = base
+            while User.query.filter_by(username=candidate).first():
+                candidate = base + '_' + secrets.token_hex(4)
+            user = User(username=candidate, email=email,
+                password=generate_password_hash(secrets.token_urlsafe(32)))
+            db.session.add(user)
+        user.supabase_auth_id = identity['id']
+    if user.suspended:
+        db.session.rollback()
+        raise managed_auth.AuthError('This account has been suspended.', 403)
+    user.email_verified = True
+    db.session.commit()
+    return user
 
 
 def is_safe_local_redirect(target):
@@ -407,6 +463,24 @@ def unauthorized_response():
 csrf = CSRFProtect(app)
 
 
+@app.errorhandler(managed_auth.AuthError)
+def managed_auth_failure(error):
+    db.session.rollback()
+    flash(str(error), 'error')
+    pages = {'/login': ('login.html', LoginForm), '/register': ('register.html', RegistrationForm),
+        '/verify-email': ('verify_email.html', EmailVerificationForm),
+        '/forgot-password': ('forgot_password.html', ForgotPasswordForm),
+        '/reset-password': ('reset_password.html', ResetPasswordForm)}
+    if request.path in pages:
+        template, form_type = pages[request.path]
+        form = form_type()
+        for name in ('password', 'new_password'):
+            if hasattr(form, name):
+                getattr(form, name).data = ''
+        return render_template(template, form=form), error.status
+    return redirect(url_for('login'))
+
+
 @app.errorhandler(403)
 def forbidden_page(error):
     if request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json':
@@ -466,6 +540,7 @@ def application_navigation():
         'asset_url': asset_url,
         'nav_unread_count': get_unread_notification_count(current_user.id) if current_user.is_authenticated else 0,
         'nav_preferences': preferences,
+        'auth_email_wait': max(0, int(session.get('account_email_until', 0) - time.time() + 0.999)),
     }
 
 
@@ -593,6 +668,11 @@ def send_email(subject, recipient, body):
 
 def send_verification_code(user):
     """Generate verification code and send email"""
+    if not reserve_account_email(user, 'verification'):
+        return True  # Keep the current code; do not send another message.
+    if managed_auth.enabled():
+        managed_auth.resend(user.email)
+        return True
     # Create an in-app notification for the user
     # (the dashboard socket will display it)
     create_and_emit_notification(user.id, 'Email verification code generated.')
@@ -608,6 +688,11 @@ def send_verification_code(user):
 
 
 def send_password_reset_code(user):
+    if not reserve_account_email(user, 'reset'):
+        return True
+    if managed_auth.enabled():
+        managed_auth.recover(user.email)
+        return True
     create_and_emit_notification(user.id, 'Password reset code generated.')
     user.reset_code = generate_code(6)
     user.reset_expires_at = datetime.utcnow() + timedelta(minutes=15)
@@ -651,13 +736,23 @@ def client_rate_limit_key():
 
 
 def rate_limit_response(retry_after):
-    message = 'Too many requests. Please try again later.'
-    if request.path == '/verify-email' and request.method == 'POST' and request.form.get('action') == 'resend':
-        message = 'Please wait before requesting another verification code.'
-        form = EmailVerificationForm()
-        form.email.data = (request.form.get('email') or '').strip()
+    retry_after = max(1, int(retry_after))
+    message = f'Too many requests. Please try again in {retry_after} seconds.'
+    if request.path == '/verify-email' and request.form.get('action') == 'resend':
+        message = f'Please wait before requesting another verification code. Try again in {retry_after} seconds.'
+    pages = {'/login': ('login.html', LoginForm), '/register': ('register.html', RegistrationForm),
+        '/verify-email': ('verify_email.html', EmailVerificationForm),
+        '/forgot-password': ('forgot_password.html', ForgotPasswordForm),
+        '/reset-password': ('reset_password.html', ResetPasswordForm)}
+    wants_json = request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json'
+    if request.path in pages and not wants_json:
+        template, form_type = pages[request.path]
+        form = form_type()
+        for field_name in ('password', 'new_password'):
+            if hasattr(form, field_name):
+                getattr(form, field_name).data = ''
         flash(message, 'error')
-        response = app.make_response(render_template('verify_email.html', form=form))
+        response = app.make_response(render_template(template, form=form, auth_retry_after=retry_after))
     else:
         response = jsonify({'status': 'error', 'message': message})
     response.status_code = 429
@@ -721,7 +816,13 @@ def enforce_rate_limits():
     elif path == '/register' and request.method == 'POST':
         checks = [('register_ip:' + client_key, 'register_ip')]
     elif path == '/forgot-password' and request.method == 'POST':
-        checks = [('password_reset_ip:' + client_key, 'password_reset_ip')]
+        email = (request.form.get('email') or '').strip().lower()
+        checks = [('password_reset_ip:' + client_key, 'password_reset_ip'),
+                  ('password_reset_email:' + email, 'password_reset_ip')]
+    elif path == '/reset-password' and request.method == 'POST':
+        email = (request.form.get('email') or '').strip().lower()
+        checks = [('reset_verify_ip:' + client_key, 'verification_ip'),
+                  ('reset_verify_email:' + email, 'verification_ip')]
     elif path == '/verify-email' and request.method == 'POST':
         if request.form.get('action') == 'resend':
             email = (request.form.get('email') or '').strip().lower()
@@ -1005,7 +1106,14 @@ def submit_match_result(match, user, room_code, room_password, player_profile_id
 @login_manager.user_loader
 def load_user(user_id):
     try:
-        return User.query.options(joinedload(User.settings)).filter_by(id=int(user_id)).first()
+        user = User.query.options(joinedload(User.settings)).filter_by(id=int(user_id)).first()
+        if user and user.suspended:
+            return None
+        if managed_auth.enabled() and session.get('auth_provider') != 'supabase':
+            return None
+        if user and session.get('auth_session_version', 0) != user.auth_session_version:
+            return None
+        return user
     except Exception as exc:
         app.logger.warning(f"Unable to load user {user_id}: {exc}")
         return None
@@ -1799,18 +1907,27 @@ def register():
         new_user = User(
             username=form.username.data,
             email=form.email.data.lower().strip(),
-            password=hashed_password,
+            password=generate_password_hash(secrets.token_urlsafe(32)) if managed_auth.enabled() else hashed_password,
             email_verified=False
         )
 
         try:
+            if managed_auth.enabled():
+                if not reserve_account_email(new_user, 'verification'):
+                    flash('Please wait before requesting another verification email.', 'error')
+                    return redirect(url_for('verify_email', email=new_user.email))
+                managed_auth.signup(new_user.email, form.password.data, new_user.username)
+                # Bind only after verified authentication, never an unconfirmed
+                # signup response (providers can obscure duplicate accounts).
             db.session.add(new_user)
             db.session.commit()
-            if send_verification_code(new_user):
-                flash('Verification email requested. Please check your inbox and spam folder.', 'success')
+            if managed_auth.enabled() or send_verification_code(new_user):
+                flash(verification_request_notice(), 'success')
             else:
                 flash("Your account was created, but we couldn't send the verification email right now. Please try again shortly.", 'error')
             return redirect(url_for("verify_email", email=new_user.email))
+        except managed_auth.AuthError:
+            raise
         except Exception as e:
             db.session.rollback()
             flash("An error occurred. Please try again.", "error")
@@ -1831,6 +1948,18 @@ def login():
     form = LoginForm()
 
     if form.validate_on_submit():
+        if managed_auth.enabled():
+            identity = managed_auth.signin(form.email.data.lower().strip(), form.password.data)
+            try:
+                user = managed_identity(identity)
+            finally:
+                managed_auth.close_session(identity)
+            session.clear()
+            session['auth_provider'] = 'supabase'
+            session['auth_session_version'] = user.auth_session_version
+            session.permanent = True
+            login_user(user)
+            return redirect(safe_next_url(request.args.get('next')) or url_for('dashboard'))
         user = User.query.filter_by(email=form.email.data.lower().strip()).first()
 
         if user and check_password_hash(user.password, form.password.data):
@@ -1840,7 +1969,7 @@ def login():
 
             if not user.email_verified and not getattr(user, "is_admin", False):
                 if send_verification_code(user):
-                    flash('Verification email requested. Please check your inbox and spam folder.', 'success')
+                    flash(verification_request_notice(), 'success')
                 else:
                     flash("Your email isn't verified, and we couldn't send a new code right now. Please try again shortly.", 'error')
                 return redirect(url_for("verify_email", email=user.email))
@@ -1849,6 +1978,7 @@ def login():
                 user.email_verified = True
                 db.session.commit()
 
+            session['auth_session_version'] = user.auth_session_version
             login_user(user)
             next_page = safe_next_url(request.args.get('next'))
             return redirect(next_page or url_for("dashboard"))
@@ -1860,6 +1990,18 @@ def login():
 
 @app.route('/login/google')
 def login_google():
+    if is_production and request.host != urlparse(app.config['PUBLIC_BASE_URL']).netloc:
+        return redirect(app.config['PUBLIC_BASE_URL'] + '/login/google')
+    if managed_auth.enabled():
+        supabase_url, key = managed_auth.configuration()
+        verifier = secrets.token_urlsafe(48)
+        import base64
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
+        session['supabase_pkce_verifier'] = verifier
+        session['supabase_pkce_started'] = time.time()
+        params = {'provider': 'google', 'redirect_to': auth_callback_url('/auth/supabase/callback'),
+            'code_challenge': challenge, 'code_challenge_method': 's256'}
+        return redirect(supabase_url + '/auth/v1/authorize?' + urllib.parse.urlencode(params))
     google_config = get_google_oauth_config()
     client_id = google_config['client_id']
 
@@ -1882,8 +2024,34 @@ def login_google():
     return redirect(auth_url)
 
 
+@app.route('/auth/supabase/callback')
+def supabase_callback():
+    if not managed_auth.enabled():
+        abort(404)
+    verifier = session.pop('supabase_pkce_verifier', None)
+    started = session.pop('supabase_pkce_started', 0)
+    code = request.args.get('code')
+    if not code or not verifier or time.time() - started > 600:
+        flash('Sign-in expired or was cancelled. Please try again.', 'error')
+        return redirect(url_for('login'))
+    data = managed_auth.call('POST', 'token?grant_type=pkce',
+        {'auth_code': code, 'code_verifier': verifier})
+    try:
+        user = managed_identity(data)
+    finally:
+        managed_auth.close_session(data)
+    session.clear()
+    session['auth_provider'] = 'supabase'
+    session['auth_session_version'] = user.auth_session_version
+    session.permanent = True
+    login_user(user)
+    return redirect(url_for('dashboard'))
+
+
 @app.route('/auth/google/callback')
 def google_callback():
+    if managed_auth.enabled():
+        return redirect(url_for('login_google'))
     google_config = get_google_oauth_config()
     client_id = google_config['client_id']
     client_secret = google_config['client_secret']
@@ -1903,18 +2071,30 @@ def google_callback():
         flash('Google sign-in could not be verified. Please try again.', 'error')
         return redirect(url_for('login'))
 
+    try:
+        return complete_google_signin(code, google_config)
+    except (requests.RequestException, ValueError, IntegrityError):
+        db.session.rollback()
+        app.logger.warning('Google sign-in could not be completed.')
+        flash('Google sign-in is temporarily unavailable. Please try again.', 'error')
+        return redirect(url_for('login'))
+
+
+def complete_google_signin(code, google_config):
     token_response = requests.post(
         GOOGLE_TOKEN_URL,
         data={
             'code': code,
-            'client_id': client_id,
-            'client_secret': client_secret,
+            'client_id': google_config['client_id'],
+            'client_secret': google_config['client_secret'],
             'redirect_uri': google_config['redirect_uri'],
             'grant_type': 'authorization_code',
         },
         timeout=15,
     )
     token_data = token_response.json() if token_response.ok else {}
+    if not isinstance(token_data, dict):
+        raise ValueError('Invalid token response')
     access_token = token_data.get('access_token')
     if not access_token:
         flash('Google sign-in failed. Please try again.', 'error')
@@ -1926,15 +2106,20 @@ def google_callback():
         timeout=15,
     )
     user_info = user_info_response.json() if user_info_response.ok else {}
+    if not isinstance(user_info, dict):
+        raise ValueError('Invalid user information')
     email = (user_info.get('email') or '').strip().lower()
     name = (user_info.get('name') or email.split('@', 1)[0]).strip()
     picture = user_info.get('picture')
 
-    if not email:
+    if not email or user_info.get('verified_email') is not True:
         flash('Google sign-in did not return an email address.', 'error')
         return redirect(url_for('login'))
 
     user = User.query.filter_by(email=email).first()
+    if user and user.suspended:
+        flash('This account has been suspended.', 'error')
+        return redirect(url_for('login'))
     if not user:
         base_username = ''.join(char for char in name.replace(' ', '_') if char.isalnum() or char == '_') or 'google_user'
         candidate = base_username[:150]
@@ -1958,6 +2143,7 @@ def google_callback():
         user.avatar_url = picture or user.avatar_url
         db.session.commit()
 
+    session['auth_session_version'] = user.auth_session_version
     login_user(user)
     flash('Signed in successfully with Google.', 'success')
     return redirect(url_for('dashboard'))
@@ -1975,7 +2161,7 @@ def verify_email():
         user = User.query.filter_by(email=email).first() if email else None
         if user and not user.email_verified:
             if send_verification_code(user):
-                flash('Verification email requested. Please check your inbox and spam folder.', 'success')
+                flash(verification_request_notice(), 'success')
             else:
                 flash("We couldn't send the verification email right now. Please try again shortly.", 'error')
         else:
@@ -1983,6 +2169,14 @@ def verify_email():
         return redirect(url_for('verify_email', email=email))
 
     if form.validate_on_submit():
+        if managed_auth.enabled():
+            identity = managed_auth.verify(form.email.data.lower().strip(), form.code.data)
+            try:
+                managed_identity(identity)
+            finally:
+                managed_auth.close_session(identity)
+            flash('Email verified. Please log in.', 'success')
+            return redirect(url_for('login'))
         user = User.query.filter_by(email=form.email.data.lower().strip()).first()
         if not user:
             flash('No account found for that email.', 'error')
@@ -2023,7 +2217,11 @@ def forgot_password():
 
     if form.validate_on_submit():
         user = User.query.filter_by(email=form.email.data.lower().strip()).first()
-        if user:
+        if managed_auth.enabled() and not user:
+            from types import SimpleNamespace
+            if reserve_account_email(SimpleNamespace(email=form.email.data.lower().strip()), 'reset'):
+                managed_auth.recover(form.email.data.lower().strip())
+        elif user:
             send_password_reset_code(user)
         flash('If that email exists, a reset code will be sent if email delivery is available.', 'success')
         return redirect(url_for('reset_password', email=form.email.data.lower().strip()))
@@ -2037,6 +2235,15 @@ def reset_password():
     email = request.args.get('email', '')
 
     if form.validate_on_submit():
+        if managed_auth.enabled():
+            managed_auth.reset_password(form.email.data.lower().strip(), form.code.data, form.new_password.data)
+            user = User.query.filter_by(email=form.email.data.lower().strip()).with_for_update().first()
+            if user:
+                user.auth_session_version += 1
+                db.session.commit()
+            session.clear()
+            flash('Password reset successful. Please log in.', 'success')
+            return redirect(url_for('login'))
         user = User.query.filter_by(email=form.email.data.lower().strip()).first()
         if not user or not user.reset_code or user.reset_code != form.code.data:
             flash('Invalid email or reset code.', 'error')
@@ -2047,6 +2254,7 @@ def reset_password():
             return redirect(url_for('forgot_password'))
 
         user.password = generate_password_hash(form.new_password.data)
+        user.auth_session_version += 1
         user.reset_code = None
         user.reset_expires_at = None
         db.session.commit()
@@ -2839,7 +3047,15 @@ def paystack_transaction_matches(transaction, expected_amount, expected_referenc
     if transaction.get('reference') != expected_reference:
         return False
     try:
-        if int(transaction.get('amount')) != int(expected_amount) * 100:
+        expected_kobo = int(expected_amount) * 100
+        charged_kobo = int(transaction.get('amount'))
+        requested_kobo = int(transaction.get('requested_amount', expected_kobo))
+        fees_kobo = int(transaction.get('fees') or 0)
+        if requested_kobo != expected_kobo or expected_kobo <= 0 or fees_kobo < 0:
+            return False
+        # Paystack can add its fees to the customer's requested amount.
+        # Accept only the exact entry price or that price plus provider fees.
+        if charged_kobo != expected_kobo and charged_kobo != expected_kobo + fees_kobo:
             return False
     except (TypeError, ValueError):
         return False
@@ -2847,6 +3063,8 @@ def paystack_transaction_matches(transaction, expected_amount, expected_referenc
         return False
 
     metadata = transaction.get('metadata') or {}
+    if not isinstance(metadata, dict):
+        return False
     if expected_user_id is not None and str(metadata.get('user_id')) != str(expected_user_id):
         return False
     if expected_tournament_id is not None and str(metadata.get('tournament_id')) != str(expected_tournament_id):
@@ -2868,17 +3086,49 @@ def verify_paystack_reference(reference):
         response_data = response.json()
     except (requests.RequestException, ValueError, TypeError):
         return None
-    if not response_data.get('status') or not isinstance(response_data.get('data'), dict):
+    if not isinstance(response_data, dict) or not response_data.get('status') or not isinstance(response_data.get('data'), dict):
+        return None
+    if response_data['data'].get('reference') != reference:
         return None
     return response_data['data']
 
 
+def tournament_entry_for_transaction(transaction):
+    """Resolve trusted provider data, including references replaced by a retry.
+
+    Call only after server verification or authenticated webhook validation.
+    Never infer ownership from customer email or a browser-supplied user ID.
+    """
+    if not isinstance(transaction, dict) or transaction.get('status') != 'success':
+        return None
+    reference = transaction.get('reference')
+    if not is_valid_paystack_reference(reference):
+        return None
+    entry = UserTournament.query.filter_by(transaction_ref=reference).first()
+    if entry:
+        return entry
+    metadata = transaction.get('metadata')
+    if not isinstance(metadata, dict) or metadata.get('type') not in (None, 'tournament_entry'):
+        return None
+    if WalletTransaction.query.filter_by(transaction_ref=reference).first():
+        return None
+    try:
+        user_id = int(str(metadata.get('user_id')))
+        tournament_id = int(str(metadata.get('tournament_id')))
+    except (TypeError, ValueError):
+        return None
+    return UserTournament.query.filter_by(user_id=user_id, tournament_id=tournament_id).first()
+
+
 def apply_tournament_payment(user_tournament, transaction):
     tournament = Tournament.query.filter_by(id=user_tournament.tournament_id).with_for_update().populate_existing().one()
+    resolved_entry = tournament_entry_for_transaction(transaction)
+    if not resolved_entry or resolved_entry.id != user_tournament.id:
+        return False, 'Payment details could not be verified.'
     if not paystack_transaction_matches(
         transaction,
-        tournament.entry_fee,
-        user_tournament.transaction_ref,
+        user_tournament.amount_paid,
+        transaction.get('reference'),
         expected_user_id=user_tournament.user_id,
         expected_tournament_id=tournament.id,
     ):
@@ -2892,7 +3142,7 @@ def apply_tournament_payment(user_tournament, transaction):
     updated = UserTournament.query.filter_by(
         id=user_tournament.id,
         payment_status='pending',
-    ).update({'payment_status': 'paid'}, synchronize_session=False)
+    ).update({'payment_status': 'paid', 'transaction_ref': transaction['reference']}, synchronize_session=False)
     if not updated:
         db.session.rollback()
         return True, 'already_processed'
@@ -3013,11 +3263,23 @@ def initialize_payment(tournament_id):
             return jsonify({'status': 'error', 'message': 'Already joined this tournament'})
 
         if existing_join and existing_join.payment_status == 'pending':
+            # Reconcile a completed checkout before offering another payment.
+            previous_transaction = verify_paystack_reference(existing_join.transaction_ref)
+            if previous_transaction and previous_transaction.get('status') == 'success':
+                verified, result = apply_tournament_payment(existing_join, previous_transaction)
+                if verified:
+                    return jsonify({'status': 'success', 'already_paid': True,
+                                    'redirect_url': url_for('dashboard')})
+                db.session.rollback()
+                return jsonify({'status': 'error', 'message': result}), 409
             # Reuse the pending registration and create a fresh Paystack reference.
             import uuid
             transaction_ref = str(uuid.uuid4())
             existing_join.transaction_ref = transaction_ref
-            existing_join.amount_paid = tournament.entry_fee
+            # Keep the price quoted for this entry so an earlier successful
+            # attempt remains verifiable even if the tournament fee changes.
+            if not existing_join.amount_paid:
+                existing_join.amount_paid = tournament.entry_fee
 
             headers = {
                 'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}',
@@ -3026,7 +3288,7 @@ def initialize_payment(tournament_id):
 
             data = {
                 'email': current_user.email,
-                'amount': tournament.entry_fee * 100,
+                'amount': existing_join.amount_paid * 100,
                 'currency': PAYSTACK_CURRENCY,
                 'reference': transaction_ref,
                 'callback_url': url_for('verify_payment', _external=True),
@@ -3131,18 +3393,17 @@ def verify_payment():
         flash("Payment reference missing", "error")
         return redirect(url_for("home"))
 
-    # Find the UserTournament record
-    user_tournament = UserTournament.query.filter_by(
-        transaction_ref=reference,
-        user_id=current_user.id
-    ).first()
+    # Ownership comes from verified Paystack metadata if a retry replaced the ref.
+    transaction = verify_paystack_reference(reference)
+    user_tournament = tournament_entry_for_transaction(transaction)
+    if user_tournament and user_tournament.user_id != current_user.id:
+        user_tournament = None
 
     if not user_tournament:
         flash("Payment record not found", "error")
         return redirect(url_for("home"))
 
     # Verify payment with Paystack.
-    transaction = verify_paystack_reference(reference)
     if not transaction or transaction.get('status') != 'success':
         flash("Payment verification failed. Please try again.", "error")
         return redirect(url_for("pay_for_tournament", tournament_id=user_tournament.tournament_id))
@@ -3208,7 +3469,7 @@ def paystack_webhook():
         if event_name != 'charge.success':
             return jsonify({'status': 'ignored'}), 200
 
-        tournament_join = UserTournament.query.filter_by(transaction_ref=reference).first()
+        tournament_join = tournament_entry_for_transaction(transaction)
         wallet_deposit = WalletTransaction.query.filter_by(
             transaction_ref=reference,
             type='deposit',

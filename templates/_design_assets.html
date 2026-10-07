@@ -10,6 +10,7 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 {% if current_user.is_authenticated %}<script src="{{ asset_url('js/socket.io.min.js') }}"></script>{% endif %}
 <script defer src="{{ asset_url('js/app.js') }}"></script>
+<script defer src="{{ asset_url('js/auth.js') }}"></script>
 {% if compiled_frontend %}<script type="module" src="{{ compiled_frontend.script }}"></script>
 {% else %}<script defer src="{{ asset_url('js/carousels.js') }}"></script>{% endif %}
 {% if current_user.is_authenticated %}<script defer src="{{ asset_url('js/push.js') }}"></script>{% endif %}

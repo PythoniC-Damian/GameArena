@@ -70,7 +70,7 @@
                 {% endif %}
                 {% endwith %}
 
-                <form method="POST" class="space-y-5">
+                <form method="POST" data-auth-form data-cooldown="{{ auth_retry_after or 0 or 0 }}" class="space-y-5">
                     {{ form.hidden_tag() }}
                     <a href="{{ url_for('login_google') }}" class="flex items-center justify-center gap-3 rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:border-emerald-400 hover:bg-slate-800">
                         <span class="text-base">G</span>
@@ -108,6 +108,7 @@
                     })();
                 </script>
                 <p class="mt-4 text-center text-sm text-slate-400"><a href="{{ url_for('forgot_password') }}" class="font-semibold text-emerald-300 hover:text-emerald-200">Forgot password?</a></p>
+                <p class="mt-4 text-center text-sm text-slate-400"><a href="{{ url_for('verify_email', email=form.email.data or '') }}" class="font-semibold text-emerald-300 hover:text-emerald-200">Verify email or request another code</a></p>
                 <p class="mt-4 text-center text-sm text-slate-400">Don’t have an account? <a href="{{ url_for('register') }}" class="font-semibold text-emerald-300 hover:text-emerald-200">Register</a></p>
             </div>
         </div>

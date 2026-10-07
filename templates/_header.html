@@ -13,7 +13,7 @@
       <a class="ga-icon-button ga-search-control" href="{{ url_for('search') }}" aria-label="Search GameArena" title="Search">{{ icon('search') }}</a>
       {% if current_user.is_authenticated %}
       <details class="ga-notification-menu" data-menu data-notification-menu>
-      <summary class="ga-icon-button ga-notifications" aria-label="Notifications{% if nav_unread_count %}, {{ nav_unread_count }} unread{% endif %}" title="Notifications">{{ icon('bell') }}<span class="ga-notification-badge" data-unread-badge {% if not nav_unread_count %}hidden{% endif %}>{{ nav_unread_count }}</span></summary>
+      <summary class="ga-icon-button ga-notifications" aria-label="Notifications{% if nav_unread_count %}, {{ nav_unread_count }} unread{% endif %}" title="Notifications">{{ icon('bell') }}<span class="ga-notification-badge" data-unread-badge {% if not nav_unread_count %}hidden{% endif %}>{{ '99+' if nav_unread_count > 99 else nav_unread_count }}</span></summary>
       <section class="ga-menu ga-notification-panel" aria-label="Notification preview" data-preview-url="{{ url_for('notification_preview') }}"><div class="ga-preview-heading"><h2>Notifications</h2><button type="button" data-notifications-read-all data-url="{{ url_for('read_all_notifications') }}">Mark all read</button></div><div data-notification-preview role="status"><p class="ga-muted">Open to see recent updates.</p></div><a class="ga-button ga-button-secondary" href="{{ url_for('notifications') }}">View all notifications</a></section>
       </details>
       <details class="ga-account ga-desktop-account" data-menu>

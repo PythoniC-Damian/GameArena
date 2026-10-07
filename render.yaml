@@ -18,6 +18,14 @@ services:
         value: "false"
       - key: SECRET_KEY
         sync: false
+      - key: AUTH_PROVIDER
+        value: local
+      - key: PUBLIC_BASE_URL
+        value: https://gamearena01.com
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
       - key: PAYSTACK_SECRET_KEY
         sync: false
       - key: PAYSTACK_PUBLIC_KEY
@@ -41,8 +49,6 @@ services:
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: GOOGLE_REDIRECT_URI
         sync: false
       - key: ADMIN_EMAIL
         sync: false
