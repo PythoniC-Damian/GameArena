@@ -1,0 +1,8 @@
+{% macro action(value, label) %}<form method="POST" action="{{ url_for('update_player_connection', user_id=connection_user_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="{{ value }}"><button class="ga-button ga-button-secondary" type="submit">{{ label }}</button></form>{% endmacro %}
+<div class="ga-connection-controls">
+{% if connection.state == 'accepted' %}<span class="ga-muted">Players added · You can chat</span>
+{% elif connection.state == 'incoming' %}<p class="ga-muted">Player request · Accept to start chatting.</p>{{ action('accept', 'Accept player') }}{{ action('decline', 'Decline') }}
+{% elif connection.state == 'outgoing' %}<p class="ga-muted">Request sent · {{ 'You can send one introduction.' if connection.can_send else 'Waiting for acceptance.' }}</p>{{ action('cancel', 'Cancel request') }}
+{% elif connection.state == 'declined' %}<p class="ga-muted">Player request declined.</p>
+{% else %}{{ action('request', 'Add player') }}<p class="ga-muted">Add this player or send one introduction to request a conversation.</p>{% endif %}
+</div>

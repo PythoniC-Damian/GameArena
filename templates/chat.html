@@ -13,17 +13,11 @@
 
 {% include '_header.html' %}
 
-<main data-user-id="{{ current_user.id }}" data-username="{{ current_user.username }}" data-partner-id="{{ conversation_user.id if conversation_user else '' }}" data-send-url="{{ url_for('send_chat_http') }}" data-delete-url="{{ url_for('delete_chat_message', kind='direct' if conversation_user else 'global', message_id=0) }}" id="main-content" data-history-url="{{ url_for('chat_history', partner=conversation_user.id if conversation_user else none) }}" class="ga-chat-shell mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    <div class="mb-8 space-y-3">
-    {% for category, message in messages %}
-    <div class="rounded-2xl px-4 py-3 text-sm font-medium {{ 'bg-red-500 text-white' if category == 'error' else 'bg-emerald-500 text-slate-950' }}">{{ message }}</div>
-    {% endfor %}
-    </div>
-    {% endif %}
-    {% endwith %}
+<main data-introduction="{{ 'true' if connection and connection.state != 'accepted' else 'false' }}" data-user-id="{{ current_user.id }}" data-username="{{ current_user.username }}" data-partner-id="{{ conversation_user.id if conversation_user else '' }}" data-send-url="{{ url_for('send_chat_http') }}" data-delete-url="{{ url_for('delete_chat_message', kind='direct' if conversation_user else 'global', message_id=0) }}" id="main-content" data-history-url="{{ url_for('chat_history', partner=conversation_user.id if conversation_user else none) }}" class="ga-chat-shell mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+    {% include '_flash.html' %}
 
+    {% set request_view = request.args.get('inbox') == 'requests' %}
+    {% set displayed_conversations = conversations|selectattr('request', 'equalto', request_view)|list %}
     <div class="grid gap-6 xl:grid-cols-[0.9fr_0.5fr]">
         <section class="min-w-0 rounded-[36px] border border-slate-800 bg-slate-900/90 p-4 shadow-2xl shadow-slate-950/20 sm:p-6">
             <div class="flex items-center justify-between">
@@ -41,6 +35,7 @@
                     {% endif %}
                 </div>
             </div>
+            {% if conversation_user %}{% set connection_user_id = conversation_user.id %}{% include '_connection_controls.html' %}{% endif %}
             <div id="chatWindow" class="mt-6 flex h-[66vh] min-w-0 flex-col overflow-hidden rounded-[32px] border border-slate-800 bg-slate-950/80 p-3 sm:p-4">
                 <div id="messages" class="min-w-0 flex-1 space-y-3 overflow-y-auto pr-1 sm:pr-2">
 {% if conversation_user %}
@@ -70,8 +65,8 @@
                 <p class="ga-muted ga-chat-hint">Swipe a message to reply. Hold or right-click for message actions.</p><div id="chatTyping" class="ga-typing" role="status" hidden><span data-typing-name></span><span class="ga-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
                 <div id="replyPreview" class="ga-chat-quote ga-reply-preview" hidden><div><strong></strong><p></p></div><button type="button" aria-label="Cancel reply">×</button></div>
                 <form id="chatForm" class="mt-4 flex min-w-0 gap-2 rounded-[32px] border border-slate-800 bg-slate-900/90 p-2 sm:gap-3 sm:p-3">
-                    <input aria-label="Message" id="chatInput" type="text" maxlength="1000" placeholder="Type your message..." autocomplete="off" class="min-w-0 flex-1 rounded-[28px] border border-slate-800 bg-slate-950/80 px-3 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none sm:px-4" />
-                    <button type="submit" class="shrink-0 rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold leading-5 text-slate-950 hover:bg-emerald-400 sm:px-6">Send</button>
+                    <input aria-label="Message" id="chatInput" {% if connection and not connection.can_send %}disabled{% endif %} type="text" maxlength="1000" placeholder="Type your message..." autocomplete="off" class="min-w-0 flex-1 rounded-[28px] border border-slate-800 bg-slate-950/80 px-3 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none sm:px-4" />
+                    <button type="submit" {% if connection and not connection.can_send %}disabled{% endif %} class="shrink-0 rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold leading-5 text-slate-950 hover:bg-emerald-400 sm:px-6">Send</button>
                 </form><p id="chatStatus" class="ga-inline-status ga-muted" role="status" aria-live="polite"></p>
             </div>
         </section>
@@ -81,20 +76,21 @@
                     <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Conversations</p>
                     <h2 class="mt-2 text-2xl font-semibold text-white">Your inbox</h2>
                 </div>
-                <span id="conversationCount" class="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-200">{{ conversations|length }}</span>
+                <span id="conversationCount" class="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-200">{{ displayed_conversations|length }}</span>
             </div>
             <div class="mt-6">
                 <a href="{{ url_for('chat') }}" class="block rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-4 text-white">Global chat</a>
             </div>
-            <nav id="conversationList" class="ga-conversation-list" aria-label="Private conversations" tabindex="0" data-url="{{ url_for('chat_conversations') }}">
-                {% for item in conversations %}{% set partner = item.user %}
+            <div class="ga-inbox-tabs"><a href="{{ url_for('chat') }}" {{ 'aria-current=page' if not request_view else '' }}>Inbox</a><a href="{{ url_for('chat', inbox='requests') }}" {{ 'aria-current=page' if request_view else '' }}>Requests ({{ conversations|selectattr('request')|list|length }})</a></div>
+            <nav data-filter="{{ 'requests' if request_view else 'inbox' }}" id="conversationList" class="ga-conversation-list" aria-label="Private conversations" tabindex="0" data-url="{{ url_for('chat_conversations') }}">
+                {% for item in displayed_conversations %}{% set partner = item.user %}
                 <a href="{{ url_for('direct_message', user_id=partner.id) }}" class="ga-conversation-row {{ 'is-active' if conversation_user and conversation_user.id == partner.id else '' }}" {% if conversation_user and conversation_user.id == partner.id %}aria-current="page"{% endif %}>
                     {% if partner.avatar_url %}<img src="{{ partner.avatar_url }}" alt="" class="ga-chat-avatar" width="48" height="48" loading="lazy">{% else %}<span class="ga-chat-avatar">{{ partner.username[:1]|upper }}</span>{% endif %}
                     <span class="ga-conversation-copy"><strong>{{ partner.username }}</strong><span>{{ 'You: ' if item.own else '' }}{{ item.preview }}</span></span>
                     <span class="ga-conversation-meta"><time>{{ item.created_at.strftime('%H:%M') }}</time>{% if item.unread %}<span class="ga-conversation-unread" aria-label="{{ item.unread }} unread messages">{{ item.unread }}</span>{% elif item.own and item.seen %}<span class="ga-message-seen" aria-label="Seen">✓✓</span>{% endif %}</span>
                 </a>
                 {% else %}
-                <div class="rounded-[28px] border border-dashed border-slate-700 bg-slate-950/70 p-5 text-slate-400">Start chatting and connect with other players.</div>
+                <div class="rounded-[28px] border border-dashed border-slate-700 bg-slate-950/70 p-5 text-slate-400">{{ 'No player requests yet.' if request_view else 'Start chatting and connect with other players.' }}</div>
                 {% endfor %}
             </nav>
             {% if conversation_user %}

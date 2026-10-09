@@ -11,6 +11,7 @@
 
 {% include '_header.html' %}
 <main id="main-content" class="mx-auto max-w-5xl space-y-6 px-4 py-8 pb-28 sm:px-6">
+    {% include '_flash.html' %}
     <section class="flex flex-col gap-5 rounded-3xl border border-slate-800 bg-slate-900 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
         <div class="flex min-w-0 items-center gap-4">
             {% if player.avatar_url %}<img src="{{ player.avatar_url }}" alt="{{ player.username }} avatar" class="ga-avatar" width="88" height="88">{% else %}<div class="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-3xl font-bold text-slate-950">{{ player.username[:1]|upper }}</div>{% endif %}
@@ -18,6 +19,7 @@
         </div>
         {% if current_user.is_authenticated and current_user.id != player.id %}<div class="flex flex-wrap gap-2"><a href="{{ url_for('direct_message', user_id=player.id) }}" class="rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950">Message</a>{% if is_blocked %}<form method="POST" action="{{ url_for('unblock_user', user_id=player.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-4 py-3 text-sm">Unblock</button></form>{% else %}<form method="POST" action="{{ url_for('block_user', user_id=player.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-4 py-3 text-sm">Block</button></form>{% endif %}<form method="POST" action="{{ url_for('report_user', user_id=player.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="reason" value="Player profile report"><button class="rounded-xl border border-red-500/30 px-4 py-3 text-sm text-red-200">Report</button></form></div>{% endif %}
     </section>
+    {% if connection and not is_blocked %}{% set connection_user_id = player.id %}{% include '_connection_controls.html' %}{% endif %}
     <section class="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {% for label, value in [('Matches',matches_played),('Wins',wins),('Losses',losses),('Win rate',win_rate|string ~ '%')] %}<div class="rounded-2xl border border-slate-800 bg-slate-900 p-4"><p class="text-sm text-slate-400">{{ label }}</p><p class="mt-2 text-2xl font-semibold text-white">{{ value }}</p></div>{% endfor %}
     </section>

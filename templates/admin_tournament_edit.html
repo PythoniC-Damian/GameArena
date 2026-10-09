@@ -17,17 +17,7 @@
 <p class="text-slate-400 text-lg">Publish room credentials, set match time, and assign winners.</p>
 </section>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}
-<div class="max-w-md mx-auto mb-6">
-{% for category, message in messages %}
-<div class="bg-{{ 'green' if category == 'success' else 'red' }}-500 text-white p-4 rounded mb-4 text-center">
-{{ message }}
-</div>
-{% endfor %}
-</div>
-{% endif %}
-{% endwith %}
+{% include '_flash.html' %}
 
 <section class="px-10 pb-10">
 <div id="main-content" role="main" class="max-w-3xl mx-auto bg-slate-900 rounded-lg p-8 shadow-lg">

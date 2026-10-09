@@ -372,7 +372,7 @@ def active_participant_count(tournament):
 
 from gamearena.extensions import db
 db.init_app(app)
-from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, ProfilePhoto, PushSubscription, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
+from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
 from gamearena.forms import (RegistrationForm, LoginForm, EmailVerificationForm, ForgotPasswordForm, ResetPasswordForm, TournamentForm, TournamentSetupForm, LeaderboardEntryForm)
 
 
@@ -897,6 +897,95 @@ def can_direct_message(sender, recipient):
         return False
     recipient_settings = recipient.settings
     return recipient_settings is None or recipient_settings.allow_direct_messages
+
+
+def player_connection(one, two, lock=False):
+    low, high = sorted((one, two))
+    query = PlayerConnection.query.filter_by(low_id=low, high_id=high)
+    if lock:
+        inserted = db.session.execute(postgresql_insert(PlayerConnection).values(
+            low_id=low, high_id=high, requester_id=one, status='pending', intro_used=False
+        ).on_conflict_do_nothing(index_elements=['low_id', 'high_id']))
+        query = query.with_for_update().populate_existing()
+    record = query.first()
+    if lock:
+        record._just_created = inserted.rowcount == 1
+    return record
+
+
+def connection_state(other_id):
+    connection = player_connection(current_user.id, other_id)
+    if not connection:
+        return {'state':'none', 'can_send':True}
+    state = connection.status
+    if state == 'pending':
+        state = 'outgoing' if connection.requester_id == current_user.id else 'incoming'
+    return {'state':state, 'can_send':connection.status == 'accepted' or (
+        connection.status == 'pending' and connection.requester_id == current_user.id and not connection.intro_used)}
+
+
+@app.route('/players/<int:user_id>/connection', methods=['POST'])
+@login_required
+def update_player_connection(user_id):
+    partner = db.session.get(User, user_id)
+    if not can_direct_message(current_user, partner) or not can_direct_message(partner, current_user):
+        abort(403)
+    action = request.form.get('action')
+    if action not in {'request', 'accept', 'cancel', 'decline'}:
+        abort(400)
+    if action == 'request':
+        for key, limit, window in ((f'player_requests:{current_user.id}',20,3600),
+                                   (f'player_request_pair:{current_user.id}:{user_id}',3,60)):
+            wait = consume_rate_limit(key, limit, window)
+            if wait:
+                return rate_limit_response(wait)
+    connection = player_connection(current_user.id, user_id, lock=True)
+    own = connection.requester_id == current_user.id
+    if action == 'request' and connection.status == 'pending' and own and not connection._just_created:
+        db.session.commit()
+        return redirect(url_for('direct_message', user_id=user_id))
+    if action == 'request' and connection.status in {'cancelled', 'declined'}:
+        if connection.status == 'declined' and own:
+            db.session.rollback()
+            flash('This player declined your request.', 'error')
+            return redirect(url_for('direct_message', user_id=user_id))
+        connection.requester_id = current_user.id
+        connection.status = 'pending'
+    elif action in {'accept', 'decline'}:
+        if own or connection.status != 'pending':
+            db.session.rollback()
+            abort(403)
+        connection.status = 'accepted' if action == 'accept' else 'declined'
+    elif action == 'cancel':
+        if not own or connection.status != 'pending':
+            db.session.rollback()
+            abort(403)
+        connection.status = 'cancelled'
+    elif action == 'request' and (connection.status != 'pending' or not own):
+        db.session.rollback()
+        abort(409)
+    db.session.commit()
+    for viewer, other in ((current_user.id,user_id),(user_id,current_user.id)):
+        socketio.emit('player_connection_changed', {'partner_id':other}, room=f'user:{viewer}')
+    if action == 'request':
+        create_and_emit_notification(user_id, f'{current_user.username} sent you a player request.', 'chat', f'/messages/{current_user.id}')
+    elif action == 'accept':
+        create_and_emit_notification(user_id, f'{current_user.username} accepted your player request.', 'chat', f'/messages/{current_user.id}')
+    flash({'request':'Player request sent.', 'accept':'Player added. You can now chat.', 'cancel':'Player request cancelled.', 'decline':'Player request declined.'}[action], 'success')
+    return redirect(url_for('direct_message', user_id=user_id))
+
+
+@app.route('/settings/theme', methods=['POST'])
+@login_required
+def save_theme():
+    payload = request.get_json(silent=True)
+    theme = payload.get('theme') if isinstance(payload, dict) else None
+    if theme not in {'light', 'dark'}:
+        return jsonify({'error':'Choose Dark or Light.'}), 400
+    preferences = get_or_create_user_settings(current_user.id)
+    preferences.theme = theme
+    db.session.commit()
+    return jsonify({'theme':theme})
 
 
 def achievement_progress_for_user(user_id):
@@ -1430,6 +1519,7 @@ def public_profile(user_id):
         win_rate=round((wins / matches_played) * 100) if matches_played else 0,
         placements=placements, joined_tournaments=joined_tournaments,
         achievements=achievements,
+        connection=connection_state(player.id) if current_user.is_authenticated and current_user.id != player.id else None,
         is_blocked=users_have_block(current_user.id, player.id) if current_user.is_authenticated else False,
     )
 
@@ -1773,10 +1863,23 @@ def chat_inbox():
         DirectMessage.created_at.desc(), DirectMessage.id.desc()).all()
     blocks = UserBlock.query.filter(or_(UserBlock.blocker_id == user_id, UserBlock.blocked_id == user_id)).all()
     blocked_ids = {b.blocked_id if b.blocker_id == user_id else b.blocker_id for b in blocks}
-    return [{'user':partner, 'preview':'This message was deleted.' if message.deleted_at else message.message,
+    connections = PlayerConnection.query.filter(or_(PlayerConnection.low_id == user_id, PlayerConnection.high_id == user_id)).all()
+    connection_map = {c.high_id if c.low_id == user_id else c.low_id:c for c in connections}
+    items = [{'user':partner, 'preview':'This message was deleted.' if message.deleted_at else message.message,
         'own':message.sender_id == user_id, 'unread':int(unread), 'created_at':message.created_at,
         'seen':bool(message.read_at)} for partner, message, unread in rows
         if partner.id not in blocked_ids and not partner.suspended and (not partner.settings or partner.settings.allow_direct_messages)]
+    existing_ids = {item['user'].id for item in items}
+    pending_ids = [other for other,c in connection_map.items() if c.status in {'pending','accepted'} and other not in existing_ids and other not in blocked_ids]
+    for partner in User.query.options(joinedload(User.settings)).filter(User.id.in_(pending_ids)).all():
+        if not partner.suspended and (not partner.settings or partner.settings.allow_direct_messages):
+            c = connection_map[partner.id]
+            items.append({'user':partner,'preview':'Player request' if c.status == 'pending' else 'No messages yet.', 'own':False,
+                'unread':0,'created_at':c.created_at,'seen':False})
+    for item in items:
+        c = connection_map.get(item['user'].id)
+        item['request'] = bool(c and c.status != 'accepted' and c.requester_id != user_id)
+    return sorted(items, key=lambda item:item['created_at'], reverse=True)
 
 
 @app.route('/chat/conversations')
@@ -1784,7 +1887,7 @@ def chat_inbox():
 def chat_conversations():
     return jsonify({'conversations':[{'id':item['user'].id, 'username':item['user'].username,
         'avatar_url':item['user'].avatar_url, 'url':url_for('direct_message', user_id=item['user'].id),
-        'preview':item['preview'], 'own':item['own'], 'unread':item['unread'], 'seen':item['seen'],
+        'preview':item['preview'], 'own':item['own'], 'unread':item['unread'], 'seen':item['seen'], 'request':item['request'],
         'created_at':item['created_at'].isoformat()+'Z'} for item in chat_inbox()]})
 
 
@@ -1810,6 +1913,7 @@ def direct_message(user_id):
     return render_template(
         'chat.html', messages=[], conversations=chat_inbox(), conversation_user=recipient,
         direct_messages=messages,
+        connection=connection_state(recipient.id),
         is_blocked=users_have_block(current_user.id, recipient.id),
         dm_unread_count=DirectMessage.query.filter_by(
             recipient_id=current_user.id, read_at=None,
@@ -3882,6 +3986,8 @@ def wallet_withdraw():
 @app.route("/logout", methods=['GET', 'POST'])
 @login_required
 def logout():
+    if request.method != 'POST' or request.form.get('confirmed') != '1':
+        return render_template('logout_confirmation.html')
     digest = session.pop('push_endpoint_hash', None)
     if digest and current_user.is_authenticated:
         PushSubscription.query.filter_by(user_id=current_user.id, endpoint_hash=digest).delete()
@@ -4083,6 +4189,22 @@ def on_send_direct_message(data):
     sender_id, sender_name = current_user.id, current_user.username
     recipient_id = recipient.id
     reply = quoted_message(parent)
+    connection = player_connection(sender_id, recipient_id, lock=True)
+    if client_id:
+        existing = DirectMessage.query.filter_by(client_message_id=client_id, sender_id=sender_id, recipient_id=recipient_id).first()
+        if existing:
+            db.session.commit()
+            return {'status':'success', 'id':existing.id}
+    # A row lock serializes introductions sent concurrently through HTTP/socket.
+    # Count old messages too: deleting/cancelling cannot replenish this allowance.
+    if connection.status != 'accepted':
+        used = connection.intro_used or DirectMessage.query.filter(or_(
+            db.and_(DirectMessage.sender_id == sender_id, DirectMessage.recipient_id == recipient_id),
+            db.and_(DirectMessage.sender_id == recipient_id, DirectMessage.recipient_id == sender_id))).first() is not None
+        if connection.status != 'pending' or connection.requester_id != sender_id or used:
+            db.session.rollback()
+            return {'status':'error', 'message':'Wait for your player request to be accepted before sending another message.'}
+        connection.intro_used = True
     created_at = datetime.utcnow()
     stored_message = DirectMessage(sender_id=sender_id, recipient_id=recipient_id,
         message=message, client_message_id=client_id, reply_to_id=parent.id if parent else None, created_at=created_at)
@@ -4100,6 +4222,7 @@ def on_send_direct_message(data):
     payload = {
         'id': message_id, 'sender_id':sender_id, 'recipient_id':recipient_id,
         'username':sender_name, 'message':message, 'client_message_id':client_id, 'created_at':created_at.isoformat() + 'Z', 'reply':reply,
+        'awaiting_acceptance':connection.status != 'accepted',
     }
     socketio.emit(
         'new_direct_message', payload,
@@ -4107,7 +4230,7 @@ def on_send_direct_message(data):
     )
     socketio.emit('new_direct_message', payload, room=f'user:{sender_id}')
     socketio.start_background_task(chat_notification, recipient_id, sender_id, sender_name)
-    return {'status': 'success', 'id': message_id}
+    return {'status': 'success', 'id': message_id, **({'awaiting_acceptance':True} if connection.status != 'accepted' else {})}
 
 
 def chat_notification(recipient_id, sender_id, sender_name):
@@ -4164,7 +4287,8 @@ def chat_typing(data):
     payload = {'user_id':current_user.id, 'username':current_user.username, 'typing':data.get('typing') is True}
     if partner_id:
         partner = db.session.get(User, partner_id)
-        if can_direct_message(current_user, partner):
+        connection = player_connection(current_user.id, partner_id) if partner else None
+        if can_direct_message(current_user, partner) and connection and connection.status == 'accepted':
             socketio.emit('chat_typing', payload, room=f'user:{partner.id}')
     else:
         socketio.emit('chat_typing', payload, room='global_chat', skip_sid=request.sid)

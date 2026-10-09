@@ -29,7 +29,8 @@
       const response = await fetch(inbox.dataset.url, {cache:'no-store'});
       if (!response.ok) return;
       const data = await response.json(), fragment = document.createDocumentFragment();
-      for (const item of data.conversations) {
+      const conversations = data.conversations.filter(item => Boolean(item.request) === (inbox.dataset.filter === 'requests'));
+      for (const item of conversations) {
         const link = document.createElement('a'); link.href = item.url; link.className = 'ga-conversation-row';
         if (Number(item.id) === partnerId) { link.classList.add('is-active'); link.setAttribute('aria-current','page'); }
         const avatar = document.createElement(item.avatar_url ? 'img' : 'span'); avatar.className = 'ga-chat-avatar';
@@ -46,10 +47,12 @@
         }
         link.append(avatar,copy,meta); fragment.append(link);
       }
-      if (!data.conversations.length) { const empty = document.createElement('p'); empty.className = 'ga-muted'; empty.textContent = 'Start chatting and connect with other players.'; fragment.append(empty); }
+      if (!conversations.length) { const empty = document.createElement('p'); empty.className = 'ga-muted'; empty.textContent = inbox.dataset.filter === 'requests' ? 'No player requests yet.' : 'Start chatting and connect with other players.'; fragment.append(empty); }
       // Preserve focus and scroll while replacing frequently updated rows.
       if (!inbox.contains(document.activeElement)) inbox.replaceChildren(fragment);
-      document.getElementById('conversationCount').textContent = data.conversations.length;
+      document.getElementById('conversationCount').textContent = conversations.length;
+      const requestsLink = document.querySelector('.ga-inbox-tabs a:last-child');
+      if (requestsLink) requestsLink.textContent = `Requests (${data.conversations.filter(item => item.request).length})`;
     } catch (_) {} finally { refreshingInbox = false; }
   }
   function scheduleInbox() { clearTimeout(inboxTimer); inboxTimer = setTimeout(refreshInbox,250); }
@@ -135,6 +138,7 @@
     if (partnerId && ((Number(message.sender_id) === partnerId && Number(message.recipient_id) === userId) || (Number(message.sender_id) === userId && Number(message.recipient_id) === partnerId))) render(message);
   });
   socket.on('direct_messages_read',event => { if (Number(event.reader_id) === partnerId) (event.ids || []).forEach(applySeen); scheduleInbox(); });
+  socket.on('player_connection_changed',event => { if (Number(event.partner_id) === partnerId) location.reload(); else scheduleInbox(); });
   socket.on('conversation_access_changed',event => { if (Number(event.partner_id) === partnerId) joinChat(); });
   socket.on('socket_error',event => { status.textContent = event.message || 'Message could not be sent.'; });
   socket.on('unread_count',event => { const count = document.getElementById('dmUnreadCount'); if (count) count.textContent = `${Number(event.unread) || 0} unread messages across your inbox`; });
@@ -239,6 +243,21 @@
     item.confirm = message => {
       if (finished || !message.id) return;
       finished = true; release(); pending.delete(key);
+      if (message.awaiting_acceptance) {
+        input.disabled = true; form.querySelector('button[type=submit]').disabled = true;
+        status.textContent = 'Introduction sent. Wait for your player request to be accepted.';
+        const controls = main.querySelector('.ga-connection-controls');
+        if (controls) {
+          const note = document.createElement('p'); note.className = 'ga-muted'; note.textContent = 'Request sent · Waiting for acceptance.';
+          const cancelForm = document.createElement('form'); cancelForm.method = 'POST'; cancelForm.action = `/players/${partnerId}/connection`;
+          for (const [name,value] of [['csrf_token',document.querySelector('meta[name=csrf-token]').content],['action','cancel']]) {
+            const hidden = document.createElement('input'); hidden.type = 'hidden'; hidden.name = name; hidden.value = value; cancelForm.append(hidden);
+          }
+          const cancel = document.createElement('button'); cancel.type = 'submit'; cancel.className = 'ga-button ga-button-secondary'; cancel.textContent = 'Cancel request'; cancelForm.append(cancel);
+          controls.replaceChildren(note,cancelForm);
+        }
+        scheduleInbox();
+      }
       const id = String(message.id);
       if (ids.has(id)) row.remove();
       else {
@@ -289,9 +308,12 @@
     pending.set(key,item); return item;
   }
   form.addEventListener('submit',event => {
-    event.preventDefault(); const text = input.value.trim(); if (!text) return;
+    event.preventDefault(); const text = input.value.trim(); if (!text || input.disabled) return;
     if (pending.size >= 50) { status.textContent = 'You have 50 unsent messages. Retry them before sending more.'; return; }
     const selectedReply = reply, payload = {message:text,client_message_id:crypto.randomUUID()};
+    if (partnerId && main.dataset.introduction === 'true') {
+      input.disabled = true; form.querySelector('button[type=submit]').disabled = true;
+    }
     if (partnerId) payload.user_id = partnerId; if (selectedReply) payload.reply_to_id = selectedReply.id;
     addOutgoing(payload,selectedReply);
     input.value = ''; clearReply(); emitTyping(false); status.textContent = '';

@@ -1,8 +1,17 @@
 (() => {
   'use strict';
+  document.querySelectorAll('[data-flash]').forEach(message => setTimeout(() => message.remove(),4000));
   const header = document.querySelector('.ga-header');
   if (!header) return;
   const menus = Array.from(document.querySelectorAll('[data-menu]'));
+  const logoutDialog = document.getElementById('logoutConfirmation');
+  let logoutTrigger;
+  document.querySelectorAll('form[action="/logout"]').forEach(form => form.addEventListener('submit', event => {
+    if (form.querySelector('[name="confirmed"]') || !logoutDialog?.showModal) return;
+    event.preventDefault(); logoutTrigger = form.closest('details')?.querySelector('summary') || event.submitter; closeMenus(); logoutDialog.showModal();
+  }));
+  logoutDialog?.querySelector('[data-cancel-logout]').addEventListener('click', () => logoutDialog.close());
+  logoutDialog?.addEventListener('close', () => logoutTrigger?.focus());
   function closeMenus(restoreFocus = false) {
     menus.forEach(menu => { if (menu.open) { menu.open = false; if (restoreFocus) menu.querySelector('summary').focus(); } });
   }
@@ -75,7 +84,7 @@
     const text = document.createElement('a'); text.textContent = payload.message; text.href = internalURL(payload.target_url) || '/notifications';
     const close = document.createElement('button'); close.type = 'button'; close.textContent = '×'; close.setAttribute('aria-label','Dismiss notification'); close.addEventListener('click', () => toast.remove()); toast.append(text,close); stack.append(toast);
     while (stack.children.length > 3) stack.firstElementChild.remove();
-    setTimeout(() => { if (!toast.contains(document.activeElement) && !toast.matches(':hover')) toast.remove(); }, 10000);
+    setTimeout(() => toast.remove(), 4000);
   };
   function refreshUnread() {
     if (!header.dataset.unreadUrl || refreshing) return;
@@ -112,8 +121,27 @@
     const button = form.querySelector('button[type="submit"]');
     if (button) { button.disabled = true; button.textContent = 'Saving…'; }
   }));
-  document.querySelectorAll('input[name=theme]').forEach(input => input.addEventListener('change', () => {
-    if (input.checked) document.documentElement.dataset.theme = input.value;
+  const themeOptions = document.querySelector('[data-theme-url]');
+  let savedTheme = document.documentElement.dataset.theme, savingTheme = false, desiredTheme = savedTheme;
+  async function persistTheme() {
+    if (savingTheme || desiredTheme === savedTheme) return;
+    savingTheme = true;
+    const theme = desiredTheme, feedback = document.getElementById('themeStatus');
+    feedback.textContent = 'Saving theme…';
+    try {
+      const response = await fetch(themeOptions.dataset.themeUrl, {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]').content},body:JSON.stringify({theme})});
+      if (!response.ok) throw new Error('Theme could not be saved. Please choose it again.');
+      savedTheme = theme; try { localStorage.setItem('gamearenaTheme',theme); } catch (_) {}
+      feedback.textContent = 'Theme saved.';
+    } catch (error) {
+      desiredTheme = savedTheme; document.documentElement.dataset.theme = savedTheme;
+      themeOptions.querySelectorAll('input').forEach(input => { input.checked = input.value === savedTheme; });
+      feedback.textContent = error.message;
+    } finally { savingTheme = false; if (desiredTheme !== savedTheme) persistTheme(); }
+  }
+  themeOptions?.querySelectorAll('input[name=theme]').forEach(input => input.addEventListener('change', () => {
+    if (!input.checked) return;
+    desiredTheme = input.value; document.documentElement.dataset.theme = desiredTheme; persistTheme();
   }));
   document.querySelectorAll('[data-confirm]').forEach(form => form.addEventListener('submit', event => { if (!window.confirm(form.dataset.confirm)) event.preventDefault(); }));
   document.querySelectorAll('img').forEach(img => img.addEventListener('error', () => {

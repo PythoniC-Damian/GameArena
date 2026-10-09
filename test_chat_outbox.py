@@ -1,7 +1,7 @@
 """Isolated burst delivery and idempotent recovery contracts."""
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
-from app import app, db, socketio, DirectMessage, socket_event_windows
+from app import app, db, socketio, DirectMessage, PlayerConnection, socket_event_windows
 from test_interface_contracts import player, client, token
 
 
@@ -10,6 +10,7 @@ def test_concurrent_http_messages_keep_distinct_identity(monkeypatch):
     socket_event_windows.clear()
     with app.app_context():
         owner, other = player('outbox_owner'), player('outbox_other')
+        db.session.add(PlayerConnection(low_id=min(owner.id,other.id),high_id=max(owner.id,other.id),requester_id=owner.id,status='accepted'));db.session.commit()
         owner_id, other_id = owner.id, other.id
     payloads = [{'user_id':other_id,'message':f'Burst {i}','client_message_id':str(uuid4())} for i in range(5)]
     def send(payload):
@@ -36,6 +37,7 @@ def test_duplicate_ack_does_not_consume_burst_limit(monkeypatch):
     socket_event_windows.clear()
     with app.app_context():
         owner, other=player('ack_owner'),player('ack_other');viewer=client(owner);other_id=other.id
+        db.session.add(PlayerConnection(low_id=min(owner.id,other.id),high_id=max(owner.id,other.id),requester_id=owner.id,status='accepted'));db.session.commit()
     connection=socketio.test_client(app,flask_test_client=viewer)
     payload={'user_id':other_id,'message':'One message','client_message_id':str(uuid4())}
     sent=connection.emit('send_direct_message',payload,callback=True)

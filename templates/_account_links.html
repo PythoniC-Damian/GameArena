@@ -3,6 +3,7 @@
 {% if not mobile_menu|default(false) %}<a href="{{ url_for('profile') }}">{{ icon('user') }}My profile</a>{% endif %}
 <a href="{{ url_for('wallet') }}">{{ icon('wallet') }}Wallet</a>
 <a href="{{ url_for('chat') }}">{{ icon('chat') }}Chat</a>
+<a href="{{ url_for('chat', inbox='requests') }}">{{ icon('user') }}Player requests</a>
 <a href="{{ url_for('settings') }}">{{ icon('settings') }}Settings</a>
 <a href="{{ url_for('support') }}">{{ icon('help') }}Help & support</a>
 {% if current_user.is_admin and not current_user.suspended %}<a href="{{ url_for('admin') }}">{{ icon('trophy') }}Admin panel</a><a href="{{ url_for('admin_reports') }}">{{ icon('help') }}Review reports</a>{% endif %}

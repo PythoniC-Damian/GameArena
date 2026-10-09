@@ -28,3 +28,4 @@
     </div>
   </div>
 </header>
+{% if current_user.is_authenticated %}<dialog id="logoutConfirmation" class="ga-confirm-dialog" aria-labelledby="logoutTitle" aria-describedby="logoutDescription"><h2 id="logoutTitle">Log out of GameArena?</h2><p id="logoutDescription">You'll need to sign in to keep using GameArena.</p><div class="ga-connection-controls"><button type="button" class="ga-button ga-button-secondary" data-cancel-logout autofocus>Cancel</button><form method="POST" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirmed" value="1"><button class="ga-button ga-button-primary" type="submit">Log out</button></form></div></dialog>{% endif %}

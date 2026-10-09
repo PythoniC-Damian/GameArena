@@ -24,17 +24,7 @@ Add a new tournament to the platform
 </section>
 
 <!-- FLASH MESSAGES -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}
-<div class="max-w-md mx-auto mb-6">
-{% for category, message in messages %}
-<div class="bg-{{ 'green' if category == 'success' else 'red' }}-500 text-white p-4 rounded mb-4 text-center">
-{{ message }}
-</div>
-{% endfor %}
-</div>
-{% endif %}
-{% endwith %}
+{% include '_flash.html' %}
 
 <!-- CREATE FORM -->
 <section class="px-10 pb-10">
