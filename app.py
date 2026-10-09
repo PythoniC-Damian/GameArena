@@ -913,7 +913,14 @@ def player_connection(one, two, lock=False):
     return record
 
 
+def requires_player_consent(one, two):
+    return one.requires_player_consent or two.requires_player_consent
+
+
 def connection_state(other_id):
+    partner = db.session.get(User, other_id)
+    if partner and not requires_player_consent(current_user, partner):
+        return {'state':'open', 'can_send':True}
     connection = player_connection(current_user.id, other_id)
     if not connection:
         return {'state':'none', 'can_send':True}
@@ -924,12 +931,22 @@ def connection_state(other_id):
         connection.status == 'pending' and connection.requester_id == current_user.id and not connection.intro_used)}
 
 
-@app.route('/players/<int:user_id>/connection', methods=['POST'])
+@app.route('/players/<int:user_id>/connection', methods=['GET', 'POST'])
 @login_required
 def update_player_connection(user_id):
     partner = db.session.get(User, user_id)
     if not can_direct_message(current_user, partner) or not can_direct_message(partner, current_user):
         abort(403)
+    def respond(message=''):
+        if request.method == 'GET' or request.accept_mimetypes.best == 'application/json':
+            state = connection_state(user_id)
+            return jsonify(connection=state, message=message, controls_html=render_template(
+                '_connection_controls.html', connection=state, connection_user_id=user_id))
+        if message:
+            flash(message, 'success')
+        return redirect(url_for('direct_message', user_id=user_id))
+    if request.method == 'GET' or not requires_player_consent(current_user, partner):
+        return respond()
     action = request.form.get('action')
     if action not in {'request', 'accept', 'cancel', 'decline'}:
         abort(400)
@@ -943,12 +960,11 @@ def update_player_connection(user_id):
     own = connection.requester_id == current_user.id
     if action == 'request' and connection.status == 'pending' and own and not connection._just_created:
         db.session.commit()
-        return redirect(url_for('direct_message', user_id=user_id))
+        return respond()
     if action == 'request' and connection.status in {'cancelled', 'declined'}:
         if connection.status == 'declined' and own:
             db.session.rollback()
-            flash('This player declined your request.', 'error')
-            return redirect(url_for('direct_message', user_id=user_id))
+            return respond('This player declined your request.')
         connection.requester_id = current_user.id
         connection.status = 'pending'
     elif action in {'accept', 'decline'}:
@@ -970,9 +986,8 @@ def update_player_connection(user_id):
     if action == 'request':
         create_and_emit_notification(user_id, f'{current_user.username} sent you a player request.', 'chat', f'/messages/{current_user.id}')
     elif action == 'accept':
-        create_and_emit_notification(user_id, f'{current_user.username} accepted your player request.', 'chat', f'/messages/{current_user.id}')
-    flash({'request':'Player request sent.', 'accept':'Player added. You can now chat.', 'cancel':'Player request cancelled.', 'decline':'Player request declined.'}[action], 'success')
-    return redirect(url_for('direct_message', user_id=user_id))
+        create_and_emit_notification(user_id, f'{current_user.username} added you.', 'chat', f'/messages/{current_user.id}')
+    return respond({'request':'Player request sent.', 'accept':f'You added {partner.username}.', 'cancel':'Player request cancelled.', 'decline':'Player request declined.'}[action])
 
 
 @app.route('/settings/theme', methods=['POST'])
@@ -1878,7 +1893,7 @@ def chat_inbox():
                 'unread':0,'created_at':c.created_at,'seen':False})
     for item in items:
         c = connection_map.get(item['user'].id)
-        item['request'] = bool(c and c.status != 'accepted' and c.requester_id != user_id)
+        item['request'] = bool(requires_player_consent(current_user, item['user']) and c and c.status != 'accepted' and c.requester_id != user_id)
     return sorted(items, key=lambda item:item['created_at'], reverse=True)
 
 
@@ -4190,6 +4205,10 @@ def on_send_direct_message(data):
     recipient_id = recipient.id
     reply = quoted_message(parent)
     connection = player_connection(sender_id, recipient_id, lock=True)
+    consent_required = requires_player_consent(current_user, recipient)
+    if not consent_required:
+        connection.status = 'accepted'
+    awaiting_acceptance = consent_required and connection.status != 'accepted'
     if client_id:
         existing = DirectMessage.query.filter_by(client_message_id=client_id, sender_id=sender_id, recipient_id=recipient_id).first()
         if existing:
@@ -4197,7 +4216,7 @@ def on_send_direct_message(data):
             return {'status':'success', 'id':existing.id}
     # A row lock serializes introductions sent concurrently through HTTP/socket.
     # Count old messages too: deleting/cancelling cannot replenish this allowance.
-    if connection.status != 'accepted':
+    if awaiting_acceptance:
         used = connection.intro_used or DirectMessage.query.filter(or_(
             db.and_(DirectMessage.sender_id == sender_id, DirectMessage.recipient_id == recipient_id),
             db.and_(DirectMessage.sender_id == recipient_id, DirectMessage.recipient_id == sender_id))).first() is not None
@@ -4222,7 +4241,7 @@ def on_send_direct_message(data):
     payload = {
         'id': message_id, 'sender_id':sender_id, 'recipient_id':recipient_id,
         'username':sender_name, 'message':message, 'client_message_id':client_id, 'created_at':created_at.isoformat() + 'Z', 'reply':reply,
-        'awaiting_acceptance':connection.status != 'accepted',
+        'awaiting_acceptance':awaiting_acceptance,
     }
     socketio.emit(
         'new_direct_message', payload,
@@ -4230,7 +4249,7 @@ def on_send_direct_message(data):
     )
     socketio.emit('new_direct_message', payload, room=f'user:{sender_id}')
     socketio.start_background_task(chat_notification, recipient_id, sender_id, sender_name)
-    return {'status': 'success', 'id': message_id, **({'awaiting_acceptance':True} if connection.status != 'accepted' else {})}
+    return {'status': 'success', 'id': message_id, **({'awaiting_acceptance':True} if awaiting_acceptance else {})}
 
 
 def chat_notification(recipient_id, sender_id, sender_name):
@@ -4288,7 +4307,7 @@ def chat_typing(data):
     if partner_id:
         partner = db.session.get(User, partner_id)
         connection = player_connection(current_user.id, partner_id) if partner else None
-        if can_direct_message(current_user, partner) and connection and connection.status == 'accepted':
+        if can_direct_message(current_user, partner) and (not requires_player_consent(current_user, partner) or (connection and connection.status == 'accepted')):
             socketio.emit('chat_typing', payload, room=f'user:{partner.id}')
     else:
         socketio.emit('chat_typing', payload, room='global_chat', skip_sid=request.sid)

@@ -109,3 +109,11 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=submit
 @media (max-width:767px){input:not([type=checkbox]):not([type=radio]),textarea,select,[contenteditable=true]{font-size:max(16px,1em)!important}}
 @supports (-webkit-touch-callout:none){input:not([type=checkbox]):not([type=radio]),textarea,select,[contenteditable=true]{font-size:max(16px,1em)!important}}
 .ga-confirm-dialog{color:var(--ga-text,#e2e8f0);background:var(--ga-panel,#101a2b);border:1px solid #475569;border-radius:24px;padding:28px;max-width:min(420px,calc(100vw - 32px));box-shadow:0 24px 80px #0008}.ga-confirm-dialog::backdrop{background:#0009}.ga-confirm-dialog h2{font-size:24px;font-weight:700;margin-bottom:12px}.ga-confirm-dialog p{margin-bottom:20px}.ga-connection-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-block:16px}.ga-connection-controls p{flex-basis:100%;margin:0}.ga-inbox-tabs{display:flex;gap:12px;margin-block:16px}.ga-inbox-tabs a{padding:8px 12px;border-radius:12px;border:1px solid #475569}.ga-inbox-tabs a[aria-current=page]{border-color:#10b981;color:#10b981}[data-theme=light] .ga-confirm-dialog{background:#fff;color:#172033}button:disabled,#chatInput:disabled{opacity:.55;cursor:not-allowed}
+
+/* Request controls share one action row and never reserve space when connected. */
+.ga-profile-actions,.ga-connection-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ga-profile-actions .ga-button,.ga-connection-controls .ga-button{min-height:48px;padding:11px 18px;border-radius:999px;line-height:1.4}
+.ga-profile-actions{align-items:flex-start;max-width:100%}
+.ga-profile-actions .ga-connection-controls{display:contents}
+.ga-connection-controls p{flex-basis:100%;font-size:14px}
+[data-player-connection][hidden]{display:none!important}

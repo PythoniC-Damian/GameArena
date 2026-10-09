@@ -13,7 +13,7 @@
 
 {% include '_header.html' %}
 
-<main data-introduction="{{ 'true' if connection and connection.state != 'accepted' else 'false' }}" data-user-id="{{ current_user.id }}" data-username="{{ current_user.username }}" data-partner-id="{{ conversation_user.id if conversation_user else '' }}" data-send-url="{{ url_for('send_chat_http') }}" data-delete-url="{{ url_for('delete_chat_message', kind='direct' if conversation_user else 'global', message_id=0) }}" id="main-content" data-history-url="{{ url_for('chat_history', partner=conversation_user.id if conversation_user else none) }}" class="ga-chat-shell mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+<main data-introduction="{{ 'true' if connection and connection.state not in ['accepted', 'open'] else 'false' }}" data-user-id="{{ current_user.id }}" data-username="{{ current_user.username }}" data-partner-id="{{ conversation_user.id if conversation_user else '' }}" data-send-url="{{ url_for('send_chat_http') }}" data-delete-url="{{ url_for('delete_chat_message', kind='direct' if conversation_user else 'global', message_id=0) }}" id="main-content" data-history-url="{{ url_for('chat_history', partner=conversation_user.id if conversation_user else none) }}" class="ga-chat-shell mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
     {% include '_flash.html' %}
 
     {% set request_view = request.args.get('inbox') == 'requests' %}

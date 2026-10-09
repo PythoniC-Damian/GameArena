@@ -84,3 +84,56 @@ def test_theme_saves_only_appearance_and_logout_requires_confirmation():
         with viewer.session_transaction() as session: assert session.get('_user_id')==str(user.id)
         assert post(viewer,'/logout',data={'confirmed':'1'}).status_code==302
         with viewer.session_transaction() as session: assert not session.get('_user_id')
+
+
+def test_existing_players_chat_without_requests_but_newcomers_need_consent(monkeypatch):
+    monkeypatch.setattr(socketio, 'start_background_task', lambda *a, **kw: None)
+    with app.app_context():
+        one,two,new=player('old_one'),player('old_two'),player('new_player')
+        one.requires_player_consent=two.requires_player_consent=False;db.session.commit()
+        a,b,c=client(one),client(two),client(new)
+        page=a.get(f'/players/{two.id}').text
+        assert '>Add player<' not in page and '>Block<' not in page and '>Report<' not in page
+        for sender,target in ((a,two),(b,one),(a,two)):
+            result=post(sender,'/chat/send',payload={'user_id':target.id,'message':'Open conversation'}).json
+            assert result['status']=='success' and not result.get('awaiting_acceptance')
+        assert not b.get('/chat/conversations').json['conversations'][0]['request']
+        assert 'Players added' not in a.get(f'/messages/{two.id}').text
+        assert '>Add player<' in a.get(f'/players/{new.id}').text
+        assert post(a,'/chat/send',payload={'user_id':new.id,'message':'Introduction'}).json['status']=='success'
+        assert post(a,'/chat/send',payload={'user_id':new.id,'message':'Second'}).json['status']=='error'
+        assert post(c,'/chat/send',payload={'user_id':two.id,'message':'Introduction'}).json['status']=='success'
+        assert post(c,'/chat/send',payload={'user_id':two.id,'message':'Second'}).json['status']=='error'
+        db.session.add(UserBlock(blocker_id=two.id,blocked_id=one.id));db.session.commit()
+        assert post(a,'/chat/send',payload={'user_id':two.id,'message':'Still blocked'}).json['status']=='error'
+
+
+def test_connection_json_actions_and_notification_text(monkeypatch):
+    from app import Notification
+    monkeypatch.setattr(socketio,'start_background_task',lambda *a,**kw:None)
+    with app.app_context():
+        one,two=player('ajax_one'),player('ajax_two');a,b=client(one),client(two)
+        def action(viewer,target,value):
+            csrf=token(viewer.get('/profile'))
+            response=viewer.post(f'/players/{target.id}/connection',data={'action':value,'csrf_token':csrf},headers={'Accept':'application/json'})
+            assert response.status_code==200 and response.is_json
+            return response.json
+        state=action(a,two,'request')
+        assert state['connection']['state']=='outgoing' and 'Cancel request' in state['controls_html']
+        assert Notification.query.filter_by(user_id=two.id).one().message=='ajax_one sent you a player request.'
+        assert action(a,two,'cancel')['connection']['state']=='cancelled'
+        action(a,two,'request')
+        # The requester receives both the transient notification and state event.
+        sender_socket=socketio.test_client(app,flask_test_client=a)
+        sender_socket.emit('join_user',{'user_id':one.id});sender_socket.get_received()
+        state=action(b,one,'accept')
+        assert state['connection']['can_send'] and state['connection']['state']=='accepted'
+        assert 'Players added' not in state['controls_html']
+        assert Notification.query.filter_by(user_id=one.id).one().message=='ajax_two added you.'
+        events=sender_socket.get_received()
+        assert any(event['name']=='notification' and event['args'][0]['message']=='ajax_two added you.' for event in events)
+        assert any(event['name']=='player_connection_changed' and event['args'][0]['partner_id']==two.id for event in events)
+        sender_socket.disconnect()
+        assert a.get(f'/players/{two.id}/connection').json['connection']['state']=='accepted'
+        with a.session_transaction() as session:
+            assert not session.get('_flashes')

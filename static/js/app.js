@@ -86,6 +86,60 @@
     while (stack.children.length > 3) stack.firstElementChild.remove();
     setTimeout(() => toast.remove(), 4000);
   };
+  const updatingConnections = new Set(), connectionReads = new Map();
+  function connectionWidgets(id) {
+    return Array.from(document.querySelectorAll('[data-player-connection]')).filter(widget => Number(widget.dataset.playerConnection) === Number(id));
+  }
+  function applyConnection(id, data) {
+    connectionWidgets(id).forEach(widget => { widget.outerHTML = data.controls_html; });
+    const chat = document.querySelector('.ga-chat-shell');
+    if (Number(chat?.dataset.partnerId) === Number(id)) {
+      chat.dataset.introduction = String(!['open','accepted'].includes(data.connection.state));
+      const input = document.getElementById('chatInput'), submit = document.querySelector('#chatForm button[type=submit]');
+      if (input) input.disabled = !data.connection.can_send;
+      if (submit) submit.disabled = !data.connection.can_send;
+      const status = document.getElementById('chatStatus');
+      if (status) status.textContent = data.connection.can_send ? '' : 'Wait for your player request to be accepted before messaging.';
+    }
+    window.dispatchEvent(new CustomEvent('gamearena:connection-updated', {detail:{partnerId:Number(id)}}));
+  }
+  window.gamearenaRefreshConnection = async id => {
+    const widget = connectionWidgets(id)[0];
+    if (!widget || updatingConnections.has(Number(id)) || connectionReads.has(Number(id))) return;
+    connectionReads.set(Number(id), true);
+    try {
+      const response = await fetch(widget.dataset.url, {cache:'no-store', headers:{Accept:'application/json'}});
+      if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return;
+      const data = await response.json();
+      // A newer POST replaces the widget; an older GET must not overwrite it.
+      if (widget.isConnected && !updatingConnections.has(Number(id))) applyConnection(id, data);
+    } catch (_) {} finally { connectionReads.delete(Number(id)); }
+  };
+  document.addEventListener('submit', async event => {
+    const form = event.target, widget = form.closest('[data-player-connection]');
+    if (!widget) return;
+    event.preventDefault();
+    const id = Number(widget.dataset.playerConnection);
+    if (updatingConnections.has(id)) return;
+    updatingConnections.add(id);
+    const payload = new FormData(form), button = event.submitter || form.querySelector('button'), label = button.textContent;
+    widget.setAttribute('aria-busy','true'); widget.querySelectorAll('button').forEach(item => { item.disabled = true; }); button.textContent = 'Updating…';
+    widget.querySelector('[data-connection-error]')?.remove();
+    try {
+      const response = await fetch(widget.dataset.url, {method:'POST',body:payload,headers:{Accept:'application/json'}});
+      if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
+        throw new Error(response.status === 429 ? 'Please wait before sending another request.' : 'Could not update this request. Please try again.');
+      }
+      const data = await response.json(); applyConnection(id, data);
+      if (data.message) window.gamearenaNotify({message:data.message,target_url:location.pathname});
+    } catch (error) {
+      const feedback = document.createElement('p'); feedback.className = 'ga-muted'; feedback.dataset.connectionError = ''; feedback.setAttribute('role','alert'); feedback.textContent = error.message; widget.append(feedback);
+      widget.querySelectorAll('button').forEach(item => { item.disabled = false; }); button.textContent = label;
+    } finally { updatingConnections.delete(id); widget.removeAttribute('aria-busy'); }
+  });
+  function refreshConnections() { document.querySelectorAll('[data-player-connection]').forEach(widget => window.gamearenaRefreshConnection(Number(widget.dataset.playerConnection))); }
+  window.addEventListener('pageshow', refreshConnections);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshConnections(); });
   function refreshUnread() {
     if (!header.dataset.unreadUrl || refreshing) return;
     refreshing = fetch(header.dataset.unreadUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' })
@@ -95,7 +149,8 @@
   }
   if (header.dataset.userId && typeof io === 'function') {
     const socket = window.gamearenaSocket || (window.gamearenaSocket = io());
-    socket.on('connect', () => { socket.emit('join_user', { user_id: Number(header.dataset.userId) }); refreshUnread(); });
+    socket.on('connect', () => { socket.emit('join_user', { user_id: Number(header.dataset.userId) }); refreshUnread(); refreshConnections(); });
+    socket.on('player_connection_changed', payload => window.gamearenaRefreshConnection(Number(payload.partner_id)));
     if (socket.connected) socket.emit('join_user', { user_id: Number(header.dataset.userId) });
     socket.on('notification', payload => {
       refreshUnread();

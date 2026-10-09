@@ -55,6 +55,16 @@
       if (requestsLink) requestsLink.textContent = `Requests (${data.conversations.filter(item => item.request).length})`;
     } catch (_) {} finally { refreshingInbox = false; }
   }
+  document.querySelectorAll('.ga-inbox-tabs a').forEach(link => link.addEventListener('click', event => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    inbox.dataset.filter = new URL(link.href).searchParams.get('inbox') === 'requests' ? 'requests' : 'inbox';
+    document.querySelectorAll('.ga-inbox-tabs a').forEach(tab => tab.removeAttribute('aria-current'));
+    link.setAttribute('aria-current','page');
+    const url = new URL(location.href);
+    if (inbox.dataset.filter === 'requests') url.searchParams.set('inbox','requests'); else url.searchParams.delete('inbox');
+    history.replaceState(null,'',url); refreshInbox();
+  }));
   function scheduleInbox() { clearTimeout(inboxTimer); inboxTimer = setTimeout(refreshInbox,250); }
   const readObserver = partnerId && typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
     if (document.hidden) return;
@@ -138,7 +148,8 @@
     if (partnerId && ((Number(message.sender_id) === partnerId && Number(message.recipient_id) === userId) || (Number(message.sender_id) === userId && Number(message.recipient_id) === partnerId))) render(message);
   });
   socket.on('direct_messages_read',event => { if (Number(event.reader_id) === partnerId) (event.ids || []).forEach(applySeen); scheduleInbox(); });
-  socket.on('player_connection_changed',event => { if (Number(event.partner_id) === partnerId) location.reload(); else scheduleInbox(); });
+  socket.on('player_connection_changed', scheduleInbox);
+  window.addEventListener('gamearena:connection-updated', scheduleInbox);
   socket.on('conversation_access_changed',event => { if (Number(event.partner_id) === partnerId) joinChat(); });
   socket.on('socket_error',event => { status.textContent = event.message || 'Message could not be sent.'; });
   socket.on('unread_count',event => { const count = document.getElementById('dmUnreadCount'); if (count) count.textContent = `${Number(event.unread) || 0} unread messages across your inbox`; });
@@ -246,16 +257,7 @@
       if (message.awaiting_acceptance) {
         input.disabled = true; form.querySelector('button[type=submit]').disabled = true;
         status.textContent = 'Introduction sent. Wait for your player request to be accepted.';
-        const controls = main.querySelector('.ga-connection-controls');
-        if (controls) {
-          const note = document.createElement('p'); note.className = 'ga-muted'; note.textContent = 'Request sent · Waiting for acceptance.';
-          const cancelForm = document.createElement('form'); cancelForm.method = 'POST'; cancelForm.action = `/players/${partnerId}/connection`;
-          for (const [name,value] of [['csrf_token',document.querySelector('meta[name=csrf-token]').content],['action','cancel']]) {
-            const hidden = document.createElement('input'); hidden.type = 'hidden'; hidden.name = name; hidden.value = value; cancelForm.append(hidden);
-          }
-          const cancel = document.createElement('button'); cancel.type = 'submit'; cancel.className = 'ga-button ga-button-secondary'; cancel.textContent = 'Cancel request'; cancelForm.append(cancel);
-          controls.replaceChildren(note,cancelForm);
-        }
+        window.gamearenaRefreshConnection?.(partnerId);
         scheduleInbox();
       }
       const id = String(message.id);

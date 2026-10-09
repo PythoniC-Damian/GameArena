@@ -8,6 +8,7 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     supabase_auth_id = db.Column(db.String(36), unique=True, nullable=True)
     auth_session_version = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    requires_player_consent = db.Column(db.Boolean, nullable=False, default=True, server_default='true')
     username = db.Column(db.String(150), unique=True, nullable=False)
     email = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
