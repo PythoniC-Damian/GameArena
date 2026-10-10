@@ -1,4 +1,5 @@
 """Existing models, extracted unchanged; table names and accounting are preserved."""
+from datetime import datetime
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from gamearena.extensions import db
@@ -19,6 +20,14 @@ class User(db.Model, UserMixin):
     verification_expires_at = db.Column(db.DateTime)
     reset_code = db.Column(db.String(10))
     reset_expires_at = db.Column(db.DateTime)
+
+    master_expires_at = db.Column(db.DateTime, nullable=True)
+    master_frame = db.Column(db.String(20), nullable=False, default="blue", server_default="blue")
+    master_profile_theme = db.Column(db.String(20), nullable=False, default="arena", server_default="arena")
+
+    @property
+    def master_active(self):
+        return bool(self.master_expires_at and self.master_expires_at > datetime.utcnow())
 
     # Profile (Phase 1)
     avatar_url = db.Column(db.String(500), nullable=True)
@@ -399,3 +408,40 @@ class TournamentMatchDispute(db.Model):
         db.Index('ix_match_dispute_match_status', 'match_id', 'status'),
     )
 
+
+
+class SavedTournament(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=False)
+    reminder_enabled = db.Column(db.Boolean, nullable=False, default=False, server_default='false')
+    reminded_for = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    user = db.relationship('User')
+    tournament = db.relationship('Tournament')
+    __table_args__ = (db.UniqueConstraint('user_id', 'tournament_id', name='unique_saved_tournament'),)
+
+
+class MasterSubscription(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    plan_code = db.Column(db.String(80), nullable=False)
+    billing_email = db.Column(db.String(150), nullable=False)
+    subscription_code = db.Column(db.String(80), unique=True, nullable=True)
+    customer_code = db.Column(db.String(80), nullable=True)
+    email_token = db.Column(db.String(150), nullable=True)
+    status = db.Column(db.String(30), nullable=False, default='pending')
+    next_payment_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    user = db.relationship('User')
+
+
+class MasterPayment(db.Model):
+    reference = db.Column(db.String(100), primary_key=True)
+    subscription_id = db.Column(db.Integer, db.ForeignKey('master_subscription.id'), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    checkout_url = db.Column(db.String(500), nullable=True)
+    paid_at = db.Column(db.DateTime, nullable=True)
+    period_end = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    subscription = db.relationship('MasterSubscription')

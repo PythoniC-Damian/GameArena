@@ -14,3 +14,6 @@
 {% if compiled_frontend %}<script type="module" src="{{ compiled_frontend.script }}"></script>
 {% else %}<script defer src="{{ asset_url('js/carousels.js') }}"></script>{% endif %}
 {% if current_user.is_authenticated %}<script defer src="{{ asset_url('js/push.js') }}"></script>{% endif %}
+
+<link rel="stylesheet" href="{{ asset_url('css/master.css') }}">
+{% if current_user.is_authenticated %}<script defer src="{{ asset_url('js/master.js') }}"></script>{% endif %}

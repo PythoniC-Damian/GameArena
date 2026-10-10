@@ -1,3 +1,4 @@
+{% from '_master.html' import master_badge %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,7 +27,7 @@
                     <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Private conversation</p>
                     <a href="{{ url_for('public_profile', user_id=conversation_user.id) }}" class="ga-chat-person" aria-label="View {{ conversation_user.username }}'s profile">
                         {% if conversation_user.avatar_url %}<img src="{{ conversation_user.avatar_url }}" alt="" class="ga-chat-avatar" width="52" height="52">{% else %}<span class="ga-chat-avatar">{{ conversation_user.username[:1]|upper }}</span>{% endif %}
-                        <h1 class="break-words text-3xl font-bold text-white">{{ conversation_user.username }}</h1>
+                        <h1 class="break-words text-3xl font-bold text-white">{{ conversation_user.username }} {{ master_badge(conversation_user) }}</h1>
                     </a>
                     <p id="dmUnreadCount" class="mt-1 text-xs text-slate-400">{{ dm_unread_count }} unread messages across your inbox</p>
                     {% else %}

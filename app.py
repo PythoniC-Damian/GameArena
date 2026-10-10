@@ -107,6 +107,7 @@ SENSITIVE_CACHE_PATHS = (
     '/wallet',
     '/profile',
     '/notifications',
+    '/pro',
     '/chat',
     '/admin',
     '/pay/',
@@ -192,7 +193,7 @@ socketio_cors_origins = [
 ]
 # Optional shared pub/sub for multiple single-worker instances. Tests stay isolated.
 socketio_message_queue = None if os.environ.get('GAMEARENA_TESTING') == '1' else (os.environ.get('SOCKETIO_MESSAGE_QUEUE') or None)
-socketio = SocketIO(app, cors_allowed_origins=socketio_cors_origins or None,
+socketio = SocketIO(app, async_mode=os.environ.get('SOCKETIO_ASYNC_MODE') or None, cors_allowed_origins=socketio_cors_origins or None,
     message_queue=socketio_message_queue, channel='gamearena-socketio')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
@@ -372,7 +373,12 @@ def active_participant_count(tournament):
 
 from gamearena.extensions import db
 db.init_app(app)
-from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
+from gamearena.pro import pro, performance_summary
+app.register_blueprint(pro)
+from gamearena.master_billing import billing as master_billing, handle_event as handle_master_billing_event
+app.register_blueprint(master_billing)
+
+from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
 from gamearena.forms import (RegistrationForm, LoginForm, EmailVerificationForm, ForgotPasswordForm, ResetPasswordForm, TournamentForm, TournamentSetupForm, LeaderboardEntryForm)
 
 
@@ -547,10 +553,9 @@ def application_navigation():
 @app.template_filter('naira')
 def format_naira(value):
     try:
-        return f'â‚¦{int(value or 0):,}'
+        return f'\u20a6{int(value or 0):,}'
     except (TypeError, ValueError):
         return 'Not specified'
-
 
 GAME_IMAGE_MAP = {
     'call of duty mobile': 'images/call of duty 2.webp',
@@ -1484,6 +1489,7 @@ def profile():
         win_rate=round((wins / matches_played) * 100) if matches_played else 0,
         recent_activity=recent_activity,
         profile_tournaments=profile_tournaments, match_history=match_history,
+        master_performance=performance_summary(current_user.id) if current_user.master_active else None,
     )
 
 
@@ -2008,6 +2014,7 @@ def tournament_details(tournament_id):
         matches=matches,
         can_view_match_rooms=can_view_match_rooms,
         pending_payment=pending_payment,
+        saved_event=SavedTournament.query.filter_by(user_id=current_user.id, tournament_id=tournament.id).first() if current_user.is_authenticated else None,
     )
 
 
@@ -3570,6 +3577,8 @@ def paystack_webhook():
         transaction = event.get('data') or {}
         reference = transaction.get('reference')
         event_name = event.get('event')
+        if handle_master_billing_event(event_name, transaction):
+            return jsonify({'status': 'ok'}), 200
         if not is_valid_paystack_reference(reference):
             return jsonify({'status': 'ignored'}), 200
 

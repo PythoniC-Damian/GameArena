@@ -1,6 +1,7 @@
 {% from '_icons.html' import icon %}
 <a href="{{ url_for('dashboard') }}">{{ icon('home') }}Dashboard</a>
 {% if not mobile_menu|default(false) %}<a href="{{ url_for('profile') }}">{{ icon('user') }}My profile</a>{% endif %}
+<a href="{{ url_for('pro.membership') }}">{{ icon('shield') }}GameArena Pro</a>
 <a href="{{ url_for('wallet') }}">{{ icon('wallet') }}Wallet</a>
 <a href="{{ url_for('chat') }}">{{ icon('chat') }}Chat</a>
 <a href="{{ url_for('chat', inbox='requests') }}">{{ icon('user') }}Player requests</a>
