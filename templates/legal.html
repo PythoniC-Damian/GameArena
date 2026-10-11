@@ -1,0 +1,9 @@
+{% extends '_base.html' %}
+{% block title %}{{ title }} | GameArena{% endblock %}
+{% block content %}
+<header class="ga-page-heading"><div><p class="ga-eyebrow">GameArena help & policies</p><h1 class="ga-title">{{ title }}</h1><p class="ga-description">{{ description }}</p><p class="ga-muted">Last updated: {{ updated }}</p></div></header>
+<nav class="ga-policy-links" aria-label="Help and policies"><a href="{{ url_for('legal.privacy') }}">Privacy Policy</a><a href="{{ url_for('legal.terms') }}">Terms of Use</a><a href="{{ url_for('legal.faq') }}">FAQs</a><a href="{{ url_for('support') }}">Contact support</a></nav>
+<div class="ga-legal-layout"><nav class="ga-card ga-legal-toc" aria-label="On this page"><h2 class="ga-section-title">On this page</h2>{% for heading, paragraphs in sections %}<a href="#section-{{ loop.index }}">{{ heading }}</a>{% endfor %}</nav><article class="ga-card ga-legal-copy">
+{% for heading, paragraphs in sections %}{% if request.endpoint == 'legal.faq' %}<details id="section-{{ loop.index }}"><summary>{{ heading }}</summary>{% for paragraph in paragraphs %}<p>{{ paragraph }}</p>{% endfor %}</details>{% else %}<section id="section-{{ loop.index }}"><h2>{{ heading }}</h2>{% for paragraph in paragraphs %}<p>{{ paragraph }}</p>{% endfor %}</section>{% endif %}{% endfor %}
+<section id="contact"><h2>Contact GameArena</h2><p>Email: <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p><p>Signed in? <a href="{{ url_for('support') }}">Send a support request</a>. For privacy complaints, you can also contact the <a href="https://ndpc.gov.ng/" rel="noopener">Nigeria Data Protection Commission</a>.</p></section></article></div>
+{% endblock %}

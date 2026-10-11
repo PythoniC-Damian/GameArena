@@ -138,7 +138,7 @@
     } finally { updatingConnections.delete(id); widget.removeAttribute('aria-busy'); }
   });
   function refreshConnections() { document.querySelectorAll('[data-player-connection]').forEach(widget => window.gamearenaRefreshConnection(Number(widget.dataset.playerConnection))); }
-  window.addEventListener('pageshow', refreshConnections);
+  window.addEventListener('pageshow', event => { if (event.persisted) refreshConnections(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshConnections(); });
   function refreshUnread() {
     if (!header.dataset.unreadUrl || refreshing) return;
@@ -169,7 +169,7 @@
       list.prepend(row); while (list.children.length > 5) list.lastElementChild.remove();
     });
     socket.on('notification_unread_count', payload => updateUnread(payload?.unread));
-    window.addEventListener('pageshow', refreshUnread);
+    window.addEventListener('pageshow', event => { if (event.persisted) refreshUnread(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshUnread(); });
   }
   document.querySelectorAll('form[data-saving]').forEach(form => form.addEventListener('submit', () => {

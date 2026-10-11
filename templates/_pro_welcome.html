@@ -1,0 +1,7 @@
+{% from '_pro_tiers.html' import tier_cards with context %}
+<dialog class="ga-pro-welcome" data-pro-welcome aria-labelledby="pro-welcome-title">
+<div class="ga-pro-welcome-top"><p class="ga-eyebrow">GameArena Pro</p><button type="button" class="ga-button ga-button-secondary" data-pro-close aria-label="Close Pro introduction">Close ×</button></div>
+<h2 id="pro-welcome-title">Your game. Your identity.</h2><p class="ga-muted">More ways to express yourself, track progress and build your squad.</p>
+{{ tier_cards() }}
+<p class="ga-muted text-sm">Membership badges show a subscription. Competitive ranks are earned through play. Grandmaster and Legendary features are planned.</p>
+</dialog>

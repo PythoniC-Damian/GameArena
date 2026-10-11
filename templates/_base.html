@@ -10,7 +10,8 @@
 {% include '_header.html' %}
 <main id="main-content" class="ga-page">{% include '_flash.html' %}{% block content %}{% endblock %}</main>
 {% include '_mobile_nav.html' %}
-<footer class="ga-footer">GameArena · Compete. Connect. Play.</footer>
+{% include '_footer.html' %}
 {% include '_pwa_register.html' %}
+{% if request.path == '/' %}{% include '_pro_welcome.html' %}{% endif %}
 {% block scripts %}{% endblock %}
 </body></html>

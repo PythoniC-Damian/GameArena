@@ -88,3 +88,21 @@ def test_price_symbol_and_suspended_members_are_not_entitled():
         owner=player('suspended_master');activate(owner);viewer=client(owner);h=headers(viewer)
         owner.suspended=True;db.session.commit()
         assert viewer.post('/pro/appearance',json={'frame':'blue','profile_theme':'arena'},headers=h).status_code==401
+
+
+def test_pro_catalogue_and_unconfigured_checkout(monkeypatch):
+    monkeypatch.delenv('MASTER_BILLING_ENABLED', raising=False)
+    with app.app_context():
+        viewer = client(player('pro_catalogue'))
+        response = viewer.get('/pro')
+        assert response.status_code == 200
+        assert 'data-pro-track' in response.text
+        for tier in ['master', 'grandmaster', 'legendary']:
+            assert f'data-tier="{tier}"' in response.text
+        assert 'Subscribe to Master' in response.text
+        assert 'Checkout not open' in response.text
+        assert 'Not available to purchase' in response.text
+        assert 'action="/pro/checkout"' not in response.text
+        home = viewer.get('/')
+        assert 'data-pro-welcome' in home.text
+        assert 'data-pro-welcome' not in viewer.get('/profile').text

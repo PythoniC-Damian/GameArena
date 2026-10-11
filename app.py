@@ -375,6 +375,8 @@ from gamearena.extensions import db
 db.init_app(app)
 from gamearena.pro import pro, performance_summary
 app.register_blueprint(pro)
+from gamearena.legal import legal
+app.register_blueprint(legal)
 from gamearena.master_billing import billing as master_billing, handle_event as handle_master_billing_event
 app.register_blueprint(master_billing)
 
@@ -653,7 +655,7 @@ def utility_processor():
     return dict(
         tournament_image=tournament_image,
         game_image_carousel=game_image_carousel,
-        carousel_images=carousel_images(),
+        carousel_images=carousel_images() if request.endpoint == 'home' else [],
         featured_tournaments=featured_tournaments,
         active_participant_count=active_participant_count,
         tournament_image_small=lambda game: asset_url(optimized_image(GAME_IMAGE_MAP.get(normalize_game_key(game), 'images/gaming-fallback.svg'), 480)),

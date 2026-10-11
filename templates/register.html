@@ -83,6 +83,7 @@
                         <p class="mt-2 text-sm text-red-400">{{ form.password.errors[0] }}</p>
                         {% endif %}
                     </div>
+<p class="ga-signup-agreement">By creating an account, you agree to the <a href="{{ url_for('legal.terms') }}">Terms of Use</a>. Read our <a href="{{ url_for('legal.privacy') }}">Privacy Policy</a> to understand how we use your information.</p>
 {{ form.submit(class="w-full rounded-3xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400") }}
                 </form>
                 <script>
@@ -100,6 +101,7 @@
         </div>
     </div>
 
+{% include '_footer.html' %}
 {% include '_pwa_register.html' %}
 </body>
 </html>

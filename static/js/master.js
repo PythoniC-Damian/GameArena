@@ -1,4 +1,26 @@
 (() => {
+  document.querySelectorAll('[data-pro-track]').forEach(track => {
+    track.addEventListener('keydown', event => {
+      if (event.target !== track || !['ArrowLeft','ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      track.scrollBy({left:(event.key === 'ArrowRight' ? 1 : -1) * (track.firstElementChild.getBoundingClientRect().width + 14),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
+    });
+  });
+  const welcome = document.querySelector('[data-pro-welcome]');
+  if (welcome && typeof welcome.showModal === 'function') {
+    const key = 'gamearenaProWelcome:v1';
+    let seen = false;
+    try {seen = sessionStorage.getItem(key) === 'seen';} catch (_) {}
+    if (!seen) {
+      const previousFocus = document.activeElement;
+      welcome.showModal(); document.body.classList.add('ga-pro-modal-open');
+      try {sessionStorage.setItem(key,'seen');} catch (_) {}
+      welcome.addEventListener('close',() => {document.body.classList.remove('ga-pro-modal-open');previousFocus?.focus();});
+      welcome.querySelector('[data-pro-close]').addEventListener('click',() => welcome.close());
+      welcome.addEventListener('click',event => {if (event.target.closest('a')) welcome.close();});
+    }
+  }
+
   const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
   async function post(url, payload) {
     const response = await fetch(url, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrf(),Accept:'application/json'}, body:JSON.stringify(payload)});

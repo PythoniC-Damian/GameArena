@@ -1,0 +1,14 @@
+{% macro tier_cards() %}
+<div class="ga-pro-track" data-pro-track tabindex="0" aria-label="Pro membership tiers. Swipe horizontally or use left and right arrow keys.">
+{% for tier,heading,description,benefits in [
+('Master','Make it yours','For regular players',['Blue shield badge beside your name','Avatar frames and profile themes','30-day performance breakdown','Saved tournaments and start reminders']),
+('Grandmaster','Build your squad','Planned: everything in Master, plus',['Purple crossed-swords badge','Full-history trends and comparisons','Squad hub: roster and availability','4 private practice events per month','Premium frames and name styles']),
+('Legendary','Lead your community','Planned: everything in Grandmaster, plus',['Gold crown badge','Signature profile banner and intro','12 private practice events per month','Community hub with custom branding','Shareable season recap card','Early access to optional new features'])] %}
+<article class="ga-pro-tier" data-tier="{{ tier|lower }}">
+<span class="ga-pro-tier-badge">{{ '♢' if tier == 'Master' else ('⚔' if tier == 'Grandmaster' else '♛') }} {{ tier|upper }}</span>
+<h3>{{ heading }}</h3><p class="ga-muted">{{ description }}</p>
+<ul>{% for benefit in benefits %}<li>{{ benefit }}</li>{% endfor %}</ul>
+{% if tier == 'Master' %}<p class="ga-pro-tier-price">{{ 2300|naira }}<span> / month</span></p><a class="ga-button ga-pro-tier-action" href="{{ url_for('pro.membership') }}#subscription">{{ 'Manage Master' if current_user.is_authenticated and current_user.master_active else 'Subscribe to Master' }}</a>{% else %}<p class="ga-muted">Coming soon · Not available to purchase</p><button class="ga-button ga-button-secondary ga-pro-tier-action" disabled>Coming soon</button>{% endif %}
+</article>{% endfor %}</div>
+<p class="ga-pro-swipe-hint">Swipe left or right to explore all three tiers.</p>
+{% endmacro %}

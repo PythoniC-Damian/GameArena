@@ -1,7 +1,7 @@
 {% set membership = memberships.get(tournament.id) if memberships is defined else none %}
 <article class="ga-card ga-tournament-card">
 <div class="ga-card-carousel" data-carousel data-interval="6000" aria-label="{{ tournament.game }} artwork">
-{% for image in game_image_carousel(tournament.game) %}<img class="ga-card-image ga-slide{{ ' is-active' if loop.first else '' }}" {% if loop.first %}src{% else %}data-src{% endif %}="{{ image }}" alt="{{ tournament.game if loop.first else '' }}" {% if not loop.first %}aria-hidden="true"{% endif %} width="960" height="540" loading="lazy" decoding="async">{% endfor %}</div>
+{% for image in game_image_carousel(tournament.game) %}<img class="ga-card-image ga-slide{{ ' is-active' if loop.first else '' }}" {% if loop.first %}src{% else %}data-src{% endif %}="{{ image }}" {% if '-960.webp' in image %}{% if loop.first %}srcset{% else %}data-srcset{% endif %}="{{ image|replace('-960.webp','-480.webp') }} 480w, {{ image }} 960w" sizes="(max-width:767px) calc(100vw - 32px), (max-width:1023px) 45vw, 360px"{% endif %} alt="{{ tournament.game if loop.first else '' }}" {% if not loop.first %}aria-hidden="true"{% endif %} width="960" height="540" loading="lazy" decoding="async">{% endfor %}</div>
 <div class="ga-card-body">
   <div class="ga-card-meta"><span>{{ tournament.game }}</span><span class="ga-status ga-status-{{ tournament.status }}">{{ tournament.status|capitalize }}</span></div>
   <h3 class="ga-card-title">{{ tournament.name }}</h3>

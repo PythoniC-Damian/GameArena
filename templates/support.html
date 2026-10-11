@@ -16,6 +16,7 @@
         <p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Help & Support</p>
         <h1 class="mt-2 text-3xl font-bold">Contact the GameArena team</h1>
         <p class="mt-3 text-sm leading-6 text-slate-400">Describe the issue. Do not include passwords, verification codes, or payment secrets.</p>
+        <p class="ga-signup-agreement"><a href="{{ url_for('legal.faq') }}">Read FAQs</a> for payment, account and membership help.</p>
         <form method="POST" class="mt-6 space-y-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="block text-sm text-slate-300">Message
@@ -29,6 +30,7 @@
     </section>
 </main>
 {% include '_mobile_nav.html' %}
+{% include '_footer.html' %}
 {% include '_pwa_register.html' %}
 </body>
 </html>

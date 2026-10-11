@@ -18,7 +18,6 @@
     function show(next) {
       index = (next + slides.length) % slides.length;
       load(slides[index]);
-      if (visible && !motion.matches && document.body.dataset.reduceMotion !== 'true') load(slides[(index + 1) % slides.length]);
       slides.forEach((slide, i) => {
         slide.classList.toggle('is-active', i === index);
         if (slide.matches('img')) slide.setAttribute('aria-hidden', 'true');
@@ -52,7 +51,7 @@
       if (Math.abs(distance) > 40) show(index + (distance < 0 ? 1 : -1), distance < 0 ? 1 : -1);
       restart();
     }, {passive:true});
-    if ('IntersectionObserver' in window) new IntersectionObserver(entries => { visible = entries[0].isIntersecting; if (visible && !motion.matches) load(slides[(index + 1) % slides.length]); restart(); }, {threshold:0.1}).observe(root);
+    if ('IntersectionObserver' in window) new IntersectionObserver(entries => { visible = entries[0].isIntersecting; restart(); }, {threshold:0.1}).observe(root);
     else visible = true;
     document.addEventListener('visibilitychange', restart);
     motion.addEventListener('change', restart);

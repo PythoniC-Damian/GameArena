@@ -16,4 +16,6 @@
 {% if current_user.is_authenticated %}<script defer src="{{ asset_url('js/push.js') }}"></script>{% endif %}
 
 <link rel="stylesheet" href="{{ asset_url('css/master.css') }}">
-{% if current_user.is_authenticated %}<script defer src="{{ asset_url('js/master.js') }}"></script>{% endif %}
+<script defer src="{{ asset_url('js/master.js') }}"></script>
+
+<link rel="stylesheet" href="{{ asset_url('css/legal.css') }}">
