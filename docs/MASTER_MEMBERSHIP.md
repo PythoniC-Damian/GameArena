@@ -45,3 +45,8 @@ PAYSTACK_MASTER_PLAN_CODE is optional. If supplied, its amount, NGN currency, mo
 Deploy this update to activate the production UI with the existing live payment key. Ensure PUBLIC_BASE_URL=https://gamearena01.com and Paystack webhook=https://gamearena01.com/paystack/webhook. No new secret key is needed. If an old explicit disable flag exists, remove it or set MASTER_BILLING_ENABLED=1 in Render. Mocked provider tests do not certify end-to-end live activation; real checkout verification is still required.
 
 The welcome popup now shows two benefits per tier and a full-details link. Its width is at most 360px on phones and height is capped at 70% of the viewport (460px maximum). The full Pro page retains all benefit descriptions.
+
+
+## Checkout redirect fix (12 October 2026)
+
+Chrome reproduction confirmed the old form-action self CSP blocked the cross-origin Paystack redirect, leaving the generic Saving button on screen despite a generated checkout link. The policy now additionally allows only https://checkout.paystack.com for form navigation, preserving the rest of the restrictions. Master checkout uses a same-origin JSON request and validates the returned HTTPS Paystack hostname before top-level navigation. Native form redirects remain for browsers without JavaScript. Inline errors reset the button; a 45-second client timeout restores retry access. Retrying reuses a pending payment reference/checkout URL. Browser history restoration also resets the button. No live charge is made by the tests.

@@ -182,3 +182,36 @@ def test_remote_empty_plan_list_is_preserved(settings, monkeypatch):
         def json(self): return {'status':True,'data':[]}
     monkeypatch.setattr(billing.requests,'request',lambda *a,**k:Response())
     assert billing.provider('GET','/plan') == []
+
+
+def test_json_checkout_returns_url_and_reuses_pending_payment(settings,monkeypatch):
+    calls=[]
+    def provider(method,path,**kwargs):
+        calls.append(path)
+        if path.startswith('/plan/'):
+            return dict(plan_code='PLN_test_master',amount=230000,currency='NGN',interval='monthly')
+        return dict(reference=kwargs['json']['reference'],authorization_url='https://checkout.paystack.com/mock')
+    monkeypatch.setattr(billing,'provider',provider)
+    with app.app_context():
+        viewer=client(player('json_checkout'));csrf=token(viewer.get('/pro'))
+        for _ in range(2):
+            response=viewer.post('/pro/checkout',data={'csrf_token':csrf,'renewal_consent':'yes'},headers={'Accept':'application/json'})
+            assert response.status_code==200
+            assert response.json=={'checkout_url':'https://checkout.paystack.com/mock'}
+        assert calls.count('/transaction/initialize')==1
+        assert MasterPayment.query.count()==1
+        assert viewer.post('/pro/checkout',data={'csrf_token':csrf},headers={'Accept':'application/json'}).status_code==400
+
+
+def test_json_checkout_errors_and_csp_allow_paystack_only(settings,monkeypatch):
+    def failed_provider(*a,**k):raise billing.BillingError('Paystack is unavailable. Please retry.')
+    monkeypatch.setattr(billing,'provider',failed_provider)
+    with app.app_context():
+        viewer=client(player('json_error'));page=viewer.get('/pro');csrf=token(page)
+        assert 'data-master-checkout' in page.text and 'data-checkout-feedback' in page.text
+        policy=page.headers['Content-Security-Policy']
+        directive=next(part.strip() for part in policy.split(';') if part.strip().startswith('form-action'))
+        assert directive=="form-action 'self' https://checkout.paystack.com"
+        response=viewer.post('/pro/checkout',data={'csrf_token':csrf,'renewal_consent':'yes'},headers={'Accept':'application/json'})
+        assert response.status_code==502 and response.json['error']=='Paystack is unavailable. Please retry.'
+        assert MasterPayment.query.count()==0

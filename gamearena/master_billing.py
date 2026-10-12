@@ -134,14 +134,23 @@ def apply_charge(reference, transaction, subscription_id=None, period_end=None):
     db.session.commit()
     return True
 
+def checkout_response(destination=None, error=None, status=400):
+    if request.accept_mimetypes.best == 'application/json':
+        return (jsonify(checkout_url=destination), 200) if destination else (jsonify(error=error), status)
+    if destination:
+        return redirect(destination)
+    flash(error, 'error')
+    return redirect(url_for('pro.membership'))
+
+
 @billing.route('/pro/checkout',methods=['POST'])
 @login_required
 def checkout():
     if current_user.suspended or not current_user.email_verified:return jsonify(error='Verify your email before subscribing.'),403
     if request.form.get('renewal_consent')!='yes':
-        flash('Confirm the monthly renewal terms before subscribing.','error');return redirect(url_for('pro.membership'))
+        return checkout_response(error='Confirm the monthly renewal terms before subscribing.')
     if not configured():
-        flash('Membership checkout is not configured yet. No payment was taken.','error');return redirect(url_for('pro.membership'))
+        return checkout_response(error='Membership checkout is not configured yet. No payment was taken.',status=503)
     try:
         plan_code=membership_plan()
         User.query.filter_by(id=current_user.id).with_for_update().first()
@@ -149,7 +158,7 @@ def checkout():
         if subscription:
             payment=MasterPayment.query.filter_by(subscription_id=subscription.id,status='pending').first()
             if payment and payment.checkout_url:
-                destination=payment.checkout_url;db.session.commit();return redirect(destination)
+                destination=payment.checkout_url;db.session.commit();return checkout_response(destination=destination)
             if subscription.status!='pending':raise BillingError('You already have a subscription. Manage it below instead of subscribing twice.')
         else:
             subscription=MasterSubscription(user_id=current_user.id,plan_code=plan_code,billing_email=current_user.email,status='pending')
@@ -165,14 +174,14 @@ def checkout():
         db.session.refresh(payment)
         if payment.status=='success':raise BillingError('Your membership payment is already confirmed.')
         if payment.checkout_url:
-            destination=payment.checkout_url;db.session.commit();return redirect(destination)
+            destination=payment.checkout_url;db.session.commit();return checkout_response(destination=destination)
         result=provider('POST','/transaction/initialize',json={'email':subscription.billing_email,'amount':PRICE_KOBO,'currency':'NGN','plan':plan_code,'reference':reference,'channels':['card'],'callback_url':checkout_origin()+url_for('master_billing.verify'),'metadata':{'type':'master_membership','user_id':current_user.id}})
         destination=result.get('authorization_url')
         if result.get('reference')!=reference or not safe_checkout(destination):raise BillingError('Unexpected checkout response.')
         payment.checkout_url=destination;db.session.commit()
-        return redirect(destination)
+        return checkout_response(destination=destination)
     except BillingError as error:
-        db.session.rollback();flash(str(error),'error');return redirect(url_for('pro.membership'))
+        db.session.rollback();return checkout_response(error=str(error),status=502)
 
 @billing.route('/pro/verify')
 @login_required

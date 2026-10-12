@@ -28,6 +28,35 @@
     if (!response.ok) throw new Error(data.error || (response.status === 403 ? 'An active Master membership is required.' : 'Could not save. Please try again.'));
     return data;
   }
+  const checkout = document.querySelector('[data-master-checkout]');
+  if (checkout) {
+    const button = checkout.querySelector('button[type=submit]');
+    const feedback = checkout.querySelector('[data-checkout-feedback]');
+    const label = button.textContent;
+    let busy = false;
+    function reset() {busy = false;button.disabled = false;button.textContent = label;checkout.removeAttribute('aria-busy');}
+    window.addEventListener('pageshow', reset);
+    checkout.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (busy) return;
+      busy = true;button.disabled = true;button.textContent = 'Opening Paystack…';checkout.setAttribute('aria-busy','true');
+      feedback.textContent = 'Preparing your secure checkout. You have not been charged.';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(),45000);
+      try {
+        const response = await fetch(checkout.action,{method:'POST',credentials:'same-origin',headers:{Accept:'application/json','X-CSRFToken':csrf()},body:new FormData(checkout),signal:controller.signal});
+        const data = await response.json().catch(() => ({}));
+        if (response.redirected || response.status === 401) throw new Error('Please sign in again before subscribing.');
+        if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : data.error?.message || 'Could not open checkout. Please try again.');
+        const destination = new URL(data.checkout_url);
+        if (destination.protocol !== 'https:' || destination.hostname !== 'checkout.paystack.com' || destination.username || destination.password) throw new Error('An invalid checkout link was returned. Please contact support.');
+        feedback.textContent = 'Opening secure Paystack checkout…';
+        window.location.assign(destination.href);
+      } catch (error) {
+        feedback.textContent = error.name === 'AbortError' ? 'Checkout took too long. Please retry; your existing payment reference will be reused.' : error.message || 'Could not open checkout. Please try again.';
+      } finally {clearTimeout(timeout);reset();}
+    });
+  }
   const appearance = document.querySelector('[data-master-appearance]');
   if (appearance) {
     let pending = false, queued = false;

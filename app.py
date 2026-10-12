@@ -91,7 +91,7 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "base-uri 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
-    "form-action 'self'",
+    "form-action 'self' https://checkout.paystack.com",
     "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.socket.io https://js.paystack.co",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://images.unsplash.com https://lh3.googleusercontent.com",
