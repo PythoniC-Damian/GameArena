@@ -382,6 +382,9 @@ from gamearena.master_billing import billing as master_billing, handle_event as 
 app.register_blueprint(master_billing)
 
 from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
+from gamearena.activity import init_activity
+init_activity(app)
+
 from gamearena.forms import (RegistrationForm, LoginForm, EmailVerificationForm, ForgotPasswordForm, ResetPasswordForm, TournamentForm, TournamentSetupForm, LeaderboardEntryForm)
 
 

@@ -155,3 +155,16 @@ body[data-reduce-motion=true] * { animation: none !important; transition: none !
 .ga-panel{background:var(--surface,#101b2e);border:1px solid var(--border,#263449);border-radius:20px;padding:clamp(20px,3vw,28px);min-width:0}.ga-section{margin-block:24px}.ga-section-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:20px}.ga-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.ga-stats>div{background:#101b2e;border:1px solid #263449;border-radius:16px;padding:20px}.ga-stats strong{display:block;font-size:1.65rem;color:#6ee7b7}.ga-stats span{color:#a8b6ca;font-size:.875rem}.ga-profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.ga-panel h2{font-size:1.3rem;font-weight:650;margin-bottom:16px}.ga-panel h3{font-weight:600}.ga-panel p{margin-block:8px}.ga-panel .ga-actions{margin-top:20px}@media(max-width:767px){.ga-profile-grid{grid-template-columns:1fr}.ga-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ga-stats>div{padding:16px}.ga-panel .ga-record{flex-wrap:wrap}}
 .ga-page h1:not(.ga-title){font-size:clamp(28px,4vw,40px);font-weight:750}.ga-actions{display:flex;flex-wrap:wrap;gap:12px}.ga-button:not(.ga-button-secondary){background:#34d399;color:#04241b;border-color:#34d399}.ga-button:not(.ga-button-secondary):hover{background:#6ee7b7}.ga-badge{display:inline-block;padding:4px 10px;border-radius:8px;background:#203249;color:#d9e5f5;font-size:12px}
 .ga-hero{position:relative;isolation:isolate}.ga-hero>div:not(.ga-hero-background){position:relative;z-index:1;min-width:0}.ga-hero-background{position:absolute;inset:0;z-index:-1;pointer-events:none}.ga-hero-background::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,13,26,.95),rgba(5,13,26,.7))}.ga-hero .ga-hero-background img{width:100%;height:100%;max-height:none;aspect-ratio:auto;border-radius:0;object-fit:cover}.ga-slide{opacity:0;transition:opacity 1.4s ease}.ga-slide.is-active{opacity:1}.ga-hero-background .ga-slide{position:absolute;inset:0}.ga-card-carousel{position:relative;aspect-ratio:16/9;overflow:hidden;touch-action:pan-y}.ga-card-carousel .ga-slide{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition-duration:2.5s}
+
+.ga-activity-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;margin-bottom:1.5rem}
+.ga-activity-number{font-size:2rem;font-weight:800;margin:.5rem 0 0}
+.ga-activity-chart{width:100%;height:auto;max-height:320px;overflow:visible}
+.ga-activity-chart text{fill:currentColor;font-size:14px}
+.ga-activity-bar{fill:#10b981}.ga-activity-bar:hover,.ga-activity-bar:focus{fill:#38bdf8;outline:none}
+.ga-activity-table{overflow:auto;max-height:420px}.ga-activity-table table{width:100%;border-collapse:collapse;text-align:left}
+.ga-activity-table th,.ga-activity-table td{padding:.8rem;border-bottom:1px solid rgba(148,163,184,.2);white-space:nowrap}
+@media(max-width:640px){.ga-activity-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.ga-activity-metrics .ga-card{padding:1rem}}
+
+.ga-activity-empty{fill:#64748b;opacity:.3}
+
+@media(max-width:640px){.ga-activity-chart text{font-size:28px}}

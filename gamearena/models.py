@@ -446,3 +446,10 @@ class MasterPayment(db.Model):
     period_end = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     subscription = db.relationship('MasterSubscription')
+
+
+class UserActivityDay(db.Model):
+    """One signed-in player visit per Lagos calendar day; no URL or device data."""
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), primary_key=True)
+    activity_date = db.Column(db.Date, primary_key=True)
+    __table_args__ = (db.Index('ix_user_activity_day_date', 'activity_date', 'user_id'),)

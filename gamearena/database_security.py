@@ -8,7 +8,7 @@ BACKEND_TABLES = (
     'schema_migration', 'tournament', 'tournament_chat_message', 'tournament_match',
     'tournament_match_chat_message', 'tournament_match_dispute', 'tournament_stat',
     'user', 'user_achievement', 'user_block', 'user_report', 'user_settings',
-    'user_tournament', 'wallet_transaction',
+    'user_tournament', 'wallet_transaction', 'user_activity_day',
 )
 
 
