@@ -1,0 +1,328 @@
+{
+  "PUBG": [
+    {
+      "file": "images/optimized/PUBG-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/PUBG-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/PUBG-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/PUBG-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/PUBG-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/PUBG-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/PUBG-1440.webp",
+      "width": 1440
+    }
+  ],
+  "PUBG_2": [
+    {
+      "file": "images/optimized/PUBG_2-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/PUBG_2-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/PUBG_2-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/PUBG_2-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/PUBG_2-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/PUBG_2-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/PUBG_2-1440.webp",
+      "width": 1440
+    }
+  ],
+  "call_of_duty": [
+    {
+      "file": "images/optimized/call_of_duty-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/call_of_duty-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/call_of_duty-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/call_of_duty-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/call_of_duty-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/call_of_duty-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/call_of_duty-1440.webp",
+      "width": 1440
+    }
+  ],
+  "call_of_duty_2": [
+    {
+      "file": "images/optimized/call_of_duty_2-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/call_of_duty_2-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/call_of_duty_2-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/call_of_duty_2-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/call_of_duty_2-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/call_of_duty_2-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/call_of_duty_2-1440.webp",
+      "width": 1440
+    }
+  ],
+  "call_of_duty_3": [
+    {
+      "file": "images/optimized/call_of_duty_3-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/call_of_duty_3-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/call_of_duty_3-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/call_of_duty_3-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/call_of_duty_3-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/call_of_duty_3-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/call_of_duty_3-1440.webp",
+      "width": 1440
+    }
+  ],
+  "efootball-messi": [
+    {
+      "file": "images/optimized/efootball-messi-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/efootball-messi-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/efootball-messi-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/efootball-messi-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/efootball-messi-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/efootball-messi-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/efootball-messi-1440.webp",
+      "width": 1440
+    }
+  ],
+  "efootball_2": [
+    {
+      "file": "images/optimized/efootball_2-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/efootball_2-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/efootball_2-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/efootball_2-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/efootball_2-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/efootball_2-1024.webp",
+      "width": 1024
+    }
+  ],
+  "efootball_3": [
+    {
+      "file": "images/optimized/efootball_3-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/efootball_3-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/efootball_3-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/efootball_3-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/efootball_3-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/efootball_3-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/efootball_3-1440.webp",
+      "width": 1440
+    }
+  ],
+  "free_fire": [
+    {
+      "file": "images/optimized/free_fire-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/free_fire-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/free_fire-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/free_fire-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/free_fire-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/free_fire-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/free_fire-1280.webp",
+      "width": 1280
+    }
+  ],
+  "free_fire_2": [
+    {
+      "file": "images/optimized/free_fire_2-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/free_fire_2-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/free_fire_2-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/free_fire_2-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/free_fire_2-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/free_fire_2-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/free_fire_2-1440.webp",
+      "width": 1440
+    }
+  ],
+  "free_fire_3": [
+    {
+      "file": "images/optimized/free_fire_3-384.webp",
+      "width": 384
+    },
+    {
+      "file": "images/optimized/free_fire_3-480.webp",
+      "width": 480
+    },
+    {
+      "file": "images/optimized/free_fire_3-640.webp",
+      "width": 640
+    },
+    {
+      "file": "images/optimized/free_fire_3-768.webp",
+      "width": 768
+    },
+    {
+      "file": "images/optimized/free_fire_3-960.webp",
+      "width": 960
+    },
+    {
+      "file": "images/optimized/free_fire_3-1200.webp",
+      "width": 1200
+    },
+    {
+      "file": "images/optimized/free_fire_3-1440.webp",
+      "width": 1440
+    }
+  ]
+}

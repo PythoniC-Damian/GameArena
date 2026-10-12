@@ -1,11 +1,13 @@
 <script>try { const savedTheme = {{ (nav_preferences.theme if nav_preferences else ('dark' if current_user.is_authenticated else none))|tojson }}; const browserTheme = localStorage.getItem('gamearenaTheme'); const theme = savedTheme || browserTheme || 'dark'; document.documentElement.dataset.theme = ['dark','light'].includes(theme) ? theme : 'dark'; if (savedTheme) localStorage.setItem('gamearenaTheme', savedTheme); } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
 {% set compiled_frontend = frontend_assets() %}
+{% set combined_styles = stylesheet_bundle() if not compiled_frontend else none %}
 {% if compiled_frontend %}
 {% for style in compiled_frontend.styles %}<link rel="stylesheet" href="{{ style }}">{% endfor %}
+<link rel="stylesheet" href="{{ asset_url('css/master.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/legal.css') }}">
+{% elif combined_styles %}<link rel="stylesheet" href="{{ asset_url(combined_styles) }}">
 {% else %}
-<link rel="stylesheet" href="{{ asset_url('css/tailwind.css') }}">
-<link rel="stylesheet" href="{{ asset_url('css/app.css') }}">
-<link rel="stylesheet" href="{{ asset_url('css/themes.css') }}">
+{% for style in ['css/tailwind.css','css/app.css','css/themes.css','css/master.css','css/legal.css'] %}<link rel="stylesheet" href="{{ asset_url(style) }}">{% endfor %}
 {% endif %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
 {% if current_user.is_authenticated %}<script src="{{ asset_url('js/socket.io.min.js') }}"></script>{% endif %}
@@ -15,7 +17,4 @@
 {% else %}<script defer src="{{ asset_url('js/carousels.js') }}"></script>{% endif %}
 {% if current_user.is_authenticated %}<script defer src="{{ asset_url('js/push.js') }}"></script>{% endif %}
 
-<link rel="stylesheet" href="{{ asset_url('css/master.css') }}">
 <script defer src="{{ asset_url('js/master.js') }}"></script>
-
-<link rel="stylesheet" href="{{ asset_url('css/legal.css') }}">

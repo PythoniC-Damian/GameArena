@@ -36,7 +36,7 @@ from gamearena.services.email import account_email_content
 from gamearena.services import auth as managed_auth
 from gamearena.services.jobs import queue_account_email, queue_push
 from gamearena.services.redis_support import shared_socket_allowed
-from gamearena.assets import frontend_assets, is_built_asset
+from gamearena.assets import frontend_assets, is_built_asset, stylesheet_bundle
 from user_media import store_avatar
 from web_push import push_configured, valid_subscription, deliver_push
 try:
@@ -57,6 +57,7 @@ load_dotenv(os.path.join(base_dir, '.env'), override=not test_mode)
 app = create_base_app(base_dir, testing=test_mode)
 app.config['TESTING'] = test_mode
 app.jinja_env.globals['frontend_assets'] = frontend_assets
+app.jinja_env.globals['stylesheet_bundle'] = stylesheet_bundle
 
 # Configuration
 secret_key = (os.environ.get('SECRET_KEY') or '').strip()
@@ -535,6 +536,29 @@ def asset_url(filename):
     return url_for('static', filename=filename, v=asset_fingerprint(filename))
 
 
+@lru_cache(maxsize=1)
+def responsive_image_manifest():
+    try:
+        with open(os.path.join(app.static_folder,'images/optimized/manifest.json'),encoding='utf-8') as source:
+            data=json.load(source)
+        return data if isinstance(data,dict) else {}
+    except (OSError,ValueError):return {}
+
+@lru_cache(maxsize=128)
+def responsive_image_entries(stem):
+    entries=responsive_image_manifest().get(stem,[])
+    return tuple((entry['file'],entry['width']) for entry in entries
+        if isinstance(entry,dict) and isinstance(entry.get('width'),int) and entry['width']>0
+        and isinstance(entry.get('file'),str) and entry['file'].startswith('images/optimized/')
+        and '..' not in entry['file'] and os.path.isfile(os.path.join(app.static_folder,entry['file'])))
+
+def responsive_image_srcset(image_url):
+    path=urllib.parse.unquote(urlparse(image_url).path)
+    match=re.fullmatch(r'/static/images/optimized/(.+)-[0-9]+\.webp',path)
+    if not match:return ''
+    return ', '.join(f'{asset_url(filename)} {width}w' for filename,width in responsive_image_entries(match.group(1)))
+
+
 def optimized_image(filename, width=960):
     stem = os.path.splitext(os.path.basename(filename))[0].replace(' ', '_')
     optimized = f'images/optimized/{stem}-{width}.webp'
@@ -546,6 +570,7 @@ def application_navigation():
     preferences = current_user.settings if current_user.is_authenticated else None
     return {
         'asset_url': asset_url,
+        'responsive_image_srcset': responsive_image_srcset,
         'nav_unread_count': get_unread_notification_count(current_user.id) if current_user.is_authenticated else 0,
         'nav_preferences': preferences,
         'auth_email_wait': max(0, int(session.get('account_email_until', 0) - time.time() + 0.999)),

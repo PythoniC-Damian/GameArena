@@ -1,5 +1,7 @@
 """Optional Vite manifest integration with a working no-build fallback."""
 import json
+import hashlib
+from functools import lru_cache
 from pathlib import Path
 from flask import current_app, url_for
 
@@ -28,3 +30,27 @@ def is_built_asset(filename):
         return filename[6:] in files
     except (OSError, ValueError, TypeError, AttributeError):
         return False
+
+
+STYLE_SOURCES = ('css/tailwind.css','css/app.css','css/themes.css','css/master.css','css/legal.css')
+
+def stylesheet_source_digest(folder):
+    return hashlib.sha256(b''.join((Path(folder) / name).read_text(encoding='utf-8').encode('utf-8') for name in STYLE_SOURCES)).hexdigest()
+
+@lru_cache(maxsize=8)
+def _valid_stylesheet_bundle(folder, signature):
+    try:
+        with (Path(folder) / 'css/site.css').open(encoding='utf-8') as bundle:
+            header = bundle.readline().strip()
+        return header == f'/* GameArena styles: {stylesheet_source_digest(folder)} */'
+    except (OSError, UnicodeError):
+        return False
+
+def stylesheet_bundle():
+    folder = current_app.static_folder
+    try:
+        paths = [Path(folder) / name for name in (*STYLE_SOURCES, 'css/site.css')]
+        signature = tuple((path.stat().st_mtime_ns, path.stat().st_size) for path in paths)
+        return 'css/site.css' if _valid_stylesheet_bundle(folder, signature) else None
+    except OSError:
+        return None
