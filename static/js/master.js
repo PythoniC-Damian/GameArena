@@ -28,18 +28,18 @@
     if (!response.ok) throw new Error(data.error || (response.status === 403 ? 'An active Master membership is required.' : 'Could not save. Please try again.'));
     return data;
   }
-  const checkout = document.querySelector('[data-master-checkout]');
-  if (checkout) {
+  let checkoutBusy = false;
+  document.querySelectorAll('[data-master-checkout]').forEach(checkout => {
     const button = checkout.querySelector('button[type=submit]');
     const feedback = checkout.querySelector('[data-checkout-feedback]');
     const label = button.textContent;
     let busy = false;
-    function reset() {busy = false;button.disabled = false;button.textContent = label;checkout.removeAttribute('aria-busy');}
+    function reset() {busy = false;checkoutBusy = false;button.disabled = false;button.textContent = label;checkout.removeAttribute('aria-busy');}
     window.addEventListener('pageshow', reset);
     checkout.addEventListener('submit', async event => {
       event.preventDefault();
-      if (busy) return;
-      busy = true;button.disabled = true;button.textContent = 'Opening Paystack…';checkout.setAttribute('aria-busy','true');
+      if (busy || checkoutBusy) return;
+      busy = true;checkoutBusy = true;button.disabled = true;button.textContent = 'Opening Paystack…';checkout.setAttribute('aria-busy','true');
       feedback.textContent = 'Preparing your secure checkout. You have not been charged.';
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(),45000);
@@ -56,7 +56,7 @@
         feedback.textContent = error.name === 'AbortError' ? 'Checkout took too long. Please retry; your existing payment reference will be reused.' : error.message || 'Could not open checkout. Please try again.';
       } finally {clearTimeout(timeout);reset();}
     });
-  }
+  });
   const appearance = document.querySelector('[data-master-appearance]');
   if (appearance) {
     let pending = false, queued = false;

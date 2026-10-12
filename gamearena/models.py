@@ -426,6 +426,7 @@ class MasterSubscription(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
     plan_code = db.Column(db.String(80), nullable=False)
+    billing_mode = db.Column(db.String(20), nullable=False, default='recurring', server_default='recurring')
     billing_email = db.Column(db.String(150), nullable=False)
     subscription_code = db.Column(db.String(80), unique=True, nullable=True)
     customer_code = db.Column(db.String(80), nullable=True)

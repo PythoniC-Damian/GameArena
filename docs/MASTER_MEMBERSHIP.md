@@ -50,3 +50,10 @@ The welcome popup now shows two benefits per tier and a full-details link. Its w
 ## Checkout redirect fix (12 October 2026)
 
 Chrome reproduction confirmed the old form-action self CSP blocked the cross-origin Paystack redirect, leaving the generic Saving button on screen despite a generated checkout link. The policy now additionally allows only https://checkout.paystack.com for form navigation, preserving the rest of the restrictions. Master checkout uses a same-origin JSON request and validates the returned HTTPS Paystack hostname before top-level navigation. Native form redirects remain for browsers without JavaScript. Inline errors reset the button; a 45-second client timeout restores retry access. Retrying reuses a pending payment reference/checkout URL. Browser history restoration also resets the button. No live charge is made by the tests.
+
+
+## Pay once (12 October 2026)
+
+The owner approved NGN 2,300 for a 30-day Master pass alongside the existing monthly card renewal. A separate form and explicit one-time consent initialise a transaction with card, bank_transfer, bank and ussd channels and no Paystack plan. Provider/account/bank availability controls which channels actually appear. Verified successful payment adds 30 days from the later of the payment time or current paid expiry; duplicate callback/webhook deliveries do not add time again. Pay-once records are completed, never automatically renewable, and cannot enter the provider subscription-event path.
+
+The additive 20261012_master_one_time migration adds billing_mode with recurring as the default, preserving existing memberships and payment references. Only recurring records participate in plan discovery, cancellation and payment-method management. A pending checkout is reused within its mode; changing modes requires checking the pending payment first. An active automatic subscription must be cancelled before buying a manual pass, preventing overlapping automatic renewal. Two separate consent forms keep renewal terms clear; expired passes can purchase again, while active passes may extend their remaining access.

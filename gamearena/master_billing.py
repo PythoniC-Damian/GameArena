@@ -1,8 +1,9 @@
 """Verified monthly Master billing using the existing Paystack integration."""
 import os
+import json
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from urllib.parse import quote, urlparse
 import requests
 from flask import Blueprint, current_app, request, redirect, url_for, flash, jsonify
@@ -17,6 +18,7 @@ REFERENCE = re.compile(r'^[A-Za-z0-9._-]{1,100}$')
 class BillingError(Exception): pass
 
 PLAN_NAME = 'GameArena Master - NGN 2300 Monthly'
+ONE_TIME_PLAN = 'MASTER_ONE_TIME_30_DAYS'
 
 def configured():
     secret = os.environ.get('PAYSTACK_SECRET_KEY', '').strip()
@@ -38,13 +40,13 @@ def membership_plan():
     explicit = os.environ.get('PAYSTACK_MASTER_PLAN_CODE', '').strip()
     if explicit:
         return validate_plan(provider('GET', '/plan/' + quote(explicit, safe='')), explicit)
-    existing = MasterSubscription.query.order_by(MasterSubscription.id.desc()).first()
+    existing = MasterSubscription.query.filter_by(billing_mode='recurring').order_by(MasterSubscription.id.desc()).first()
     if existing:
         return validate_plan(provider('GET', '/plan/' + quote(existing.plan_code, safe='')), existing.plan_code)
     # Only initial discovery/creation needs a cross-process lock. The caller
     # commits or rolls back this transaction before redirecting, releasing it.
     db.session.execute(db.text('SELECT pg_advisory_xact_lock(:key)'), {'key': 9042300})
-    existing = MasterSubscription.query.order_by(MasterSubscription.id.desc()).first()
+    existing = MasterSubscription.query.filter_by(billing_mode='recurring').order_by(MasterSubscription.id.desc()).first()
     if existing:
         return validate_plan(provider('GET', '/plan/' + quote(existing.plan_code, safe='')), existing.plan_code)
     for page in range(1, 6):
@@ -101,10 +103,25 @@ def safe_checkout(url):
     return bool(parsed.scheme=='https' and parsed.hostname=='checkout.paystack.com' and not parsed.username and not parsed.password)
 
 def valid_charge(transaction, subscription, reference):
-    customer=transaction.get('customer') or {}
-    plan=transaction.get('plan_object') or transaction.get('plan') or {}
-    if isinstance(plan,str):plan={'plan_code':plan}
-    return (transaction.get('status')=='success' and transaction.get('reference')==reference and type(transaction.get('amount')) is int and transaction['amount']==PRICE_KOBO and transaction.get('currency')=='NGN' and isinstance(customer,dict) and str(customer.get('email','')).casefold()==subscription.billing_email.casefold() and (not subscription.customer_code or customer.get('customer_code')==subscription.customer_code) and isinstance(plan,dict) and plan.get('plan_code')==subscription.plan_code)
+    customer = transaction.get('customer') or {}
+    plan = transaction.get('plan_object') or transaction.get('plan') or {}
+    if isinstance(plan, str): plan = {'plan_code': plan}
+    common = (transaction.get('status') == 'success' and transaction.get('reference') == reference
+        and type(transaction.get('amount')) is int and transaction['amount'] == PRICE_KOBO
+        and transaction.get('currency') == 'NGN' and isinstance(customer, dict)
+        and str(customer.get('email','')).casefold() == subscription.billing_email.casefold()
+        and (not subscription.customer_code or customer.get('customer_code') == subscription.customer_code))
+    if not common or not isinstance(plan, dict): return False
+    if subscription.billing_mode == 'one_time':
+        metadata = transaction.get('metadata') or {}
+        if isinstance(metadata, str):
+            try: metadata = json.loads(metadata)
+            except (ValueError, TypeError): return False
+        return (not plan.get('plan_code') and isinstance(metadata, dict)
+            and metadata.get('type') == 'master_membership' and metadata.get('billing_mode') == 'one_time'
+            and str(metadata.get('user_id')) == str(subscription.user_id))
+    return plan.get('plan_code') == subscription.plan_code
+
 
 def apply_charge(reference, transaction, subscription_id=None, period_end=None):
     if not isinstance(reference,str) or not REFERENCE.fullmatch(reference):raise BillingError('Invalid payment reference.')
@@ -114,21 +131,24 @@ def apply_charge(reference, transaction, subscription_id=None, period_end=None):
         subscription_id=existing.subscription_id
     subscription=db.session.get(MasterSubscription,subscription_id)
     if not subscription:raise BillingError('Subscription not found.')
-    user=User.query.filter_by(id=subscription.user_id).with_for_update().first()
+    user=User.query.populate_existing().filter_by(id=subscription.user_id).with_for_update().first()
     db.session.refresh(subscription)
     existing=MasterPayment.query.filter_by(reference=reference).with_for_update().first()
     if existing and existing.subscription_id!=subscription.id:raise BillingError('Payment record mismatch.')
     if not valid_charge(transaction,subscription,reference):raise BillingError('Payment details did not match this membership.')
     if existing and existing.status=='success':return True
     paid=timestamp(transaction.get('paid_at') or transaction.get('paidAt'))
-    end=timestamp(period_end) if period_end else monthly_end(paid)
-    if end<=paid or (end-paid).days>32:raise BillingError('Invalid billing period.')
+    if subscription.billing_mode == 'one_time':
+        end=max(user.master_expires_at or paid, paid)+timedelta(days=30)
+    else:
+        end=timestamp(period_end) if period_end else monthly_end(paid)
+        if end<=paid or (end-paid).days>32:raise BillingError('Invalid billing period.')
     if not existing:
         existing=MasterPayment(reference=reference,subscription_id=subscription.id)
         db.session.add(existing)
     existing.status='success';existing.paid_at=paid;existing.period_end=end
     subscription.customer_code=transaction['customer'].get('customer_code')
-    if subscription.status=='pending':subscription.status='active'
+    if subscription.status=='pending':subscription.status='completed' if subscription.billing_mode=='one_time' else 'active'
     user.master_expires_at=max(user.master_expires_at or end,end)
     db.session.add(Notification(user_id=user.id,category='system',message='Master payment confirmed. Your membership benefits are active.',target_url='/pro'))
     db.session.commit()
@@ -147,22 +167,45 @@ def checkout_response(destination=None, error=None, status=400):
 @login_required
 def checkout():
     if current_user.suspended or not current_user.email_verified:return jsonify(error='Verify your email before subscribing.'),403
-    if request.form.get('renewal_consent')!='yes':
-        return checkout_response(error='Confirm the monthly renewal terms before subscribing.')
+    mode=request.form.get('billing_mode','recurring')
+    if mode not in {'recurring','one_time'}:return checkout_response(error='Choose a valid payment option.')
+    consent='one_time_consent' if mode=='one_time' else 'renewal_consent'
+    if request.form.get(consent)!='yes':
+        return checkout_response(error='Confirm the 30-day pay-once terms.' if mode=='one_time' else 'Confirm the monthly renewal terms before subscribing.')
     if not configured():
         return checkout_response(error='Membership checkout is not configured yet. No payment was taken.',status=503)
     try:
-        plan_code=membership_plan()
-        User.query.filter_by(id=current_user.id).with_for_update().first()
-        subscription=MasterSubscription.query.filter_by(user_id=current_user.id).filter(MasterSubscription.status.in_(['pending','active','attention','non-renewing'])).order_by(MasterSubscription.id.desc()).first()
+        User.query.populate_existing().filter_by(id=current_user.id).with_for_update().first()
+        renewable=MasterSubscription.query.filter_by(user_id=current_user.id,billing_mode='recurring').filter(MasterSubscription.status.in_(['active','attention','non-renewing'])).order_by(MasterSubscription.id.desc()).first()
+        subscription=MasterSubscription.query.filter_by(user_id=current_user.id,status='pending').order_by(MasterSubscription.id.desc()).first()
+        if subscription and subscription.billing_mode != mode:
+            raise BillingError('Check your existing pending membership payment before choosing a different payment option.')
+        if renewable and (mode=='recurring' or renewable.status!='non-renewing'):
+            raise BillingError('Manage or cancel your existing automatic subscription before purchasing another membership.')
+        if mode=='recurring' and current_user.master_active and not subscription:
+            raise BillingError('Your Master access is already active. Wait until it expires before starting automatic renewal.')
         if subscription:
             payment=MasterPayment.query.filter_by(subscription_id=subscription.id,status='pending').first()
             if payment and payment.checkout_url:
                 destination=payment.checkout_url;db.session.commit();return checkout_response(destination=destination)
-            if subscription.status!='pending':raise BillingError('You already have a subscription. Manage it below instead of subscribing twice.')
+            plan_code=subscription.plan_code
         else:
-            subscription=MasterSubscription(user_id=current_user.id,plan_code=plan_code,billing_email=current_user.email,status='pending')
-            db.session.add(subscription);db.session.flush()
+            # Release the user lock before plan discovery, then recheck after
+            # reacquiring it so concurrent requests cannot create two checkouts.
+            db.session.commit()
+            plan_code=ONE_TIME_PLAN if mode=='one_time' else membership_plan()
+            User.query.populate_existing().filter_by(id=current_user.id).with_for_update().first()
+            subscription=MasterSubscription.query.filter_by(user_id=current_user.id,status='pending').order_by(MasterSubscription.id.desc()).first()
+            if subscription and subscription.billing_mode!=mode:
+                raise BillingError('Check your existing pending membership payment before choosing a different payment option.')
+            renewable=MasterSubscription.query.filter_by(user_id=current_user.id,billing_mode='recurring').filter(MasterSubscription.status.in_(['active','attention','non-renewing'])).first()
+            if renewable and (mode=='recurring' or renewable.status!='non-renewing'):
+                raise BillingError('Manage or cancel your existing automatic subscription before purchasing another membership.')
+            if mode=='recurring' and current_user.master_active and not subscription:
+                raise BillingError('Your Master access is already active. Wait until it expires before starting automatic renewal.')
+            if not subscription:
+                subscription=MasterSubscription(user_id=current_user.id,plan_code=plan_code,billing_mode=mode,billing_email=current_user.email,status='pending')
+                db.session.add(subscription);db.session.flush()
         payment=MasterPayment.query.filter_by(subscription_id=subscription.id,status='pending').first()
         if not payment:
             payment=MasterPayment(reference='master-'+secrets.token_hex(20),subscription_id=subscription.id)
@@ -170,12 +213,18 @@ def checkout():
         reference=payment.reference
         # Persist before the provider call so timeout/retry cannot create another reference.
         db.session.commit()
-        User.query.filter_by(id=current_user.id).with_for_update().first()
+        User.query.populate_existing().filter_by(id=current_user.id).with_for_update().first()
         db.session.refresh(payment)
         if payment.status=='success':raise BillingError('Your membership payment is already confirmed.')
         if payment.checkout_url:
             destination=payment.checkout_url;db.session.commit();return checkout_response(destination=destination)
-        result=provider('POST','/transaction/initialize',json={'email':subscription.billing_email,'amount':PRICE_KOBO,'currency':'NGN','plan':plan_code,'reference':reference,'channels':['card'],'callback_url':checkout_origin()+url_for('master_billing.verify'),'metadata':{'type':'master_membership','user_id':current_user.id}})
+        if mode=='recurring':validate_plan(provider('GET','/plan/'+quote(subscription.plan_code,safe='')),subscription.plan_code)
+        payload={'email':subscription.billing_email,'amount':PRICE_KOBO,'currency':'NGN','reference':reference,
+            'channels':['card','bank_transfer','bank','ussd'] if mode=='one_time' else ['card'],
+            'callback_url':checkout_origin()+url_for('master_billing.verify'),
+            'metadata':{'type':'master_membership','user_id':current_user.id,'billing_mode':mode}}
+        if mode=='recurring':payload['plan']=subscription.plan_code
+        result=provider('POST','/transaction/initialize',json=payload)
         destination=result.get('authorization_url')
         if result.get('reference')!=reference or not safe_checkout(destination):raise BillingError('Unexpected checkout response.')
         payment.checkout_url=destination;db.session.commit()
@@ -207,7 +256,7 @@ def verify():
 @billing.route('/pro/cancel',methods=['POST'])
 @login_required
 def cancel():
-    subscription=MasterSubscription.query.filter_by(user_id=current_user.id).filter(MasterSubscription.status.in_(['active','attention','non-renewing'])).order_by(MasterSubscription.id.desc()).first()
+    subscription=MasterSubscription.query.filter_by(user_id=current_user.id,billing_mode='recurring').filter(MasterSubscription.status.in_(['active','attention','non-renewing'])).order_by(MasterSubscription.id.desc()).first()
     if not subscription:return jsonify(error='No renewable membership found.'),404
     if request.form.get('confirmed')!='yes':
         flash('Confirm cancellation first.','error');return redirect(url_for('pro.membership'))
@@ -224,7 +273,7 @@ def cancel():
 @billing.route('/pro/manage-payment',methods=['POST'])
 @login_required
 def manage_payment():
-    subscription=MasterSubscription.query.filter_by(user_id=current_user.id).filter(MasterSubscription.subscription_code.isnot(None),MasterSubscription.status.in_(['active','attention','non-renewing'])).order_by(MasterSubscription.id.desc()).first()
+    subscription=MasterSubscription.query.filter_by(user_id=current_user.id,billing_mode='recurring').filter(MasterSubscription.subscription_code.isnot(None),MasterSubscription.status.in_(['active','attention','non-renewing'])).order_by(MasterSubscription.id.desc()).first()
     if not subscription:return jsonify(error='Subscription not found.'),404
     try:
         result=provider('GET','/subscription/'+quote(subscription.subscription_code,safe='')+'/manage/link')
@@ -246,7 +295,7 @@ def handle_event(name,data):
         plan=data.get('plan') or {};customer=data.get('customer') or {}
         if not isinstance(plan,dict) or not isinstance(plan.get('plan_code'),str) or data.get('amount')!=PRICE_KOBO:return False
         if not isinstance(customer,dict):return False
-        subscription=MasterSubscription.query.filter_by(billing_email=customer.get('email'),plan_code=plan['plan_code']).filter(MasterSubscription.status.in_(['pending','active'])).order_by(MasterSubscription.id.desc()).with_for_update().first()
+        subscription=MasterSubscription.query.filter_by(billing_email=customer.get('email'),plan_code=plan['plan_code'],billing_mode='recurring').filter(MasterSubscription.status.in_(['pending','active'])).order_by(MasterSubscription.id.desc()).with_for_update().first()
         if not subscription:return False
         code=data.get('subscription_code');token=data.get('email_token')
         if not isinstance(code,str) or not code.startswith('SUB_') or not isinstance(token,str) or len(code)>80 or len(token)>150:raise BillingError('Invalid subscription details.')

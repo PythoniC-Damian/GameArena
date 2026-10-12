@@ -33,8 +33,9 @@ def membership():
     saved = SavedTournament.query.options(joinedload(SavedTournament.tournament)).filter_by(user_id=current_user.id).order_by(SavedTournament.created_at.desc()).all()
     from gamearena.master_billing import configured
     subscription = MasterSubscription.query.filter_by(user_id=current_user.id).order_by(MasterSubscription.id.desc()).first()
-    pending_payment = MasterPayment.query.filter_by(subscription_id=subscription.id, status='pending').first() if subscription else None
-    return render_template('pro.html', saved_tournaments=saved, performance=performance_summary(current_user.id) if current_user.master_active else None, subscription=subscription, pending_payment=pending_payment, billing_enabled=configured())
+    recurring_subscription = MasterSubscription.query.filter_by(user_id=current_user.id,billing_mode='recurring').filter(MasterSubscription.status.in_(['active','attention','non-renewing'])).order_by(MasterSubscription.id.desc()).first()
+    pending_payment = MasterPayment.query.join(MasterSubscription).filter(MasterSubscription.user_id==current_user.id,MasterPayment.status=='pending').order_by(MasterPayment.created_at.desc()).first()
+    return render_template('pro.html', saved_tournaments=saved, performance=performance_summary(current_user.id) if current_user.master_active else None, subscription=subscription, recurring_subscription=recurring_subscription, pending_payment=pending_payment, billing_enabled=configured())
 
 @pro.route('/pro/appearance', methods=['POST'])
 @login_required

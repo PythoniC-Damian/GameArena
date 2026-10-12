@@ -10,3 +10,5 @@
 @media(max-width:767px){.ga-pro-welcome{width:min(360px,calc(100% - 40px));max-height:min(460px,70dvh);padding:16px}.ga-pro-welcome h2{font-size:20px}.ga-pro-welcome .ga-pro-tier{flex-basis:92%;padding:14px}}
 
 .ga-pro-welcome-top{position:sticky;top:0;background:var(--ga-bg);z-index:2}
+
+.ga-master-payment-options{display:grid;gap:16px;margin-top:24px}.ga-master-payment-option{padding:20px;border:1px solid var(--ga-border);border-radius:18px}.ga-master-payment-option h3{font-size:19px;font-weight:750;margin-bottom:12px}.ga-master-payment-option [data-checkout-feedback]{margin-top:12px;line-height:1.6;color:var(--ga-muted)}

@@ -215,3 +215,106 @@ def test_json_checkout_errors_and_csp_allow_paystack_only(settings,monkeypatch):
         response=viewer.post('/pro/checkout',data={'csrf_token':csrf,'renewal_consent':'yes'},headers={'Accept':'application/json'})
         assert response.status_code==502 and response.json['error']=='Paystack is unavailable. Please retry.'
         assert MasterPayment.query.count()==0
+
+
+def manual_charge(owner, reference, paid=None):
+    value=charge(owner,reference,paid)
+    value['plan_object']={}
+    value['metadata']={'type':'master_membership','user_id':owner.id,'billing_mode':'one_time'}
+    value['channel']='bank_transfer'
+    return value
+
+
+def test_pay_once_channels_consent_and_idempotent_activation(settings,monkeypatch):
+    calls=[]
+    def provider(method,path,**kwargs):
+        assert path=='/transaction/initialize'
+        payload=kwargs['json'];calls.append(payload)
+        assert 'plan' not in payload and payload['amount']==230000
+        assert set(payload['channels'])=={'card','bank_transfer','bank','ussd'}
+        assert payload['metadata']['billing_mode']=='one_time'
+        return dict(reference=payload['reference'],authorization_url='https://checkout.paystack.com/manual-mock')
+    monkeypatch.setattr(billing,'provider',provider)
+    with app.app_context():
+        owner=player('manual_master');viewer=client(owner);page=viewer.get('/pro');csrf=token(page)
+        assert 'Pay once for 30 days' in page.text and 'Subscribe to Master' in page.text
+        data={'csrf_token':csrf,'billing_mode':'one_time','renewal_consent':'yes'}
+        assert viewer.post('/pro/checkout',data=data,headers={'Accept':'application/json'}).status_code==400
+        data['one_time_consent']='yes'
+        for _ in range(2):
+            response=viewer.post('/pro/checkout',data=data,headers={'Accept':'application/json'})
+            assert response.json['checkout_url']=='https://checkout.paystack.com/manual-mock'
+        assert len(calls)==1 and not owner.master_active
+        record=MasterPayment.query.one();paid=datetime.utcnow()
+        transaction=manual_charge(owner,record.reference,paid)
+        wrong=dict(transaction,amount=1000)
+        with pytest.raises(billing.BillingError):billing.apply_charge(record.reference,wrong)
+        db.session.rollback()
+        assert webhook('charge.success',transaction).status_code==200
+        db.session.refresh(owner);end=owner.master_expires_at
+        assert abs((end-paid).total_seconds()-30*86400)<1
+        assert webhook('charge.success',transaction).status_code==200
+        db.session.refresh(owner);assert owner.master_expires_at==end
+        db.session.refresh(record);assert record.subscription.status=='completed'
+        assert record.subscription.subscription_code is None and WalletTransaction.query.count()==0
+        assert 'does not renew automatically' in viewer.get('/pro').text
+        assert viewer.post('/pro/cancel',data={'csrf_token':csrf,'confirmed':'yes'}).status_code==404
+
+
+def test_pay_once_renewal_adds_days_to_remaining_access(settings,monkeypatch):
+    counter=[]
+    def provider(method,path,**kwargs):
+        payload=kwargs['json'];counter.append(payload['reference'])
+        return dict(reference=payload['reference'],authorization_url='https://checkout.paystack.com/manual-renew')
+    monkeypatch.setattr(billing,'provider',provider)
+    with app.app_context():
+        owner=player('manual_renew');owner.master_expires_at=datetime.utcnow()+timedelta(days=10);db.session.commit()
+        initial=owner.master_expires_at;viewer=client(owner)
+        for _ in range(2):
+            csrf=token(viewer.get('/pro'))
+            response=viewer.post('/pro/checkout',data={'csrf_token':csrf,'billing_mode':'one_time','one_time_consent':'yes'},headers={'Accept':'application/json'})
+            assert response.status_code==200
+            assert webhook('charge.success',manual_charge(owner,counter[-1])).status_code==200
+        db.session.refresh(owner)
+        assert abs((owner.master_expires_at-initial).total_seconds()-60*86400)<1
+        assert len(set(counter))==2
+
+
+def test_payment_modes_do_not_silently_reuse_each_others_checkout(settings,monkeypatch):
+    monkeypatch.setattr(billing,'provider',lambda *a,**k:pytest.fail('Unexpected provider request'))
+    with app.app_context():
+        owner=player('pending_mode');item=subscription(owner)
+        record=MasterPayment.query.one();record.checkout_url='https://checkout.paystack.com/card-only';db.session.commit()
+        viewer=client(owner);csrf=token(viewer.get('/pro'))
+        response=viewer.post('/pro/checkout',data={'csrf_token':csrf,'billing_mode':'one_time','one_time_consent':'yes'},headers={'Accept':'application/json'})
+        assert response.status_code==502 and 'pending' in response.json['error']
+        assert MasterSubscription.query.count()==1 and MasterPayment.query.count()==1
+        item.status='active';db.session.commit()
+        response=viewer.post('/pro/checkout',data={'csrf_token':csrf,'billing_mode':'one_time','one_time_consent':'yes'},headers={'Accept':'application/json'})
+        assert response.status_code==502 and 'cancel' in response.json['error']
+
+
+def test_manual_verification_rejects_wrong_plan_and_metadata(settings):
+    with app.app_context():
+        owner=player('manual_proof');item=MasterSubscription(user_id=owner.id,billing_mode='one_time',plan_code=billing.ONE_TIME_PLAN,billing_email=owner.email,status='pending')
+        db.session.add(item);db.session.flush();record=MasterPayment(reference='manual-proof',subscription_id=item.id);db.session.add(record);db.session.commit()
+        transaction=manual_charge(owner,record.reference)
+        assert billing.valid_charge(transaction,item,record.reference)
+        wrong_plan=dict(transaction,plan_object={'plan_code':'PLN_auto'})
+        assert not billing.valid_charge(wrong_plan,item,record.reference)
+        wrong_metadata=dict(transaction,metadata={'type':'wallet','user_id':owner.id,'billing_mode':'one_time'})
+        assert not billing.valid_charge(wrong_metadata,item,record.reference)
+        wrong_owner=dict(transaction,metadata={'type':'master_membership','user_id':999,'billing_mode':'one_time'})
+        assert not billing.valid_charge(wrong_owner,item,record.reference)
+        event={'plan':{'plan_code':billing.ONE_TIME_PLAN},'amount':230000,'customer':{'email':owner.email},'subscription_code':'SUB_wrong','email_token':'secret'}
+        assert billing.handle_event('subscription.create',event) is False
+
+
+def test_recurring_plan_discovery_ignores_manual_passes(settings,monkeypatch):
+    monkeypatch.delenv('PAYSTACK_MASTER_PLAN_CODE')
+    with app.app_context():
+        owner=player('manual_plan_lookup');db.session.add(MasterSubscription(user_id=owner.id,billing_mode='one_time',plan_code=billing.ONE_TIME_PLAN,billing_email=owner.email,status='completed'));db.session.commit()
+        plan=dict(name=billing.PLAN_NAME,plan_code='PLN_correct_auto',amount=230000,currency='NGN',interval='monthly',invoice_limit=0)
+        monkeypatch.setattr(billing,'provider',lambda method,path,**k:[plan] if path.startswith('/plan?') else pytest.fail('Manual record used as a recurring plan'))
+        assert billing.membership_plan()=='PLN_correct_auto'
+        db.session.rollback()
