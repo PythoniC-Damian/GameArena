@@ -109,3 +109,76 @@ def test_monthly_billing_dates_and_wrong_plan(settings,monkeypatch):
         owner=player('wrong_plan');viewer=client(owner);csrf=token(viewer.get('/pro'))
         viewer.post('/pro/checkout',data={'csrf_token':csrf,'renewal_consent':'yes'})
         assert MasterSubscription.query.count()==0
+
+
+def test_live_activation_and_explicit_disable(monkeypatch):
+    monkeypatch.delenv('MASTER_BILLING_ENABLED', raising=False)
+    monkeypatch.delenv('PAYSTACK_MASTER_PLAN_CODE', raising=False)
+    monkeypatch.setenv('PAYSTACK_SECRET_KEY', 'sk_live_mock_only')
+    assert billing.configured()
+    monkeypatch.setenv('MASTER_BILLING_ENABLED', '0')
+    assert not billing.configured()
+    monkeypatch.delenv('MASTER_BILLING_ENABLED')
+    monkeypatch.setenv('PAYSTACK_SECRET_KEY', 'sk_test_mock_only')
+    assert not billing.configured()
+    monkeypatch.setenv('MASTER_BILLING_ENABLED', '1')
+    assert billing.configured()
+    monkeypatch.setenv('PAYSTACK_SECRET_KEY', '')
+    assert not billing.configured()
+
+
+def test_auto_plan_created_once_and_reused(settings, monkeypatch):
+    monkeypatch.delenv('PAYSTACK_MASTER_PLAN_CODE')
+    calls = []
+    plan = dict(name=billing.PLAN_NAME, plan_code='PLN_auto_master', amount=230000, currency='NGN', interval='monthly', invoice_limit=0)
+    def provider(method, path, **kwargs):
+        calls.append((method,path))
+        if path.startswith('/plan?'): return []
+        if path == '/plan':
+            assert kwargs['json']['amount'] == 230000
+            assert kwargs['json']['invoice_limit'] == 0
+            return plan
+        if path == '/plan/PLN_auto_master': return plan
+        assert kwargs['json']['plan'] == 'PLN_auto_master'
+        return dict(reference=kwargs['json']['reference'],authorization_url='https://checkout.paystack.com/mock')
+    monkeypatch.setattr(billing,'provider',provider)
+    with app.app_context():
+        for name in ['auto_first','auto_second']:
+            owner=player(name);viewer=client(owner);csrf=token(viewer.get('/pro'))
+            assert calls.count(('POST','/plan')) <= 1
+            result=viewer.post('/pro/checkout',data={'csrf_token':csrf,'renewal_consent':'yes'})
+            assert result.location == 'https://checkout.paystack.com/mock'
+            assert not owner.master_active
+        assert calls.count(('POST','/plan')) == 1
+        assert MasterSubscription.query.count() == 2
+
+
+def test_auto_plan_reuses_matching_remote_plan(settings, monkeypatch):
+    monkeypatch.delenv('PAYSTACK_MASTER_PLAN_CODE')
+    wrong=dict(name=billing.PLAN_NAME,plan_code='PLN_wrong',amount=230000,currency='NGN',interval='monthly',invoice_limit=2)
+    right=dict(wrong,plan_code='PLN_existing',invoice_limit=0)
+    monkeypatch.setattr(billing,'provider',lambda method,path,**kwargs: [wrong,right] if path.startswith('/plan?') else pytest.fail('Unexpected plan creation'))
+    with app.app_context():
+        assert billing.membership_plan() == 'PLN_existing'
+        db.session.rollback()
+
+
+def test_subscription_event_uses_saved_plan_without_environment_code(settings, monkeypatch):
+    monkeypatch.delenv('PAYSTACK_MASTER_PLAN_CODE')
+    with app.app_context():
+        owner=player('auto_event');item=subscription(owner)
+        data={'plan':{'plan_code':item.plan_code},'amount':230000,'customer':{'email':owner.email,'customer_code':'CUS_auto'},'subscription_code':'SUB_auto','email_token':'private-token'}
+        assert webhook('subscription.create',data).status_code == 200
+        db.session.refresh(item)
+        assert item.subscription_code == 'SUB_auto'
+        assert not owner.master_active
+        unknown=dict(data, plan={'plan_code':'PLN_unknown'},subscription_code='SUB_unknown')
+        assert billing.handle_event('subscription.create', unknown) is False
+
+
+def test_remote_empty_plan_list_is_preserved(settings, monkeypatch):
+    class Response:
+        ok=True
+        def json(self): return {'status':True,'data':[]}
+    monkeypatch.setattr(billing.requests,'request',lambda *a,**k:Response())
+    assert billing.provider('GET','/plan') == []

@@ -34,3 +34,14 @@ A broader 35-test run passed 33 checks and exposed two pre-existing failures in 
 
 
 The homepage shows a dismissible Pro introduction once per browser session (also for visitors). On phones the three tier cards use native horizontal swipe scrolling; desktop shows the three columns together. Master links to the membership/payment section; active members manage their existing membership. Unconfigured checkout displays a disabled Subscribe button with an explanation. Grandmaster and Legendary remain explicitly planned and unavailable for purchase; no ad-free benefit is advertised while the app has no ad placements.
+
+
+## Owner-approved live activation (12 October 2026)
+
+Master checkout is now available automatically when the existing PAYSTACK_SECRET_KEY is a live key. MASTER_BILLING_ENABLED=0 explicitly disables checkout; test keys require MASTER_BILLING_ENABLED=1. Local previews with no secret remain disabled. No secret is copied into source, browser code or Git.
+
+PAYSTACK_MASTER_PLAN_CODE is optional. If supplied, its amount, NGN currency, monthly interval and unlimited renewal are validated. Otherwise the first authorised, consented checkout reuses a recorded subscription plan, searches Paystack for GameArena Master - NGN 2300 Monthly, or creates that exact plan. A PostgreSQL advisory transaction lock serializes initial discovery/creation across instances. Plans are not created during ordinary page views. Automatic plan creation does not charge or enrol a customer; their card payment and explicit renewal consent are still required. Signed subscription events match the local pending/active membership's saved plan code instead of requiring an environment variable. Existing tournament/wallet webhook handling remains.
+
+Deploy this update to activate the production UI with the existing live payment key. Ensure PUBLIC_BASE_URL=https://gamearena01.com and Paystack webhook=https://gamearena01.com/paystack/webhook. No new secret key is needed. If an old explicit disable flag exists, remove it or set MASTER_BILLING_ENABLED=1 in Render. Mocked provider tests do not certify end-to-end live activation; real checkout verification is still required.
+
+The welcome popup now shows two benefits per tier and a full-details link. Its width is at most 360px on phones and height is capped at 70% of the viewport (460px maximum). The full Pro page retains all benefit descriptions.

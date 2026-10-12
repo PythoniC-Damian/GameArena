@@ -1,4 +1,4 @@
-"""Paystack monthly Master billing. No live plan is created by the application."""
+"""Verified monthly Master billing using the existing Paystack integration."""
 import os
 import re
 import secrets
@@ -16,8 +16,54 @@ REFERENCE = re.compile(r'^[A-Za-z0-9._-]{1,100}$')
 
 class BillingError(Exception): pass
 
+PLAN_NAME = 'GameArena Master - NGN 2300 Monthly'
+
 def configured():
-    return os.environ.get('MASTER_BILLING_ENABLED') == '1' and bool(os.environ.get('PAYSTACK_SECRET_KEY')) and bool(os.environ.get('PAYSTACK_MASTER_PLAN_CODE'))
+    secret = os.environ.get('PAYSTACK_SECRET_KEY', '').strip()
+    enabled = os.environ.get('MASTER_BILLING_ENABLED')
+    # Live sales are owner-authorised. Tests still require an explicit opt-in.
+    return bool(secret) and (enabled == '1' if enabled is not None else secret.startswith('sk_live_'))
+
+def validate_plan(plan, code=None):
+    if (not isinstance(plan, dict) or not isinstance(plan.get('plan_code'), str)
+        or not plan['plan_code'].startswith('PLN_')
+        or (code is not None and plan['plan_code'] != code)
+        or type(plan.get('amount')) is not int or plan['amount'] != PRICE_KOBO
+        or plan.get('currency') != 'NGN' or plan.get('interval') != 'monthly'
+        or plan.get('invoice_limit') not in (None, 0)):
+        raise BillingError('The membership plan must be NGN 2,300 per month with renewal until cancelled.')
+    return plan['plan_code']
+
+def membership_plan():
+    explicit = os.environ.get('PAYSTACK_MASTER_PLAN_CODE', '').strip()
+    if explicit:
+        return validate_plan(provider('GET', '/plan/' + quote(explicit, safe='')), explicit)
+    existing = MasterSubscription.query.order_by(MasterSubscription.id.desc()).first()
+    if existing:
+        return validate_plan(provider('GET', '/plan/' + quote(existing.plan_code, safe='')), existing.plan_code)
+    # Only initial discovery/creation needs a cross-process lock. The caller
+    # commits or rolls back this transaction before redirecting, releasing it.
+    db.session.execute(db.text('SELECT pg_advisory_xact_lock(:key)'), {'key': 9042300})
+    existing = MasterSubscription.query.order_by(MasterSubscription.id.desc()).first()
+    if existing:
+        return validate_plan(provider('GET', '/plan/' + quote(existing.plan_code, safe='')), existing.plan_code)
+    for page in range(1, 6):
+        plans = provider('GET', f'/plan?perPage=100&page={page}')
+        if not isinstance(plans, list):
+            raise BillingError('Paystack returned an invalid plan list. Please try again.')
+        for plan in plans:
+            if isinstance(plan, dict) and plan.get('name') == PLAN_NAME:
+                try:
+                    return validate_plan(plan)
+                except BillingError:
+                    continue
+        if len(plans) < 100:
+            return validate_plan(provider('POST', '/plan', json={
+                'name': PLAN_NAME, 'description': 'GameArena Master membership; automatic monthly renewal until cancelled.',
+                'amount': PRICE_KOBO, 'currency': 'NGN', 'interval': 'monthly',
+                'invoice_limit': 0, 'send_invoices': True, 'send_sms': False,
+            }))
+    raise BillingError('Set PAYSTACK_MASTER_PLAN_CODE to your Master plan before subscribing.')
 
 def provider(method, path, **kwargs):
     secret = os.environ.get('PAYSTACK_SECRET_KEY', '')
@@ -29,7 +75,7 @@ def provider(method, path, **kwargs):
         raise BillingError('Paystack could not be reached. Please try again.') from None
     if not result.ok or not isinstance(payload,dict) or not payload.get('status'):
         raise BillingError('Paystack could not complete this request. Please try again.')
-    return payload.get('data') or {}
+    return payload.get('data') if payload.get('data') is not None else {}
 
 def timestamp(value):
     if not isinstance(value,str):raise BillingError('Invalid payment date.')
@@ -97,9 +143,7 @@ def checkout():
     if not configured():
         flash('Membership checkout is not configured yet. No payment was taken.','error');return redirect(url_for('pro.membership'))
     try:
-        plan_code=os.environ['PAYSTACK_MASTER_PLAN_CODE']
-        plan=provider('GET','/plan/'+quote(plan_code,safe=''))
-        if plan.get('plan_code')!=plan_code or plan.get('amount')!=PRICE_KOBO or plan.get('currency')!='NGN' or plan.get('interval')!='monthly':raise BillingError('The membership plan must be NGN 2,300 per month.')
+        plan_code=membership_plan()
         User.query.filter_by(id=current_user.id).with_for_update().first()
         subscription=MasterSubscription.query.filter_by(user_id=current_user.id).filter(MasterSubscription.status.in_(['pending','active','attention','non-renewing'])).order_by(MasterSubscription.id.desc()).first()
         if subscription:
@@ -191,7 +235,7 @@ def handle_event(name,data):
         apply_charge(reference,data);return True
     if name=='subscription.create':
         plan=data.get('plan') or {};customer=data.get('customer') or {}
-        if not isinstance(plan,dict) or plan.get('plan_code')!=os.environ.get('PAYSTACK_MASTER_PLAN_CODE') or data.get('amount')!=PRICE_KOBO:return False
+        if not isinstance(plan,dict) or not isinstance(plan.get('plan_code'),str) or data.get('amount')!=PRICE_KOBO:return False
         if not isinstance(customer,dict):return False
         subscription=MasterSubscription.query.filter_by(billing_email=customer.get('email'),plan_code=plan['plan_code']).filter(MasterSubscription.status.in_(['pending','active'])).order_by(MasterSubscription.id.desc()).with_for_update().first()
         if not subscription:return False
