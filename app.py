@@ -38,7 +38,7 @@ from gamearena.services.jobs import queue_account_email, queue_push
 from gamearena.services.redis_support import shared_socket_allowed
 from gamearena.assets import frontend_assets, is_built_asset, stylesheet_bundle
 from user_media import store_avatar
-from web_push import push_configured, valid_subscription, deliver_push
+from web_push import push_configured, valid_subscription, deliver_push, public_key_configuration
 try:
     import requests
     REQUESTS_AVAILABLE = True 
@@ -1738,7 +1738,9 @@ def notification_preview():
 @login_required
 def push_subscription():
     if request.method == 'GET':
-        return jsonify({'configured':push_configured(), 'public_key':os.environ.get('VAPID_PUBLIC_KEY', '') if push_configured() else ''})
+        public_key, key_status = public_key_configuration()
+        return jsonify({'configured':push_configured(), 'public_key':public_key if push_configured() else '',
+            'public_key_status':key_status})
     data = request.get_json(silent=True) or {}
     value = data.get('subscription')
     if not valid_subscription(value):

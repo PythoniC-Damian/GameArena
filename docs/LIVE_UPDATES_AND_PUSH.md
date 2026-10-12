@@ -39,3 +39,13 @@ press Send test notification. Then close the GameArena app/tab and have another
 account send a direct message. Verify the phone receives an OS notification and
 its tap opens the correct GameArena page. Mocked automated tests do not replace
 this final device/provider check.
+
+## Public-key format errors
+
+The settings endpoint now validates only the configured public key as an
+uncompressed, 65-byte P-256 curve point. It canonicalizes surrounding quotes,
+whitespace and Base64 padding. Invalid values are not returned to the browser;
+only character/decoded-byte counts and a safe error explanation are returned.
+No private-key file is accessed by the validation or tests. The browser also
+checks the byte length before requesting notification permission. This improves
+diagnosis; it cannot establish which value is active on Render until deployed.

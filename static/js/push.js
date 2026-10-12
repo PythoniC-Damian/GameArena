@@ -7,9 +7,12 @@
   let configured, registration;
   function showState(enabled) { enable.hidden = enabled; disable.hidden = !enabled; if (test) test.hidden = !enabled; }
   function keyBytes(value) {
-    const base64 = value.replace(/-/g,'+').replace(/_/g,'/');
+    const clean = String(value || '').trim().replace(/\s/g,'');
+    const base64 = clean.replace(/-/g,'+').replace(/_/g,'/');
     const raw = atob(base64 + '='.repeat((4-base64.length%4)%4));
-    return Uint8Array.from(raw, character => character.charCodeAt(0));
+    const bytes = Uint8Array.from(raw, character => character.charCodeAt(0));
+    if (bytes.length !== 65 || bytes[0] !== 4) throw new Error('Server notification key format is invalid. Please report the key-format diagnostic to GameArena support.');
+    return bytes;
   }
   async function pushFetch(url, options = {}) {
     const controller = new AbortController();
@@ -31,6 +34,10 @@
       if (!response.ok) throw new Error('Could not check phone notifications.');
       configured = await response.json();
       if (!configured.configured) { enable.disabled = true; status.textContent = 'Device notifications need server configuration. Please contact GameArena support.'; return; }
+      if (configured.public_key_status && !configured.public_key_status.valid) {
+        enable.disabled = true; status.textContent = configured.public_key_status.error + ' No key values are displayed.'; return;
+      }
+      keyBytes(configured.public_key);
       registration = await Promise.race([navigator.serviceWorker.ready, new Promise((_,reject) => setTimeout(() => reject(new Error('Service worker is not ready. Reload GameArena and try again.')), 10000))]);
       const subscription = await registration.pushManager.getSubscription();
       showState(!!subscription);
