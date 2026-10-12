@@ -1,5 +1,5 @@
 /* Public static assets only. Never cache session-dependent pages or APIs. */
-const CACHE_NAME = 'gamearena-v5';
+const CACHE_NAME = 'gamearena-v6';
 const OFFLINE_URL = '/static/offline.html';
 const MAX_ENTRIES = 80;
 const APP_SHELL = [OFFLINE_URL, '/static/manifest.json', '/static/icons/icon-192.png', '/static/icons/icon-512.png'];
@@ -33,6 +33,7 @@ self.addEventListener('fetch', event => {
 self.addEventListener('push', event => {
   let data;
   try { data = event.data.json(); } catch (_) { data = {body:'You have a new GameArena update.'}; }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
   let url = '/notifications';
   try { const target = new URL(data.url, self.location.origin); if (target.origin === self.location.origin) url = target.pathname + target.search; } catch (_) {}
   event.waitUntil(self.registration.showNotification(data.title || 'GameArena', {

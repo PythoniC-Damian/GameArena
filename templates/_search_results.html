@@ -1,0 +1,14 @@
+{% from '_master.html' import master_badge %}
+    {% if query|length < 2 %}<p class="rounded-2xl border border-dashed border-slate-700 p-6 text-sm text-slate-400">Enter at least two characters to search.</p>{% else %}
+    <section class="space-y-3"><h2 class="text-xl font-semibold">Players</h2>
+        {% for player in players %}<a href="{{ url_for('public_profile', user_id=player.id) }}" class="flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 hover:border-emerald-500/40"><span class="ga-search-player"><span class="ga-search-avatar">{% if player.avatar_url %}<img src="{{ player.avatar_url }}" alt="" loading="lazy" width="48" height="48">{% else %}<span aria-hidden="true">{{ player.username[:1]|upper }}</span>{% endif %}</span><span class="font-semibold">{{ player.username }} {{ master_badge(player) }}</span></span><span class="text-xs text-slate-400">{{ 'Verified' if player.email_verified else 'Player' }}</span></a>
+        {% else %}<p class="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">No public players found.</p>{% endfor %}
+    </section>
+    <section class="space-y-3"><h2 class="text-xl font-semibold">Tournaments</h2>
+        {% for tournament in tournaments %}<a href="{{ url_for('tournament_details', tournament_id=tournament.id) }}" class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 hover:border-emerald-500/40"><span class="font-semibold">{{ tournament.name }}</span><span class="text-sm text-slate-400">{{ tournament.game }} · {{ tournament.status|capitalize }}</span></a>
+        {% else %}<p class="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">No tournaments found.</p>{% endfor %}
+    </section>
+    <section class="space-y-3"><h2 class="text-xl font-semibold">Games</h2>
+        {% if games %}<div class="flex flex-wrap gap-2">{% for game in games %}<a href="{{ url_for('tournaments_page', game=game) }}" class="rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 text-sm text-emerald-200">{{ game }}</a>{% endfor %}</div>{% else %}<p class="rounded-2xl bg-slate-900 p-4 text-sm text-slate-400">No games found.</p>{% endif %}
+    </section>
+    {% endif %}

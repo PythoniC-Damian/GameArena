@@ -2,8 +2,11 @@
 import argparse
 import base64
 from pathlib import Path
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization
+try:
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import serialization
+except ImportError:
+    raise SystemExit('Missing dependency. Run: python -m pip install cryptography, then rerun this command.')
 
 parser=argparse.ArgumentParser();parser.add_argument('--contact',required=True,help='Your support email address');args=parser.parse_args()
 if '@' not in args.contact or any(c in args.contact for c in '\r\n'):

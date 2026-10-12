@@ -1,7 +1,7 @@
 """Isolated contracts for themes, preview notifications, photos, chat and push."""
 import io
 from PIL import Image
-from app import app, db, socketio, UserSettings, UserBlock, DirectMessage, GlobalChatMessage, Notification, PushSubscription
+from app import app, db, socketio, UserSettings, UserBlock, DirectMessage, GlobalChatMessage, Notification, PushSubscription, PlayerConnection
 from test_interface_contracts import player, client, token
 
 
@@ -70,6 +70,7 @@ def test_unblocking_restores_delivery_without_reloading_socket():
 def test_replies_are_stored_and_reject_foreign_conversations():
     with app.app_context():
         a,b,c = player('reply_first'),player('reply_second'),player('reply_third'); aid,bid,cid = a.id,b.id,c.id
+        db.session.add(PlayerConnection(low_id=min(aid,bid),high_id=max(aid,bid),requester_id=aid,status='accepted'))
         original = DirectMessage(sender_id=bid,recipient_id=aid,message='Original message')
         foreign = DirectMessage(sender_id=cid,recipient_id=bid,message='Private foreign message')
         db.session.add_all([original,foreign]); db.session.commit(); original_id,foreign_id=original.id,foreign.id; viewer=client(a)
@@ -128,7 +129,8 @@ def test_configured_push_is_owner_scoped_csrf_protected_and_removed_on_logout(mo
         assert outsider.post('/notifications/push',json={'subscription':value},headers={'X-CSRFToken':foreign_csrf}).status_code==409
         outsider.delete('/notifications/push',json={'subscription':value},headers={'X-CSRFToken':foreign_csrf})
         assert PushSubscription.query.count()==1
-        viewer.post('/logout',data={'csrf_token':csrf})
+        csrf=token(viewer.get('/settings'))
+        assert viewer.post('/logout',data={'csrf_token':csrf,'confirmed':'1'}).status_code==302
         assert PushSubscription.query.count()==0
 
 
@@ -144,7 +146,12 @@ def test_push_respects_existing_chat_preferences_and_uses_background_delivery(mo
         assert not calls and Notification.query.count()==0
         preferences.chat_notifications=True;db.session.commit()
         application.create_and_emit_notification(owner.id,'New message','chat','/messages/2')
-        assert len(calls)==1 and calls[0][2]['url']=='/messages/2'
+        assert len(calls)==1
+        payloads=[]
+        monkeypatch.setattr('web_push.deliver_push',lambda subscriptions,payload,logger: payloads.append(payload))
+        # Execute the queued job: delivery reloads current notification/preferences.
+        calls[0][0](*calls[0][1:])
+        assert payloads[0]['url']=='/messages/2' and payloads[0]['body']=='New message'
 
 
 def test_reply_push_migration_is_additive_and_repeatable():

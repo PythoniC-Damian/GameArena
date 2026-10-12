@@ -1,6 +1,6 @@
 """Private, first-party active-player metrics based on observed activity."""
 from datetime import datetime, timedelta, timezone
-from flask import Blueprint, abort, current_app, render_template, request, session
+from flask import Blueprint, abort, current_app, render_template, request, session, jsonify
 from flask_login import current_user, login_required
 from sqlalchemy import Date, cast, func, select, text, union
 from sqlalchemy.dialects.postgresql import insert
@@ -52,6 +52,22 @@ def dashboard():
     return render_template('admin_activity.html', report=activity_report())
 
 
+@activity.route('/admin/activity/live')
+@login_required
+def live_report():
+    if not current_user.is_admin:
+        abort(403)
+    response = jsonify(html=render_template('_activity_report.html', report=activity_report()))
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
+def notify_activity_changed():
+    socket = current_app.extensions.get('socketio')
+    if socket:
+        socket.emit('activity_updated', {}, room='admin:activity')
+
+
 def record_player_visit(response):
     # Automatic polling/static requests must not keep absent players active.
     if response.status_code >= 400 or request.method not in ('GET', 'POST'):
@@ -73,9 +89,11 @@ def record_player_visit(response):
     try:
         # Separate transaction: analytics never commits a route's pending work.
         with db.engine.begin() as connection:
-            connection.execute(insert(UserActivityDay).values(user_id=current_user.id, activity_date=day)
+            result = connection.execute(insert(UserActivityDay).values(user_id=current_user.id, activity_date=day)
                 .on_conflict_do_nothing(index_elements=['user_id', 'activity_date']))
         session['_activity_day'] = marker
+        if result.rowcount:
+            notify_activity_changed()
     except Exception:
         current_app.logger.warning('Daily activity tracking unavailable; request completed normally.')
     return response

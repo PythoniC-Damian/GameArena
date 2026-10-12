@@ -56,3 +56,11 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+
+      # Owner generates these privately; never place values in the repository.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false

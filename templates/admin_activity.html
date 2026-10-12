@@ -1,19 +1,7 @@
 {% extends '_base.html' %}
 {% block title %}Player activity | GameArena Admin{% endblock %}
 {% block content %}
-<header class="ga-page-heading"><div><p class="ga-eyebrow">Admin analytics</p><h1 class="ga-title">Player activity</h1><p class="ga-description">{{ report.start.strftime('%d %b') }} &ndash; {{ report.today.strftime('%d %b %Y') }} &middot; Lagos time</p></div><a class="ga-button ga-button-secondary" href="{{ url_for('admin') }}">Admin panel</a></header>
-<div class="ga-activity-metrics">
-{% for label, value in [('Registered players', report.total), ('Active today', report.active_today), ('Active in 7 days', report.active_7), ('Active in 30 days', report.active_30)] %}
-<section class="ga-card"><p class="ga-muted">{{ label }}</p><p class="ga-activity-number">{{ value }}</p></section>{% endfor %}
-</div>
-<section class="ga-card ga-stack"><h2 class="ga-section-title">Daily active players</h2><p class="ga-muted">Each player counts once per day. The 30-day total counts distinct players, rather than adding these bars.</p>
-<svg class="ga-activity-chart" viewBox="0 0 930 260" role="img" aria-labelledby="activity-chart-title activity-chart-description">
-<title id="activity-chart-title">Daily active players over 30 days</title><desc id="activity-chart-description">Peak daily activity: {{ report.peak }} players. The table below contains the daily values.</desc>
-{% for day in report.days %}{% set height = day.count / report.scale * 185 %}<rect x="{{ 12 + loop.index0 * 30 }}" y="{{ 215 - height }}" width="22" height="{{ height if day.count else 2 }}" rx="4" class="ga-activity-bar{% if not day.count %} ga-activity-empty{% endif %}" tabindex="0"><title>{{ day.date.strftime('%d %b') }}: {{ day.count }} active players</title></rect>{% if loop.index0 in [0, 7, 14, 21, 29] %}<text x="{{ 23 + loop.index0 * 30 }}" y="242" text-anchor="middle">{{ day.date.strftime('%d %b') }}</text>{% endif %}{% endfor %}
-</svg>
-<details><summary>View daily numbers</summary><div class="ga-activity-table"><table><thead><tr><th>Date</th><th>Active players</th></tr></thead><tbody>{% for day in report.days|reverse %}<tr><td>{{ day.date.strftime('%d %b %Y') }}</td><td>{{ day.count }}</td></tr>{% endfor %}</tbody></table></div></details>
-<p class="ga-muted">Activity means a signed-in visit, a message sent, or a tournament entry. Earlier days include messages and tournament entries only; browsing is recorded from this update onward. Admins and message recipients without their own activity are excluded. Zero means no recorded activity, not proof nobody visited.</p>
-</section>
-<section class="ga-card ga-stack"><h2 class="ga-section-title">Active players &middot; last 30 days</h2>
-{% if report.players %}<div class="ga-activity-table"><table><thead><tr><th>Player</th><th>Last active</th><th>Active days</th></tr></thead><tbody>{% for id, name, last_day, days in report.players %}<tr><td><a href="{{ url_for('public_profile', user_id=id) }}">{{ name }}</a></td><td>{{ last_day.strftime('%d %b %Y') }}</td><td>{{ days }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="ga-empty">No player activity recorded in this period yet.</p>{% endif %}</section>
+<p data-activity-status role="status" class="ga-muted">Connecting to live updates...</p>
+<div data-activity-dashboard data-live-url="{{ url_for('activity.live_report') }}">{% include '_activity_report.html' %}</div>
 {% endblock %}
+{% block scripts %}<script defer src="{{ asset_url('js/activity.js') }}"></script>{% endblock %}

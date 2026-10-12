@@ -382,7 +382,7 @@ from gamearena.master_billing import billing as master_billing, handle_event as 
 app.register_blueprint(master_billing)
 
 from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
-from gamearena.activity import init_activity
+from gamearena.activity import init_activity, notify_activity_changed
 init_activity(app)
 
 from gamearena.forms import (RegistrationForm, LoginForm, EmailVerificationForm, ForgotPasswordForm, ResetPasswordForm, TournamentForm, TournamentSetupForm, LeaderboardEntryForm)
@@ -458,11 +458,10 @@ def create_and_emit_notification(user_id: int, message: str, category='system', 
         },
         room=f'user:{int(user_id)}'
     )
+    notify_activity_changed()
     if push_configured() and not queue_push(notif.id):
-        subscriptions = [record.subscription for record in PushSubscription.query.filter_by(user_id=int(user_id)).all()]
-        if subscriptions:
-            socketio.start_background_task(deliver_push, subscriptions,
-                {'title':'GameArena', 'body':message, 'url':target_url or '/notifications', 'id':notif.id}, app.logger)
+        from gamearena.workers import deliver_notification_push
+        socketio.start_background_task(deliver_notification_push, notif.id)
 
 login_manager.login_view = "login"
 @login_manager.unauthorized_handler
@@ -1669,6 +1668,11 @@ def search():
         games = [row[0] for row in db.session.query(Tournament.game).filter(
             Tournament.game.ilike(f'%{query}%'),
         ).distinct().order_by(Tournament.game.asc()).limit(8).all()]
+    if request.args.get('live') == '1':
+        response = jsonify(html=render_template('_search_results.html', query=query,
+            players=players, tournaments=tournaments, games=games))
+        response.headers['Cache-Control'] = 'private, no-store'
+        return response
     return render_template(
         'search.html', query=query, players=players, tournaments=tournaments, games=games,
     )
@@ -1755,6 +1759,21 @@ def push_subscription():
         db.session.add(PushSubscription(user_id=current_user.id, endpoint_hash=digest, subscription=value))
     db.session.commit(); session['push_endpoint_hash'] = digest
     return jsonify({'status':'saved'})
+
+
+@app.route('/notifications/push/test', methods=['POST'])
+@login_required
+def test_device_push():
+    retry_after = consume_rate_limit('push_test:' + str(current_user.id), 3, 60)
+    if retry_after is not None:
+        return rate_limit_response(retry_after)
+    if not push_configured():
+        return jsonify(error='Device notifications are not configured yet.'), 503
+    if not PushSubscription.query.filter_by(user_id=current_user.id).first():
+        return jsonify(error='Enable notifications on this device first.'), 400
+    create_and_emit_notification(current_user.id, 'Your GameArena device notifications are working.',
+        category='system', target_url='/settings')
+    return jsonify(status='queued', message='Test queued. Check your device notifications.'), 202
 
 
 @app.route('/users/<int:user_id>/block', methods=['POST'])
@@ -4102,6 +4121,8 @@ def on_connect():
     if not current_user.is_authenticated or current_user.suspended:
         return False
     join_room(f'user:{current_user.id}')
+    if current_user.is_admin:
+        join_room('admin:activity')
 
 
 @socketio.on('join_user')

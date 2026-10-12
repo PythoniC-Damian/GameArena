@@ -30,11 +30,14 @@ def deliver_account_email(user_id, purpose, version):
 
 
 def deliver_notification_push(notification_id):
-    from app import app, db, Notification, PushSubscription, UserSettings
+    from app import app, db, Notification, PushSubscription, UserSettings, User
     from web_push import deliver_push
     with app.app_context():
         record = db.session.get(Notification, notification_id)
-        if not record:
+        if not record or record.read_at:
+            return
+        owner = db.session.get(User, record.user_id)
+        if not owner or owner.suspended:
             return
         preferences = db.session.query(UserSettings).filter_by(user_id=record.user_id).first()
         names = {'chat':'chat_notifications', 'match':'match_notifications',
@@ -45,5 +48,9 @@ def deliver_notification_push(notification_id):
         subscriptions = [item.subscription for item in PushSubscription.query.filter_by(user_id=record.user_id).all()]
         outcome = deliver_push(subscriptions, {'title':'GameArena', 'body':record.message,
             'url':record.target_url or '/notifications', 'id':record.id}, app.logger)
+        if outcome and outcome.get('expired'):
+            PushSubscription.query.filter_by(user_id=record.user_id).filter(
+                PushSubscription.endpoint_hash.in_(outcome['expired'])).delete(synchronize_session=False)
+            db.session.commit()
         if outcome and outcome.get('retry'):
             raise RuntimeError('Push provider temporarily unavailable.')
