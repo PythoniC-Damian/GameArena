@@ -49,3 +49,21 @@ only character/decoded-byte counts and a safe error explanation are returned.
 No private-key file is accessed by the validation or tests. The browser also
 checks the byte length before requesting notification permission. This improves
 diagnosis; it cannot establish which value is active on Render until deployed.
+
+## Default opt-in invitation
+
+Signed-in users on supported browsers see a compact notification invitation on
+normal pages when they have no subscription and have not refused permission.
+Permission is requested only after they click Enable notifications. Later snoozes
+the invitation for seven days on that browser/account. Refused permission is
+respected. Settings always retains the explicit enable/disable controls.
+Previously enabled subscriptions are linked automatically to the current account
+without a new OS prompt, with a short per-tab cache to avoid a write on every page.
+No existing notification preferences are overwritten and no private keys are read
+by the assistant. Native browser consent cannot be silently granted by GameArena.
+
+Notification clicks prefer an already-open matching page; otherwise they focus an
+existing GameArena window before navigating it. A closed, rejected or null client
+navigation falls back to opening a new window. Malformed/external targets fall
+back to the notification inbox. Browser window-opening restrictions still apply;
+the service worker update must be active before testing new clicks.

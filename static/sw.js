@@ -1,5 +1,5 @@
 /* Public static assets only. Never cache session-dependent pages or APIs. */
-const CACHE_NAME = 'gamearena-v6';
+const CACHE_NAME = 'gamearena-v7';
 const OFFLINE_URL = '/static/offline.html';
 const MAX_ENTRIES = 80;
 const APP_SHELL = [OFFLINE_URL, '/static/manifest.json', '/static/icons/icon-192.png', '/static/icons/icon-512.png'];
@@ -34,20 +34,44 @@ self.addEventListener('push', event => {
   let data;
   try { data = event.data.json(); } catch (_) { data = {body:'You have a new GameArena update.'}; }
   if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
-  let url = '/notifications';
-  try { const target = new URL(data.url, self.location.origin); if (target.origin === self.location.origin) url = target.pathname + target.search; } catch (_) {}
+  const target = notificationTarget(data.url);
+  const url = target.pathname + target.search + target.hash;
   event.waitUntil(self.registration.showNotification(data.title || 'GameArena', {
     body:data.body || 'You have a new update.', icon:'/static/icons/icon-192.png',
     badge:'/static/icons/icon-192.png', tag:`gamearena-${data.id || 'update'}`, data:{url}
   }));
 });
+function notificationTarget(value) {
+  try {
+    const target = new URL(value || '/notifications', self.location.origin);
+    if (target.origin === self.location.origin && !target.username && !target.password) return target;
+  } catch (_) {}
+  return new URL('/notifications',self.location.origin);
+}
+async function openNotificationTarget(url) {
+  let windows = [];
+  try { windows = await self.clients.matchAll({type:'window',includeUncontrolled:true}); } catch (_) {}
+  const candidates = windows.filter(client => {
+    try { return new URL(client.url).origin === self.location.origin; } catch (_) { return false; }
+  }).sort((a,b) => Number(b.url === url.href)-Number(a.url === url.href));
+  for (const client of candidates) {
+    try {
+      // Bring the app forward immediately, even if a cold server delays loading.
+      const focused = await client.focus() || client;
+      if (focused.url === url.href) return focused;
+      const navigated = await focused.navigate(url.href);
+      if (navigated) return navigated;
+    } catch (_) { /* Closed/stale clients must not swallow the click. */ }
+  }
+  const opened = await self.clients.openWindow(url.href);
+  if (opened) { try { await opened.focus(); } catch (_) {} }
+  return opened;
+}
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const url = new URL(event.notification.data?.url || '/notifications', self.location.origin);
-  if (url.origin !== self.location.origin) return;
-  event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async clients => {
-    const client = clients.find(item => new URL(item.url).origin === self.location.origin);
-    if (client) { await client.navigate(url.href); return client.focus(); }
-    return self.clients.openWindow(url.href);
+  const target = notificationTarget(event.notification.data?.url || event.notification.data?.target_url);
+  event.waitUntil(openNotificationTarget(target).catch(error => {
+    // Never log notification URLs, message content, subscriptions or credentials.
+    console.warn('Could not open notification window:',error.name || 'NavigationError');
   }));
 });
