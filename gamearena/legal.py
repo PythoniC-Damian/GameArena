@@ -40,6 +40,7 @@ PAGES = {
 ('How do I change privacy, notifications or the theme?', ["Open Settings. Choose profile visibility, messaging permissions and notification preferences there. Light or dark theme saves immediately. Browser push permission can also be changed in your browser or device settings."]),
 ('Can I delete my account or request my data?', ["Contact GameArena support or the privacy contact below. Requests are handled manually and may require identity verification. Some transaction, security or dispute records may need to be retained."]),
 ('Why does the first visit sometimes take longer?', ["Hosting wake-up time, your connection and service providers can delay the first request. Subsequent visits can reuse cached public assets. If a payment is involved, check its existing status before retrying."]),
+('Can I receive notifications on an iPhone or iPad?', ["Yes, on iOS or iPadOS 16.4 or later. Open GameArena in Safari, use Share then Add to Home Screen, keep Open as Web App enabled if shown, and launch the new icon. Sign in if asked, then open Settings, enable device notifications and choose Allow. The setup guide in Settings explains each step. Ordinary iPhone browser tabs can still use GameArena and its notification inbox."]),
 ('How do I contact support?', ["Signed-in users can open Help & support and send a message to the team. If you cannot sign in, use the email below. Include what happened, the relevant event and a payment reference if applicable; never include passwords or payment secrets."])
 ])}
 

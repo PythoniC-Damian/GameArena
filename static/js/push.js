@@ -21,6 +21,27 @@
     invitation.hidden = true;
     try { localStorage.setItem(dismissKey,String(Date.now() + 7*24*60*60*1000)); } catch (_) {}
   });
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const homeScreen = navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  const needsIOSInstall = isIOS && !homeScreen;
+  let iosGuide = document.querySelector('[data-ios-push-guide]');
+  if (invitation && needsIOSInstall) {
+    const source = document.querySelector('[data-ios-guide-template]');
+    if (source) {
+      invitation.firstElementChild.append(source.content.cloneNode(true));
+      iosGuide = invitation.querySelector('[data-ios-push-guide]');
+    }
+  }
+  if (iosGuide && needsIOSInstall) {
+    iosGuide.id = 'gamearenaIOSSetup'; enable.setAttribute('aria-controls',iosGuide.id);
+    iosGuide.addEventListener('toggle', () => enable.setAttribute('aria-expanded',String(iosGuide.open)));
+  }
+  function showIOSGuide() {
+    if (!iosGuide) return;
+    iosGuide.hidden = false; iosGuide.open = true;
+    enable.setAttribute('aria-expanded','true');
+    iosGuide.scrollIntoView({block:'nearest'});
+  }
   let configured, registration;
   function showState(enabled) { if (invitation && enabled) invitation.hidden = true; enable.hidden = enabled; disable.hidden = !enabled; if (test) test.hidden = !enabled; }
   function keyBytes(value) {
@@ -43,8 +64,20 @@
     const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not save notification preferences.');
   }
   async function setup() {
+    if (needsIOSInstall) {
+      if (iosGuide) iosGuide.hidden = false;
+      enable.disabled = false; enable.textContent = 'Set up on iPhone / iPad';
+      enable.setAttribute('aria-expanded','false');
+      status.textContent = 'Open GameArena from its Home Screen icon to enable device notifications.';
+      if (invitation) {
+        invitation.querySelector('h2').textContent = 'Keep GameArena close';
+        invitation.querySelector('.ga-muted').textContent = 'Add GameArena to your Home Screen for messages and tournament alerts.';
+        invitation.hidden = Date.now() < dismissedUntil;
+      }
+      return;
+    }
     if (!window.isSecureContext || !('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) {
-      enable.disabled = true; status.textContent = 'Device notifications are unavailable in this browser. On iPhone, install GameArena on your Home Screen and open it there.'; return;
+      enable.disabled = true; status.textContent = isIOS && homeScreen ? 'GameArena is open from your Home Screen, but this device does not support Web Push. Update to iOS or iPadOS 16.4 or later and try again.' : 'Device notifications are unavailable in this browser. Try a supported browser.'; return;
     }
     try {
       const response = await pushFetch('/notifications/push', {cache:'no-store'});
@@ -76,6 +109,7 @@
     } catch (error) { status.textContent = error.message; }
   }
   enable.addEventListener('click', async () => {
+    if (needsIOSInstall) { showIOSGuide(); return; }
     if (!configured?.configured || !registration) return;
     enable.disabled = true;
     try {

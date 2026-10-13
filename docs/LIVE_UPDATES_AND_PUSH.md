@@ -67,3 +67,19 @@ existing GameArena window before navigating it. A closed, rejected or null clien
 navigation falls back to opening a new window. Malformed/external targets fall
 back to the notification inbox. Browser window-opening restrictions still apply;
 the service worker update must be active before testing new clicks.
+
+## iPhone and iPad onboarding
+
+Browser-tab users on iPhone/iPad (including iPad's desktop-style identification)
+get an install guide instead of a disabled Enable button. It explains Safari's
+Share > Add to Home Screen, the Open as Web App option, launching the icon and
+explicit notification permission. The same guide is always accessible from
+Settings on these devices. The site-wide invitation respects the existing Later
+snooze. It cannot automate Apple's Home Screen installation or permission prompt.
+
+Home Screen mode is detected through navigator.standalone and display-mode.
+Already-installed apps proceed directly to the existing opt-in workflow. Older
+installed devices without Push support get an OS-version explanation instead of
+being told to install again. No email/SMS sends or fallback subscriptions are
+added by the installation guide. Confirm on a physical iPhone after deployment;
+emulated browser tests verify UI branches, not actual Apple push delivery.
