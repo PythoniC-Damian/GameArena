@@ -195,6 +195,18 @@ class WalletTransaction(db.Model):
     failed_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.now())
 
+    @property
+    def public_transaction_id(self):
+        """Stable receipt identifier derived from the immutable database identity.
+
+        UUID5 keeps historical receipts stable without replacing payment-provider
+        references or changing the primary key used by accounting and webhooks.
+        """
+        import uuid
+        if self.id is None:
+            return None
+        return 'GA-' + uuid.uuid5(uuid.NAMESPACE_URL, f'https://gamearena01.com/wallet/transactions/{self.id}').hex.upper()
+
     user = db.relationship('User', backref=db.backref('wallet_transactions', lazy=True))
 
     __table_args__ = (

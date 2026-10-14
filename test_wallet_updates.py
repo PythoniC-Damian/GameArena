@@ -140,3 +140,53 @@ def test_ambiguous_provider_errors_are_not_refunded(monkeypatch, code, message):
         response.json.return_value={'status':False,'message':message}
         monkeypatch.setattr(application.requests,'request',Mock(return_value=response))
         with pytest.raises(RuntimeError):application.paystack_transfer_request('POST','/transfer')
+
+
+def test_history_filters_totals_and_private_csv(monkeypatch):
+    from datetime import datetime
+    with app.app_context():
+        owner,browser,headers=setup(monkeypatch)
+        other=player('history_other')
+        for i in range(22):
+            db.session.add(WalletTransaction(user_id=owner.id,type='withdrawal',amount=100,status='completed',created_at=datetime(2026,10,14),account_name='=FORMULA',transaction_ref=f'wd_filter_{i}'))
+        db.session.add_all([
+            WalletTransaction(user_id=owner.id,type='deposit',amount=500,status='completed',created_at=datetime(2026,10,1),transaction_ref='own_deposit'),
+            WalletTransaction(user_id=owner.id,type='deposit',amount=900,status='pending',created_at=datetime(2026,10,1),transaction_ref='pending_deposit'),
+            WalletTransaction(user_id=owner.id,type='withdrawal',amount=700,status='failed',created_at=datetime(2026,9,1),transaction_ref='failed_old'),
+            WalletTransaction(user_id=other.id,type='deposit',amount=99999,status='completed',created_at=datetime(2026,10,1),transaction_ref='FOREIGN_PRIVATE'),
+        ]);db.session.commit()
+        response=browser.get('/wallet/transactions?month=2026-10&category=withdrawal&status=completed')
+        assert response.status_code==200 and response.text.count('data-wallet-transaction')==20
+        assert 'category=withdrawal' in response.text and 'month=2026-10' in response.text
+        assert 'View receipt' not in response.text and 'FOREIGN_PRIVATE' not in response.text
+        assert browser.get('/wallet/transactions?month=2026-10&category=withdrawal&status=completed&page=2').text.count('data-wallet-transaction')==2
+        csv=browser.get('/wallet/transactions?month=2026-10&category=withdrawal&status=completed&download=csv')
+        assert csv.status_code==200 and 'attachment' in csv.headers['Content-Disposition']
+        assert csv.text.count('wd_filter_')==22 and "'=FORMULA" in csv.text
+        assert 'FOREIGN_PRIVATE' not in csv.text and 'own_deposit' not in csv.text and 'failed_old' not in csv.text
+        assert csv.cache_control.private and csv.cache_control.no_store
+        assert browser.get('/wallet/transactions?status=pending').text.count('data-wallet-transaction')==1
+        summary=browser.get('/wallet/transactions?month=2026-10')
+        assert '+₦500' in summary.text and '−₦2,200' in summary.text
+        assert browser.get('/wallet/transactions?month=2026-09').text.count('data-wallet-transaction')==1
+        for invalid in ('month=2026-99','category=unknown','status=unknown'):
+            assert browser.get('/wallet/transactions?'+invalid).status_code==400
+
+
+def test_receipt_public_id_is_stable_and_provider_reference_is_preserved(monkeypatch):
+    import re
+    with app.app_context():
+        owner,browser,headers=setup(monkeypatch)
+        row=WalletTransaction(user_id=owner.id,type='withdrawal',amount=300,status='pending',account_name='TEST RECIPIENT',account_number='0000000000',transaction_ref='wd_real_provider_reference')
+        db.session.add(row);db.session.commit()
+        public_id=row.public_transaction_id
+        assert re.fullmatch(r'GA-[A-F0-9]{32}',public_id)
+        row.status='processing';db.session.commit();db.session.expire_all()
+        assert row.public_transaction_id==public_id and row.transaction_ref=='wd_real_provider_reference'
+        other=WalletTransaction(user_id=owner.id,type='deposit',amount=100,status='pending')
+        db.session.add(other);db.session.commit()
+        assert other.public_transaction_id!=public_id
+        response=browser.get(f'/wallet/transactions/{row.id}')
+        assert public_id in response.text and 'wd_real_provider_reference' in response.text
+        assert 'data-share-value="******0000"' in response.text and 'Share Receipt' in response.text
+        assert 'data-receipt-status="Pending"' in response.text

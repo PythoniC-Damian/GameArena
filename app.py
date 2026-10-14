@@ -1417,10 +1417,61 @@ def wallet():
 @app.route('/wallet/transactions')
 @login_required
 def wallet_history():
-    pagination = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(
-        WalletTransaction.created_at.desc(), WalletTransaction.id.desc(),
-    ).paginate(page=max(1, request.args.get('page', 1, type=int)), per_page=20, error_out=False)
-    response = app.make_response(render_template('wallet_history.html', pagination=pagination, wallet_transactions=pagination.items))
+    category = request.args.get('category', '')
+    status = request.args.get('status', '')
+    month = request.args.get('month', '')
+    if category not in ('', 'deposit', 'withdrawal') or status not in ('', 'completed', 'pending', 'failed'):
+        abort(400)
+    owned = WalletTransaction.query.filter_by(user_id=current_user.id)
+    month_values = db.session.query(db.func.date_trunc('month', WalletTransaction.created_at)).filter(
+        WalletTransaction.user_id == current_user.id, WalletTransaction.created_at.isnot(None),
+    ).distinct().order_by(db.func.date_trunc('month', WalletTransaction.created_at).desc()).all()
+    months = [(value.strftime('%Y-%m'), value.strftime('%b %Y')) for (value,) in month_values]
+    query = owned
+    if month:
+        try:
+            beginning = datetime.strptime(month, '%Y-%m')
+            if beginning.strftime('%Y-%m') != month:
+                raise ValueError('Invalid month')
+            ending = (beginning.replace(day=28) + timedelta(days=4)).replace(day=1)
+        except ValueError:
+            abort(400)
+        query = query.filter(WalletTransaction.created_at >= beginning, WalletTransaction.created_at < ending)
+    if category:
+        query = query.filter_by(type=category)
+    if status:
+        query = query.filter(WalletTransaction.status.in_(('pending', 'processing'))) if status == 'pending' else query.filter_by(status=status)
+    ordered = query.order_by(WalletTransaction.created_at.desc(), WalletTransaction.id.desc())
+    if request.args.get('download') == 'csv':
+        import csv
+        import io
+        def safe_cell(value):
+            value = str(value or '')
+            return "'" + value if value.lstrip().startswith(('=', '+', '-', '@')) else value
+        def rows():
+            yield '\ufeff'
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(['Transaction ID', 'Date (UTC)', 'Category', 'Recipient', 'Bank', 'Amount (NGN)', 'Status', 'Reference', 'Paystack transfer code'])
+            yield output.getvalue()
+            for transaction in ordered.yield_per(100):
+                output.seek(0); output.truncate(0)
+                writer.writerow([transaction.public_transaction_id, transaction.created_at.isoformat() if transaction.created_at else '', transaction.type,
+                    safe_cell(transaction.account_name), safe_cell(transaction.bank_name), transaction.amount, transaction.status,
+                    safe_cell(transaction.transaction_ref), safe_cell(transaction.provider_transfer_code)])
+                yield output.getvalue()
+        from flask import stream_with_context
+        return Response(stream_with_context(rows()), mimetype='text/csv', headers={
+            'Content-Disposition': 'attachment; filename="gamearena-transactions.csv"', 'Cache-Control': 'private, no-store',
+        })
+    pagination = ordered.paginate(page=max(1, request.args.get('page', 1, type=int)), per_page=20, error_out=False)
+    totals = query.with_entities(WalletTransaction.type, db.func.sum(WalletTransaction.amount)).filter(
+        WalletTransaction.status == 'completed',
+    ).group_by(WalletTransaction.type).all()
+    totals = dict(totals)
+    filters = {'category': category, 'status': status, 'month': month}
+    response = app.make_response(render_template('wallet_history.html', wallet_transactions=pagination.items,
+        pagination=pagination, months=months, filters=filters, incoming=totals.get('deposit', 0), outgoing=totals.get('withdrawal', 0)))
     response.headers['Cache-Control'] = 'private, no-store'
     return response
 
