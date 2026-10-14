@@ -7,6 +7,7 @@ import secrets
 import re
 import time
 from functools import lru_cache
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import urllib.parse
 from collections import defaultdict, deque
 from flask import Response, Flask, render_template, redirect, url_for, request, flash, abort, jsonify, session, g, send_from_directory, has_request_context
@@ -1408,10 +1409,30 @@ def wallet():
     all_joins = joins.options(joinedload(UserTournament.tournament)).order_by(UserTournament.joined_at.desc()).limit(20).all()
     total_spent = db.session.query(db.func.coalesce(db.func.sum(UserTournament.amount_paid), 0)).filter(UserTournament.user_id == current_user.id, UserTournament.payment_status == 'paid').scalar()
     pending_count = joins.filter_by(payment_status='pending').count()
-    pagination = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(WalletTransaction.created_at.desc(), WalletTransaction.id.desc()).paginate(page=request.args.get('page', 1, type=int), per_page=30, error_out=False)
-    wallet_transactions = pagination.items
+    wallet_transactions = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(WalletTransaction.created_at.desc(), WalletTransaction.id.desc()).limit(5).all()
     wallet_balance = current_user.wallet_balance or 0
-    return render_template("wallet.html", transactions=all_joins, total_spent=total_spent, pending_count=pending_count, wallet_transactions=wallet_transactions, pagination=pagination, wallet_balance=wallet_balance, paystack_public_key=PAYSTACK_PUBLIC_KEY)
+    return render_template("wallet.html", transactions=all_joins, total_spent=total_spent, pending_count=pending_count, wallet_transactions=wallet_transactions, wallet_balance=wallet_balance, paystack_public_key=PAYSTACK_PUBLIC_KEY)
+
+
+@app.route('/wallet/transactions')
+@login_required
+def wallet_history():
+    pagination = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(
+        WalletTransaction.created_at.desc(), WalletTransaction.id.desc(),
+    ).paginate(page=max(1, request.args.get('page', 1, type=int)), per_page=20, error_out=False)
+    response = app.make_response(render_template('wallet_history.html', pagination=pagination, wallet_transactions=pagination.items))
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
+@app.route('/wallet/transactions/<int:transaction_id>')
+@login_required
+def wallet_receipt(transaction_id):
+    transaction = WalletTransaction.query.filter_by(id=transaction_id, user_id=current_user.id).first_or_404()
+    response = app.make_response(render_template('wallet_receipt.html', wt=transaction,
+        failure_message=withdrawal_failure_message(transaction.failure_reason) if transaction.status == 'failed' else None))
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @app.route('/chat')
@@ -3362,7 +3383,7 @@ def apply_wallet_deposit(wallet_transaction, transaction):
     updated = WalletTransaction.query.filter_by(
         id=wallet_transaction.id,
         status='pending',
-    ).update({'status': 'completed'}, synchronize_session=False)
+    ).update({'status': 'completed', 'completed_at': datetime.utcnow()}, synchronize_session=False)
     if not updated:
         db.session.rollback()
         return True, 'already_processed'
@@ -3822,14 +3843,63 @@ def wallet_banks():
         return jsonify({'message': 'Unable to load supported banks. Please try again.'}), 502
 
 
+
+def withdrawal_failure_message(reason):
+    message = str(reason or '').lower()
+    if any(value in message for value in ('insufficient', 'balance is low', 'not enough')):
+        return 'GameArena payout funding is temporarily insufficient. Please contact support; no withdrawal was completed.'
+    if any(value in message for value in ('starter', 'registered business', 'not enabled', 'not allowed', 'disabled', 'not configured', 'permission', 'unauthorized', 'invalid key')):
+        return 'GameArena bank payouts are not enabled or configured with Paystack. Please contact support.'
+    if any(value in message for value in ('account', 'bank', 'recipient')):
+        return 'The bank account could not be verified or paid. Check the selected bank and account number, then try again.'
+    return 'Paystack could not complete this withdrawal. Please contact support with the transaction reference.'
+
+
+def wallet_account_signer():
+    return URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='wallet-account-verification-v1')
+
+
+@app.route('/wallet/resolve-account', methods=['POST'])
+@login_required
+def wallet_resolve_account():
+    retry = consume_rate_limit('wallet_resolve:' + str(current_user.id), 15, 60)
+    if retry is not None:
+        return rate_limit_response(retry)
+    data = request.get_json(silent=True) or {}
+    bank_code = str(data.get('bank_code', '')).strip()
+    number = str(data.get('account_number', '')).strip()
+    if not re.fullmatch(r'[A-Za-z0-9_-]{2,20}', bank_code) or not re.fullmatch(r'[0-9]{10}', number):
+        return jsonify({'message': 'Select your bank and enter a 10-digit account number.'}), 400
+    try:
+        if _supported_banks_cache['expires'] <= time.monotonic():
+            banks = paystack_transfer_request('GET', '/bank', params={'currency': PAYSTACK_CURRENCY, 'country': 'nigeria', 'perPage': 100})
+            _supported_banks_cache.update(expires=time.monotonic()+300, banks=[{'name': bank['name'], 'code': str(bank['code'])} for bank in banks if bank.get('name') and bank.get('code') and bank.get('active', True)])
+        bank = next((item for item in _supported_banks_cache['banks'] if item['code'] == bank_code), None)
+        if not bank:
+            return jsonify({'message': 'Choose a supported bank from the bank list.'}), 400
+        account = paystack_transfer_request('GET', '/bank/resolve', params={'account_number': number, 'bank_code': bank_code})
+        name = str(account.get('account_name') or '').strip()
+        if not name or (account.get('account_number') and str(account['account_number']) != number):
+            raise ValueError('Account details could not be verified.')
+        verified = {'user_id': current_user.id, 'bank_code': bank_code, 'bank_name': bank['name'], 'account_number': number, 'account_name': name[:200]}
+        response = jsonify({'account_name': verified['account_name'], 'bank_name': bank['name'], 'verification_token': wallet_account_signer().dumps(verified)})
+        response.headers['Cache-Control'] = 'private, no-store'
+        return response
+    except ValueError as error:
+        return jsonify({'message': withdrawal_failure_message(str(error))}), 422
+    except Exception:
+        return jsonify({'message': 'Account verification is temporarily unavailable. Please try again.'}), 503
+
+
 def withdrawal_response(withdrawal):
     return {
         'status': 'success' if withdrawal.status != 'failed' else 'error',
         'withdrawal_status': withdrawal.status,
         'reference': withdrawal.transaction_ref,
+        'receipt_url': url_for('wallet_receipt', transaction_id=withdrawal.id),
         'message': (
             'Withdrawal completed successfully.' if withdrawal.status == 'completed'
-            else 'Withdrawal could not be completed; reserved funds have been returned.' if withdrawal.status == 'failed'
+            else withdrawal_failure_message(withdrawal.failure_reason) + ' Reserved funds have been returned.' if withdrawal.status == 'failed'
             else 'Withdrawal request received and is being processed.'
         ),
     }
@@ -3840,8 +3910,14 @@ def paystack_transfer_request(method, path, **kwargs):
         raise RuntimeError('Paystack transfers are not configured.')
     headers = {'Authorization': f'Bearer {PAYSTACK_SECRET_KEY}', 'Content-Type': 'application/json'}
     response = requests.request(method, f'{PAYSTACK_BASE_URL}{path}', headers=headers, timeout=15, **kwargs)
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError as error:
+        raise RuntimeError('Paystack returned an unreadable response.') from error
     if not response.ok or not payload.get('status'):
+        message = str(payload.get('message', '')).lower()
+        if response.status_code >= 500 or response.status_code == 409 or any(term in message for term in ('duplicate', 'already exists', 'already been used')):
+            raise RuntimeError('Paystack request outcome is uncertain.')
         raise ValueError((payload.get('message') if isinstance(payload, dict) else None) or 'Paystack request failed.')
     return payload.get('data') or {}
 
@@ -3858,6 +3934,7 @@ def release_failed_withdrawal(withdrawal_id, reason, provider_transfer_code=None
     owner.wallet_balance = (owner.wallet_balance or 0) + withdrawal.amount
     withdrawal.status = 'failed'
     withdrawal.failure_reason = (reason or 'Transfer failed.')[:500]
+    app.logger.warning('Withdrawal rejected id=%s reason=%s', withdrawal.id, withdrawal.failure_reason)
     withdrawal.failed_at = datetime.utcnow()
     if provider_transfer_code:
         withdrawal.provider_transfer_code = provider_transfer_code[:100]
@@ -3899,10 +3976,14 @@ def start_withdrawal_transfer(withdrawal_id):
     if not withdrawal or withdrawal.status in WITHDRAWAL_FINAL_STATUSES:
         db.session.commit()
         return withdrawal
+    if withdrawal.status == 'processing':
+        db.session.commit()
+        return withdrawal
     withdrawal.status = 'processing'
     withdrawal.processing_at = withdrawal.processing_at or datetime.utcnow()
     db.session.commit()
 
+    transfer_attempted = False
     try:
         account = paystack_transfer_request(
             'GET', '/bank/resolve', params={'account_number': withdrawal.account_number, 'bank_code': withdrawal.bank_code},
@@ -3911,6 +3992,8 @@ def start_withdrawal_transfer(withdrawal_id):
         if not resolved_name:
             raise ValueError('Paystack could not verify the account details.')
         withdrawal = WalletTransaction.query.filter_by(id=withdrawal_id).with_for_update().first()
+        if withdrawal.account_name and withdrawal.account_name != resolved_name[:200]:
+            raise ValueError('The account name changed. Verify the bank account again.')
         withdrawal.account_name = resolved_name[:200]
         db.session.commit()
 
@@ -3925,6 +4008,7 @@ def start_withdrawal_transfer(withdrawal_id):
         withdrawal.provider_recipient_code = recipient_code[:100]
         db.session.commit()
 
+        transfer_attempted = True
         transfer = paystack_transfer_request('POST', '/transfer', json={
             'source': 'balance', 'amount': withdrawal.amount * 100, 'reference': withdrawal.transaction_ref,
             'recipient': recipient_code, 'reason': f'GameArena wallet withdrawal {withdrawal.transaction_ref}',
@@ -3945,6 +4029,8 @@ def start_withdrawal_transfer(withdrawal_id):
         return release_failed_withdrawal(withdrawal_id, str(error))
     except Exception:
         db.session.rollback()
+        if not transfer_attempted:
+            return release_failed_withdrawal(withdrawal_id, 'Bank verification service is temporarily unavailable.')
         app.logger.exception('Withdrawal transfer submission is inconclusive reference=%s', withdrawal_id)
         # Do not refund on an unknown network outcome: Paystack may have queued
         # the transfer. The signed webhook is authoritative for final state.
@@ -3968,8 +4054,19 @@ def request_wallet_withdrawal(req_data):
 
     existing = WalletTransaction.query.filter_by(user_id=current_user.id, type='withdrawal', idempotency_key=idempotency_key).with_for_update().first()
     if existing:
+        if existing.amount != int(amount_raw) or existing.bank_code != bank_code or existing.account_number != account_number:
+            db.session.commit()
+            return jsonify({'status': 'error', 'message': 'An earlier withdrawal has this request ID. Check its receipt before starting another.', 'receipt_url': url_for('wallet_receipt', transaction_id=existing.id)}), 409
         db.session.commit()
         return jsonify(withdrawal_response(existing))
+    try:
+        verified = wallet_account_signer().loads(str(req_data.get('verification_token', '')), max_age=300)
+        if verified.get('user_id') != current_user.id or verified.get('bank_code') != bank_code or verified.get('account_number') != account_number:
+            raise BadSignature('Account confirmation mismatch')
+    except (BadSignature, SignatureExpired, TypeError, AttributeError):
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': 'Verify your bank account name again before withdrawing.'}), 400
+    bank_name = verified['bank_name']
     amount = int(amount_raw)
     owner = User.query.filter_by(id=current_user.id).with_for_update().populate_existing().first()
     if not owner:
@@ -3982,7 +4079,7 @@ def request_wallet_withdrawal(req_data):
     withdrawal = WalletTransaction(
         user_id=owner.id, type='withdrawal', amount=amount, status='pending',
         transaction_ref=f'wd_{uuid.uuid4().hex}', idempotency_key=idempotency_key,
-        bank_name=bank_name[:120], bank_code=bank_code, account_number=account_number,
+        bank_name=bank_name[:120], bank_code=bank_code, account_number=account_number, account_name=verified['account_name'],
     )
     owner.wallet_balance = (owner.wallet_balance or 0) - amount
     db.session.add(withdrawal)
@@ -4008,54 +4105,6 @@ def wallet_withdraw():
 
     return request_wallet_withdrawal(req_data)
 
-    amount = str(req_data.get('amount', '')).strip()
-    bank_name = str(req_data.get('bank_name', '')).strip()
-    account_number = str(req_data.get('account_number', '')).strip()
-    account_name = str(req_data.get('account_name', '')).strip()
-
-    if not amount or not amount.isdigit() or int(amount) <= 0:
-        return jsonify({'status': 'error', 'message': 'Please enter a valid withdrawal amount.'})
-
-    if not bank_name or not account_number or not account_name:
-        return jsonify({'status': 'error', 'message': 'Please fill in all bank details.'})
-
-    if len(bank_name) > 120 or len(account_number) > 40 or len(account_name) > 200:
-        return jsonify({'status': 'error', 'message': 'One or more bank details are too long.'}), 400
-    if not account_number.isdigit() or len(account_number) != 10:
-        return jsonify({'status': 'error', 'message': 'Account number must contain exactly 10 digits.'}), 400
-
-    amount = int(amount)
-    # Lock and refresh the wallet owner before checking funds. This serialises
-    # concurrent debit requests instead of trusting a potentially stale
-    # ``current_user`` identity-map value.
-    wallet_owner = User.query.filter_by(id=current_user.id).with_for_update().populate_existing().first()
-    if wallet_owner is None:
-        return jsonify({'status': 'error', 'message': 'Wallet owner was not found.'}), 404
-    balance = wallet_owner.wallet_balance or 0
-
-    if amount > balance:
-        return jsonify({'status': 'error', 'message': f'Insufficient balance. You have â‚¦{balance:,} in your wallet.'})
-
-    import uuid
-    transaction_ref = str(uuid.uuid4())
-
-    #Remember Jegede This code is to Deduct from wallet and create withdrawal record
-    wallet_owner.wallet_balance = balance - amount
-
-    wt = WalletTransaction(
-        user_id=wallet_owner.id,
-        type='withdrawal',
-        amount=amount,
-        status='completed',
-        transaction_ref=transaction_ref,
-        bank_name=bank_name,
-        account_number=account_number,
-        account_name=account_name
-    )
-    db.session.add(wt)
-    db.session.commit()
-
-    return jsonify({'status': 'success', 'message': f'â‚¦{amount:,} withdrawn successfully to {account_name} ({bank_name} - {account_number}).'})
 
 # LOGOUT
 @app.route("/logout", methods=['GET', 'POST'])

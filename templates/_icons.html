@@ -1,6 +1,8 @@
 {% macro icon(name, class_name='') -%}
 <svg class="ga-icon {{ class_name }}" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
 {% if name == 'search' %}<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>
+{% elif name == 'eye' %}<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>
+{% elif name == 'eye-off' %}<path d="m3 3 18 18M10 5a13 13 0 0 1 12 7 17 17 0 0 1-4 5M6 6a17 17 0 0 0-4 6s3.5 7 10 7a13 13 0 0 0 4-1M10 10a3 3 0 0 0 4 4"/>
 {% elif name == 'shield' %}<path d="M12 3 4 6v6c0 4 4 7 8 9 4-2 8-5 8-9V6z"/><path d="m8 12 3 3 5-6"/>
 {% elif name == 'bookmark' %}<path d="M6 3h12v18l-6-4-6 4z"/>
 {% elif name == 'bell' %}<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>

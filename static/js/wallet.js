@@ -2,9 +2,63 @@
   let activeDialog, previousFocus;
   const main = document.querySelector('main');
   const bankSelect = document.getElementById('withdrawBank');
+  const accountInput = document.getElementById('accountNumber');
+  const withdrawForm = document.getElementById('withdrawForm');
+  const withdrawButton = withdrawForm.querySelector('button[type="submit"]');
+  const accountStatus = document.getElementById('resolvedAccountName');
+  const retryAccount = document.getElementById('retryAccount');
+  let verifiedAccount = null, resolveTimer, resolveController, resolveSequence = 0;
+  function resetAccount() {
+    clearTimeout(resolveTimer); resolveController?.abort(); resolveSequence++;
+    verifiedAccount = null; withdrawButton.disabled = true; retryAccount.hidden = true;
+    accountStatus.textContent = 'Select your bank and enter your account number.';
+  }
+  async function resolveAccount() {
+    resetAccount();
+    const number = accountInput.value.trim(), bank = bankSelect.value;
+    if (!bank || !/^[0-9]{10}$/.test(number)) return;
+    const sequence = resolveSequence;
+    const controller = new AbortController();
+    resolveController = controller;
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    accountStatus.textContent = 'Verifying account holder…';
+    try {
+      const response = await fetch(withdrawForm.dataset.resolveUrl, {method:'POST', headers:{Accept:'application/json','Content-Type':'application/json','X-CSRFToken':withdrawForm.csrf_token.value},body:JSON.stringify({bank_code:bank,account_number:number}),signal:controller.signal,cache:'no-store'});
+      if (response.redirected || response.status === 401) throw new Error('Your session expired. Log in again.');
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Account verification is unavailable. Please retry.');
+      const data = await response.json();
+      if (!response.ok || !data.account_name || !data.verification_token) throw new Error(data.message || 'Unable to verify this account.');
+      if (sequence !== resolveSequence || bank !== bankSelect.value || number !== accountInput.value.trim()) return;
+      verifiedAccount = {bank,number,token:data.verification_token,expires:Date.now()+290000};
+      accountStatus.textContent = data.account_name + ' · ' + data.bank_name;
+      withdrawButton.disabled = false;
+    } catch (error) {
+      if (sequence !== resolveSequence) return;
+      accountStatus.textContent = error.name === 'AbortError' ? 'Verification timed out. Please retry.' : error.message;
+      retryAccount.hidden = false;
+    } finally { clearTimeout(timeout); }
+  }
+  function accountChanged() { resetAccount(); resolveTimer = setTimeout(resolveAccount, 400); }
+  bankSelect.addEventListener('change', accountChanged);
+  accountInput.addEventListener('input', accountChanged);
+  retryAccount.addEventListener('click', resolveAccount);
+  const balance = document.getElementById('walletBalance'), toggle = document.getElementById('toggleBalance');
+  if (balance && toggle) {
+    const amount = balance.textContent; let hidden = false;
+    try { hidden = localStorage.getItem('gamearenaHideBalance') === '1'; } catch (_) {}
+    function drawBalance() {
+      balance.textContent = hidden ? '****' : amount;
+      toggle.setAttribute('aria-label', hidden ? 'Show balance' : 'Hide balance');
+      toggle.setAttribute('aria-pressed', String(hidden));
+      toggle.querySelector('[data-eye-open]').hidden = hidden;
+      toggle.querySelector('[data-eye-closed]').hidden = !hidden;
+    }
+    toggle.addEventListener('click', () => {hidden = !hidden; drawBalance(); try {localStorage.setItem('gamearenaHideBalance',hidden?'1':'0');} catch (_) {}});
+    drawBalance();
+  }
   async function loadBanks() {
     const status = document.getElementById('bankStatus'), retry = document.getElementById('retryBanks');
-    status.textContent = 'Loading supported banks…'; retry.hidden = true;
+    resetAccount(); status.textContent = 'Loading supported banks…'; retry.hidden = true;
     bankSelect.disabled = true;
     try {
       const response = await fetch(bankSelect.dataset.url, {headers:{Accept:'application/json'},cache:'no-store',signal: AbortSignal.timeout(30000)});
@@ -55,6 +109,8 @@
       const body = { amount };
       if (withdrawal) {
         if (bankSelect.disabled || !bankSelect.value) { status.textContent = 'Choose a supported bank before requesting a withdrawal.'; return; }
+        if (!verifiedAccount || verifiedAccount.bank !== bankSelect.value || verifiedAccount.number !== accountInput.value.trim() || verifiedAccount.expires < Date.now()) { status.textContent = 'Verify your account holder name before withdrawing.'; resolveAccount(); return; }
+        body.verification_token = verifiedAccount.token;
         body.bank_name = bankSelect.selectedOptions[0].textContent;
         body.bank_code = bankSelect.value;
         body.account_number = document.getElementById('accountNumber').value.trim();
@@ -71,16 +127,22 @@
         if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('The service is unavailable. Check your session and transaction history before retrying.');
         const data = await response.json();
         if (withdrawal && data.withdrawal_status === 'failed') sessionStorage.removeItem('gamearena-withdrawal-idempotency-key');
-        if (!response.ok || data.status !== 'success') throw new Error(data.message || 'Unable to complete this request.');
+        if (!response.ok || data.status !== 'success') {
+          status.textContent = data.message || 'Unable to complete this request.';
+          if (withdrawal && data.receipt_url?.startsWith('/wallet/transactions/')) {
+            const link = document.createElement('a'); link.href = data.receipt_url; link.textContent = ' View receipt'; status.append(link);
+          }
+          return;
+        }
         if (withdrawal) {
-          sessionStorage.removeItem('gamearena-withdrawal-idempotency-key'); status.textContent = data.message || 'Withdrawal submitted.'; window.location.reload();
+          sessionStorage.removeItem('gamearena-withdrawal-idempotency-key'); status.textContent = data.message || 'Withdrawal submitted.'; window.location.assign(data.receipt_url);
         } else {
           const url = new URL(data.authorization_url);
           if (url.protocol !== 'https:') throw new Error('Checkout could not be opened. Please try again.');
           window.location.assign(url.href);
         }
       } catch (error) { status.textContent = error.name === 'TimeoutError' ? 'The response timed out. Check transaction history before retrying.' : error.message; }
-      finally { delete form.dataset.busy; button.disabled = false; button.removeAttribute('aria-busy'); }
+      finally { delete form.dataset.busy; button.disabled = withdrawal && (!verifiedAccount || verifiedAccount.expires < Date.now()); button.removeAttribute('aria-busy'); }
     });
   }
 })();

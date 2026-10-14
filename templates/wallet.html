@@ -1,16 +1,17 @@
 {% extends '_base.html' %}
 {% block title %}Wallet · GameArena{% endblock %}
 {% block content %}
+{% from "_icons.html" import icon %}
 <h1>Wallet</h1>
 <section class="ga-panel ga-section">
-<p class="ga-eyebrow">Available balance</p><p class="ga-balance">{{ wallet_balance|naira }}</p>
+<div class="ga-actions"><p class="ga-eyebrow">Available balance</p><button id="toggleBalance" type="button" class="ga-icon-button" aria-label="Hide balance" aria-pressed="false"><span data-eye-open>{{ icon("eye") }}</span><span data-eye-closed hidden>{{ icon("eye-off") }}</span></button></div><p class="ga-balance" id="walletBalance" aria-live="polite">{{ wallet_balance|naira }}</p>
 <p class="ga-muted">Manage deposits, withdrawals, and wallet activity.</p>
 <div class="ga-actions"><button class="ga-button" onclick="openAddMoneyModal()">Deposit</button><button class="ga-button ga-button-secondary" onclick="openWithdrawModal()">Withdraw</button></div>
 </section>
 <section class="ga-panel ga-section"><h2>Transaction history</h2>
-{% for wt in wallet_transactions %}<article class="ga-record"><div><strong>{{ wt.type|capitalize }}</strong><p class="ga-muted">{{ wt.created_at.strftime('%b %d, %Y · %H:%M') if wt.created_at else '' }}</p></div><div class="ga-text-right"><strong>{{ wt.amount|naira }}</strong><p><span class="ga-badge">{{ wt.status|replace('_', ' ') }}</span></p></div></article>
-{% else %}<p class="ga-empty">No wallet transactions yet. Completed deposits and withdrawals will appear here.</p>{% endfor %}
-{% include '_pagination.html' %}</section>
+<p class="ga-muted">Your 5 most recent transactions.</p>
+{% include '_wallet_records.html' %}
+<a class="ga-button ga-button-secondary" href="{{ url_for('wallet_history') }}">View all transaction history</a></section>
 <section class="ga-panel ga-section"><h2>Tournament entries</h2><p class="ga-muted">Total paid: {{ total_spent|naira }} · {{ pending_count }} pending. Showing the 20 most recent entries.</p>
 {% for ut in transactions %}<article class="ga-record"><div><a href="{{ url_for('tournament_details', tournament_id=ut.tournament_id) }}">{{ ut.tournament.name }}</a><p class="ga-muted">{{ ut.joined_at.strftime('%b %d, %Y') if ut.joined_at else '' }}</p></div><div class="ga-text-right"><strong>{{ ut.amount_paid|naira }}</strong><p class="ga-muted">{{ ut.payment_status|capitalize }}</p>{% if ut.payment_status == 'pending' and ut.tournament.status == 'open' %}<a href="{{ url_for('pay_for_tournament', tournament_id=ut.tournament_id) }}">Resume payment</a>{% endif %}</div></article>{% else %}<p class="ga-empty">No tournament entries yet.</p>{% endfor %}</section>
 {% endblock %}
@@ -45,7 +46,7 @@
             </div>
             <button aria-label="Close withdrawal" onclick="closeWithdrawModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
         </div>
-        <form data-url="{{ url_for('wallet_withdraw') }}" id="withdrawForm" class="mt-6 space-y-5">
+        <form data-url="{{ url_for('wallet_withdraw') }}" data-resolve-url="{{ url_for('wallet_resolve_account') }}" id="withdrawForm" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <div>
                 <label for="withdrawAmount" class="block text-sm font-semibold text-cyan-300 mb-2">Amount (₦)</label>
@@ -59,7 +60,8 @@
                 <input id="accountNumber" type="text" maxlength="10" inputmode="numeric" pattern="[0-9]{10}" placeholder="0123456789" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
             </div>
 
-            <button type="submit" class="w-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-cyan-400 hover:to-emerald-400">Withdraw Now</button>
+            <div><p class="ga-muted">Account holder</p><p id="resolvedAccountName" role="status" aria-live="polite">Select your bank and enter your account number.</p><button type="button" id="retryAccount" class="ga-button ga-button-secondary" hidden>Retry account verification</button></div>
+            <button type="submit" disabled class="w-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-cyan-400 hover:to-emerald-400">Withdraw Now</button>
         <p class="ga-muted" role="status" aria-live="polite" data-form-status></p></form>
     </div>
 </div>

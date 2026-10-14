@@ -1,0 +1,3 @@
+{% for wt in wallet_transactions %}
+<article class="ga-record" data-wallet-transaction><div><a href="{{ url_for('wallet_receipt', transaction_id=wt.id) }}"><strong>{{ wt.type|capitalize }}</strong></a><p class="ga-muted">{{ wt.created_at.strftime('%d %b %Y · %H:%M UTC') if wt.created_at else 'Date unavailable' }}</p><a href="{{ url_for('wallet_receipt', transaction_id=wt.id) }}">View receipt</a></div><div class="ga-text-right"><strong>{{ wt.amount|naira }}</strong><p><span class="ga-badge">{{ 'Successful' if wt.status == 'completed' else 'Failed' if wt.status == 'failed' else 'Pending' }}</span></p></div></article>
+{% else %}<p class="ga-empty">No wallet transactions yet.</p>{% endfor %}

@@ -117,3 +117,6 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=submit
 .ga-profile-actions .ga-connection-controls{display:contents}
 .ga-connection-controls p{flex-basis:100%;font-size:14px}
 [data-player-connection][hidden]{display:none!important}
+
+/* Wallet receipts wrap long references on small screens. */
+.ga-receipt-details{display:grid;gap:16px;margin:24px 0}.ga-receipt-details>div{display:grid;grid-template-columns:minmax(120px,1fr) minmax(0,2fr);gap:12px}.ga-receipt-details dd{margin:0;overflow-wrap:anywhere}.ga-receipt-details dt{color:var(--ga-muted,#94a3b8)}@media(max-width:480px){.ga-receipt-details>div{grid-template-columns:1fr;gap:4px}}

@@ -1,0 +1,18 @@
+{% extends '_base.html' %}
+{% block title %}Transaction receipt · GameArena{% endblock %}
+{% block content %}<a href="{{ url_for('wallet_history') }}">Back to transaction history</a><h1>Transaction receipt</h1>
+<section class="ga-panel ga-section ga-wallet-receipt"><p class="ga-eyebrow">{{ wt.type|capitalize }}</p><h2>{{ wt.amount|naira }}</h2><p><span class="ga-badge">{{ 'Successful' if wt.status == 'completed' else 'Failed' if wt.status == 'failed' else 'Pending' }}</span></p>
+{% if wt.status == 'processing' %}<p class="ga-muted">Processing or awaiting confirmation. This is not confirmation of a completed payout.</p>{% endif %}
+<dl class="ga-receipt-details">
+<div><dt>Recipient</dt><dd>{{ wt.account_name or 'Not verified' if wt.type == 'withdrawal' else 'GameArena wallet · ' ~ current_user.username }}</dd></div>
+{% if wt.type == 'withdrawal' %}<div><dt>Bank</dt><dd>{{ wt.bank_name or 'Not recorded' }}</dd></div><div><dt>Account number</dt><dd>{{ wt.account_number or 'Not recorded' }}</dd></div>{% endif %}
+<div><dt>Amount</dt><dd>{{ wt.amount|naira }}</dd></div><div><dt>Currency</dt><dd>NGN</dd></div>
+<div><dt>GameArena transaction ID</dt><dd>{{ wt.id }}</dd></div><div><dt>Transaction reference</dt><dd>{{ wt.transaction_ref or 'Not recorded' }}</dd></div>
+{% if wt.type == 'withdrawal' %}<div><dt>Paystack transfer code</dt><dd>{{ wt.provider_transfer_code or 'Not issued or not recorded' }}</dd></div>{% endif %}
+<div><dt>Created</dt><dd>{{ wt.created_at.strftime('%d %b %Y · %H:%M:%S UTC') if wt.created_at else 'Not recorded' }}</dd></div>
+{% if wt.completed_at %}<div><dt>Completed</dt><dd>{{ wt.completed_at.strftime('%d %b %Y · %H:%M:%S UTC') }}</dd></div>{% endif %}
+{% if wt.failed_at %}<div><dt>Failed</dt><dd>{{ wt.failed_at.strftime('%d %b %Y · %H:%M:%S UTC') }}</dd></div>{% endif %}
+</dl>{% if failure_message %}<p role="status">{{ failure_message }}{% if wt.type == 'withdrawal' %} Reserved funds were returned to your wallet.{% endif %}</p>{% endif %}
+{% if current_user.is_admin and wt.failure_reason %}<details><summary>Provider failure details (admin)</summary><p>{{ wt.failure_reason }}</p></details>{% endif %}
+{% if wt.type == 'deposit' and wt.status == 'pending' %}<a class="ga-button ga-button-secondary" href="{{ url_for('wallet_verify_deposit', reference=wt.transaction_ref) }}">Check payment status</a>{% endif %}
+<a class="ga-button ga-button-secondary" href="{{ url_for('wallet') }}">Back to wallet</a></section>{% endblock %}
