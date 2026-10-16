@@ -82,7 +82,10 @@ def rate_snapshot():
                 try:redis.setex(key,86400,json.dumps(_cache))
                 except Exception:current_app.logger.warning('FX shared cache write unavailable.')
             return dict(_cache,stale=False)
-        except (requests.RequestException,ValueError,TypeError,AttributeError):
+        except (requests.RequestException,ValueError,TypeError,AttributeError) as error:
+            reason=str(error) if isinstance(error,RatesUnavailable) else type(error).__name__
+            upstream_status=getattr(getattr(error,'response',None),'status_code',None)
+            current_app.logger.warning('FX refresh unavailable reason=%s upstream_status=%s',reason,upstream_status)
             _retry_after=now+60
             if _cache and now-_cache['fetched_at']<86400:return dict(_cache,stale=True)
             raise RatesUnavailable('Exchange rates are temporarily unavailable.') from None
