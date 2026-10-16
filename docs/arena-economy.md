@@ -162,3 +162,12 @@ withdrawal, prize payout or paid hosting provisioning was performed. Windows pyt
 plugin autoload was disabled for the successful regression run after a native
 runner fault. Python/JS syntax, stylesheet fingerprints and git diff checks passed.
 Production deployment is tracked separately from these local validation results.
+
+
+Deployment follow-up: the first Render attempt encountered PostgreSQL 40P01 while
+reapplying RLS to an existing user table during the new revision. Its transaction
+rolled back and the prior release remained healthy. The revision now secures only
+its two newly created tables; existing table policies are preserved. The release
+runner retries rolled-back Alembic transactions at most three times only for
+40P01/55P03, with short backoff. Permanent errors still fail deployment. Seven
+security, migration-preservation and retry tests passed on isolated PostgreSQL.

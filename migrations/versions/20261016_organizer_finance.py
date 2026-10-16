@@ -14,7 +14,9 @@ def upgrade():
     for model in (OrganizerProfile, OrganizerFinance):
         model.__table__.create(op.get_bind(), checkfirst=True)
     op.execute('CREATE INDEX IF NOT EXISTS ix_organizer_draft_owner_status ON organizer_draft (owner_id, status)')
-    secure_backend_tables(op.get_bind())
+    # Existing backend tables were secured by earlier revisions. Re-locking all
+    # live tables here can deadlock with requests waiting on the wallet ALTER.
+    secure_backend_tables(op.get_bind(), tables=('organizer_profile', 'organizer_finance'))
 
 def downgrade():
     raise RuntimeError('Preserve financial records and signed agreements during rollback.')

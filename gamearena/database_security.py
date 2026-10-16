@@ -13,7 +13,7 @@ BACKEND_TABLES = (
 )
 
 
-def secure_backend_tables(connection):
+def secure_backend_tables(connection, tables=None):
     """Idempotent permission-only changes; retain owner/server and service access.
 
     No browser policies are appropriate: Flask authorizes all application queries.
@@ -28,7 +28,10 @@ def secure_backend_tables(connection):
         "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
     )).scalars())
     secured = []
-    for table in BACKEND_TABLES:
+    selected = BACKEND_TABLES if tables is None else tuple(tables)
+    if any(table not in BACKEND_TABLES for table in selected):
+        raise ValueError("Only known backend tables may be secured.")
+    for table in selected:
         if table not in existing:
             continue
         relation = 'public.' + quote(table)

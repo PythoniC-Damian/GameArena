@@ -50,3 +50,26 @@ def test_backend_security_denies_clients_preserves_owner_and_defaults():
                 assert not connection.execute(text("SELECT has_sequence_privilege(:role, 'public.security_default_probe_id_seq', 'USAGE,SELECT,UPDATE')"), {'role': role}).scalar()
         finally:
             transaction.rollback()
+
+
+def test_organizer_migration_only_resecures_new_tables():
+    import importlib
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import event
+    revision=importlib.import_module('migrations.versions.20261016_organizer_finance')
+    with app.app_context(), db.engine.connect() as connection:
+        transaction=connection.begin();statements=[]
+        def collect(conn,cursor,statement,parameters,context,executemany): statements.append(statement)
+        event.listen(connection,'before_cursor_execute',collect)
+        try:
+            with Operations.context(MigrationContext.configure(connection)):
+                revision.upgrade()
+            rls=[sql for sql in statements if sql.startswith('ALTER TABLE public.') and 'ENABLE ROW LEVEL SECURITY' in sql]
+            assert len(rls)==2
+            assert all('organizer_profile' in sql or 'organizer_finance' in sql for sql in rls)
+            for table in ('organizer_profile','organizer_finance'):
+                assert connection.execute(text('SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass(:name)'),{'name':'public.'+table}).scalar()
+        finally:
+            event.remove(connection,'before_cursor_execute',collect)
+            transaction.rollback()
