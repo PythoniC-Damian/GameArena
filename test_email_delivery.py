@@ -78,7 +78,7 @@ def test_local_auto_smtp_fallback_is_preserved(mail,monkeypatch):
 def test_registration_code_arrives_in_provider_payload_and_verifies(mail,monkeypatch):
     connection,_,_=mail;monkeypatch.setenv('RESEND_API_KEY','test-only-key');monkeypatch.setenv('EMAIL_PROVIDER','resend')
     viewer=app.test_client();csrf=token(viewer.get('/register'))
-    response=viewer.post('/register',data={'csrf_token':csrf,'username':'email_contract_player','email':'email-contract@example.com','password':'Only-Test-42!'})
+    response=viewer.post('/register',data={'csrf_token':csrf,'username':'email_contract_player','email':'email-contract@example.com','password':'Only-Test-42!','accept_terms':'y'})
     assert response.status_code==302 and '/verify-email' in response.location
     with app.app_context():
         user=User.query.filter_by(email='email-contract@example.com').one();code=user.verification_code

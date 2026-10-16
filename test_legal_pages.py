@@ -14,7 +14,7 @@ def test_policy_pages_public_links_and_aliases():
     assert 'not end-to-end encrypted' in visitor.get('/privacy').text
     assert 'Grandmaster and Legendary are planned tiers' in visitor.get('/terms').text
     registration = visitor.get('/register')
-    assert 'By creating an account' in registration.text
+    assert 'I agree to the' in registration.text and 'data-required-agreement' in registration.text
     assert '/privacy-policy' in registration.text and '/terms-of-use' in registration.text
 
 def test_non_home_pages_do_not_prepare_hero_catalogue(monkeypatch):

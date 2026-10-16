@@ -21,6 +21,7 @@ MIGRATIONS = (
     ('20261001_product_features',),
     ('20261003_chat_replies_and_web_push',),
     ('20261004_chat_delivery_and_profile_photos',),
+    ('20261016_gp_withdrawal_fee',),
 )
 
 # These are deliberately additive. PostgreSQL's IF NOT EXISTS keeps deployment
@@ -315,6 +316,10 @@ def migrate(url=None):
                 ensure_chat_delivery_and_photos(connection)
                 mark_migration_applied(connection, '20261004_chat_delivery_and_profile_photos')
 
+            if '20261016_gp_withdrawal_fee' not in completed:
+                connection.execute(text('ALTER TABLE wallet_transaction ADD COLUMN IF NOT EXISTS withdrawal_fee_kobo INTEGER NOT NULL DEFAULT 0'))
+                mark_migration_applied(connection, '20261016_gp_withdrawal_fee')
+
             # Keep this list near the migration declarations so a future migration
             # cannot silently be added without an implementation branch above.
             unknown = {migration[0] for migration in MIGRATIONS} - {
@@ -325,6 +330,7 @@ def migrate(url=None):
                 '20261001_product_features',
                 '20261003_chat_replies_and_web_push',
                 '20261004_chat_delivery_and_profile_photos',
+                '20261016_gp_withdrawal_fee',
             }
             if unknown:
                 raise RuntimeError(f'Migration declarations without implementation: {sorted(unknown)}')

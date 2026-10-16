@@ -181,6 +181,12 @@ class WalletTransaction(db.Model):
     # Withdrawals use pending -> processing -> completed, with failed for a
     # definitive provider failure after the reserved funds have been released.
     status = db.Column(db.String(20), default='completed')
+    withdrawal_fee_kobo = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+
+    @property
+    def payout_kobo(self):
+        return self.amount * 100 - (self.withdrawal_fee_kobo or 0)
+
     transaction_ref = db.Column(db.String(100), unique=True, nullable=True)
     bank_name = db.Column(db.String(120), nullable=True)
     bank_code = db.Column(db.String(20), nullable=True)

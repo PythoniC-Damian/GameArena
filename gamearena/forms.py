@@ -1,6 +1,6 @@
 """Existing WTForms field and validation contracts."""
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, validators
+from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, BooleanField, validators
 
 class RegistrationForm(FlaskForm):
     username = StringField('Username', [
@@ -17,7 +17,8 @@ class RegistrationForm(FlaskForm):
         validators.DataRequired(),
         validators.Length(min=6, message="Password must be at least 6 characters long")
     ])
-    submit = SubmitField('Register')
+    accept_terms = BooleanField('I agree to the Terms of Use and acknowledge the Privacy Policy', [validators.DataRequired(message='Please agree to the Terms of Use and acknowledge the Privacy Policy to create your account.')])
+    submit = SubmitField('Create Account')
 
 
 class LoginForm(FlaskForm):

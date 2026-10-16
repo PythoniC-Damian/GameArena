@@ -4,7 +4,7 @@
 {% block content %}
 <div class="ga-history-heading"><div><a class="ga-history-back" href="{{ url_for('wallet') }}">{{ icon('chevron-left') }} Wallet</a><h1>Transactions</h1></div><a class="ga-button ga-button-secondary" href="{{ url_for('wallet_history', download='csv', **filters) }}">{{ icon('download') }} Download</a></div>
 <form class="ga-history-filters" method="get" action="{{ url_for('wallet_history') }}">
-<label><span>Category</span><select name="category"><option value="">All categories</option><option value="deposit" {{ 'selected' if filters.category == 'deposit' }}>Deposits</option><option value="withdrawal" {{ 'selected' if filters.category == 'withdrawal' }}>Withdrawals</option></select></label>
+<label><span>Category</span><select name="category"><option value="">All categories</option><option value="deposit" {{ 'selected' if filters.category == 'deposit' }}>Deposits</option><option value="withdrawal" {{ 'selected' if filters.category == 'withdrawal' }}>Withdrawals</option><option value="tournament_entry" {{ 'selected' if filters.category == 'tournament_entry' }}>Tournament entries</option></select></label>
 <label><span>Status</span><select name="status"><option value="">All statuses</option>{% for value,label in [('completed','Successful'),('pending','Pending'),('failed','Failed')] %}<option value="{{ value }}" {{ 'selected' if filters.status == value }}>{{ label }}</option>{% endfor %}</select></label>
 <label><span>Month</span><select name="month"><option value="">All months</option>{% for value,label in months %}<option value="{{ value }}" {{ 'selected' if filters.month == value }}>{{ label }}</option>{% endfor %}</select></label><button class="ga-button" type="submit">Apply</button>
 </form>

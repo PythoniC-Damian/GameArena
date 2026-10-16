@@ -32,6 +32,7 @@ import random
 import smtplib
 import socket
 import ssl
+from gamearena.gp import gp_to_naira, gp_label, withdrawal_fee_kobo, kobo_label, WITHDRAWAL_FEE_POLICY
 from gamearena.bootstrap import create_base_app
 from gamearena.services.email import account_email_content
 from gamearena.services import auth as managed_auth
@@ -578,6 +579,10 @@ def application_navigation():
         'nav_preferences': preferences,
         'auth_email_wait': max(0, int(session.get('account_email_until', 0) - time.time() + 0.999)),
     }
+
+
+app.add_template_filter(gp_label, 'gp')
+app.add_template_filter(kobo_label, 'kobo')
 
 
 @app.template_filter('naira')
@@ -1420,7 +1425,7 @@ def wallet_history():
     category = request.args.get('category', '')
     status = request.args.get('status', '')
     month = request.args.get('month', '')
-    if category not in ('', 'deposit', 'withdrawal') or status not in ('', 'completed', 'pending', 'failed'):
+    if category not in ('', 'deposit', 'withdrawal', 'tournament_entry') or status not in ('', 'completed', 'pending', 'failed'):
         abort(400)
     owned = WalletTransaction.query.filter_by(user_id=current_user.id)
     month_values = db.session.query(db.func.date_trunc('month', WalletTransaction.created_at)).filter(
@@ -1452,13 +1457,15 @@ def wallet_history():
             yield '\ufeff'
             output = io.StringIO()
             writer = csv.writer(output)
-            writer.writerow(['Transaction ID', 'Date (UTC)', 'Category', 'Recipient', 'Bank', 'Amount (NGN)', 'Status', 'Reference', 'Paystack transfer code'])
+            writer.writerow(['Transaction ID', 'Date (UTC)', 'Category', 'Recipient', 'Bank', 'Amount (NGN)', 'Status', 'Reference', 'Paystack transfer code', 'GP amount', 'Quoted withdrawal fee (NGN)', 'Quoted bank payout (NGN)'])
             yield output.getvalue()
             for transaction in ordered.yield_per(100):
                 output.seek(0); output.truncate(0)
                 writer.writerow([transaction.public_transaction_id, transaction.created_at.isoformat() if transaction.created_at else '', transaction.type,
                     safe_cell(transaction.account_name), safe_cell(transaction.bank_name), transaction.amount, transaction.status,
-                    safe_cell(transaction.transaction_ref), safe_cell(transaction.provider_transfer_code)])
+                    safe_cell(transaction.transaction_ref), safe_cell(transaction.provider_transfer_code), gp_label(transaction.amount),
+                    format((transaction.withdrawal_fee_kobo or 0) / 100, '.2f') if transaction.type == 'withdrawal' else '',
+                    format(transaction.payout_kobo / 100, '.2f') if transaction.type == 'withdrawal' else ''])
                 yield output.getvalue()
         from flask import stream_with_context
         return Response(stream_with_context(rows()), mimetype='text/csv', headers={
@@ -1471,7 +1478,7 @@ def wallet_history():
     totals = dict(totals)
     filters = {'category': category, 'status': status, 'month': month}
     response = app.make_response(render_template('wallet_history.html', wallet_transactions=pagination.items,
-        pagination=pagination, months=months, filters=filters, incoming=totals.get('deposit', 0), outgoing=totals.get('withdrawal', 0)))
+        pagination=pagination, months=months, filters=filters, incoming=totals.get('deposit', 0), outgoing=totals.get('withdrawal', 0) + totals.get('tournament_entry', 0)))
     response.headers['Cache-Control'] = 'private, no-store'
     return response
 
@@ -3498,6 +3505,54 @@ def checkout_failure_message(status_code):
     return 'Checkout could not be opened. Please try again shortly.'
 
 
+@app.route('/tournaments/<int:tournament_id>/pay-gp', methods=['POST'])
+@login_required
+def pay_tournament_gp(tournament_id):
+    data = request.get_json(silent=True) or {}
+    tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+    joined = UserTournament.query.filter_by(user_id=current_user.id, tournament_id=tournament_id).first()
+    if joined and joined.payment_status in ('paid', 'free'):
+        db.session.commit()
+        return jsonify({'status':'success','redirect_url':url_for('tournament_details', tournament_id=tournament_id),'already_paid':True})
+    if tournament.status != 'open' or UserTournament.query.filter(UserTournament.tournament_id == tournament.id, UserTournament.payment_status.in_(('paid','free'))).count() >= tournament.max_participants:
+        db.session.rollback()
+        return jsonify({'status':'error','message':'Registration is closed or this tournament is full.'}), 409
+    if joined and joined.transaction_ref:
+        db.session.rollback()
+        return jsonify({'status':'error','message':'An external checkout is already pending. Complete or verify that payment before paying again.'}), 409
+    try:
+        amount = gp_to_naira(data.get('amount_gp', ''))
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify({'status':'error','message':str(error)}), 400
+    if amount != tournament.entry_fee or amount <= 0:
+        db.session.rollback()
+        return jsonify({'status':'error','message':'The entry price changed. Refresh the tournament before paying.'}), 409
+    owner = User.query.filter_by(id=current_user.id).with_for_update().populate_existing().one()
+    if amount > (owner.wallet_balance or 0):
+        db.session.rollback()
+        return jsonify({'status':'error','message':'Not enough GP. Top up your wallet first.'}), 400
+    import uuid
+    reference = 'gp_' + uuid.uuid4().hex
+    if not joined:
+        joined = UserTournament(user_id=owner.id, tournament_id=tournament.id)
+        db.session.add(joined)
+    joined.payment_status='paid'; joined.amount_paid=amount; joined.transaction_ref=reference
+    owner.wallet_balance -= amount
+    payment = WalletTransaction(user_id=owner.id,type='tournament_entry',amount=amount,status='completed',
+        transaction_ref=reference,account_name=tournament.name,completed_at=datetime.utcnow())
+    db.session.add(payment)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('GP entry reservation failed')
+        return jsonify({'status':'error','message':'Entry could not be completed. Check your wallet history before retrying.'}), 409
+    award_achievements_for_user(owner.id)
+    create_and_emit_notification(owner.id, f'Your GP entry for {tournament.name} is confirmed.', 'tournament', f'/tournament/{tournament.id}')
+    return jsonify({'status':'success','redirect_url':url_for('wallet_receipt', transaction_id=payment.id)})
+
+
 @app.route("/initialize-payment/<int:tournament_id>", methods=['POST'])
 @login_required
 def initialize_payment(tournament_id):
@@ -3713,7 +3768,7 @@ def paystack_webhook():
                 return jsonify({'status': 'ignored'}), 200
             transfer_code = str(transaction.get('transfer_code') or '').strip() or None
             try:
-                if int(transaction.get('amount')) != withdrawal.amount * 100:
+                if int(transaction.get('amount')) != withdrawal.payout_kobo:
                     return jsonify({'status': 'error', 'message': 'Transfer amount mismatch'}), 400
             except (TypeError, ValueError):
                 return jsonify({'status': 'error', 'message': 'Invalid transfer amount'}), 400
@@ -3771,7 +3826,10 @@ def wallet_initialize_deposit():
     if not data:
         return jsonify({'status': 'error', 'message': 'Invalid request data'})
 
-    amount = str(data.get('amount', '')).strip()
+    try:
+        amount = str(gp_to_naira(data['amount_gp'])) if 'amount_gp' in data else str(data.get('amount', '')).strip()
+    except ValueError as error:
+        return jsonify({'status':'error','message':str(error)}), 400
     if not amount or not amount.isdigit() or int(amount) <= 0:
         return jsonify({'status': 'error', 'message': 'Please enter a valid deposit amount.'})
 
@@ -3947,6 +4005,9 @@ def withdrawal_response(withdrawal):
         'status': 'success' if withdrawal.status != 'failed' else 'error',
         'withdrawal_status': withdrawal.status,
         'reference': withdrawal.transaction_ref,
+        'amount_gp': gp_label(withdrawal.amount),
+        'fee_kobo': withdrawal.withdrawal_fee_kobo or 0,
+        'payout_kobo': withdrawal.payout_kobo,
         'receipt_url': url_for('wallet_receipt', transaction_id=withdrawal.id),
         'message': (
             'Withdrawal completed successfully.' if withdrawal.status == 'completed'
@@ -4061,7 +4122,7 @@ def start_withdrawal_transfer(withdrawal_id):
 
         transfer_attempted = True
         transfer = paystack_transfer_request('POST', '/transfer', json={
-            'source': 'balance', 'amount': withdrawal.amount * 100, 'reference': withdrawal.transaction_ref,
+            'source': 'balance', 'amount': withdrawal.payout_kobo, 'reference': withdrawal.transaction_ref,
             'recipient': recipient_code, 'reason': f'GameArena wallet withdrawal {withdrawal.transaction_ref}',
             'currency': PAYSTACK_CURRENCY,
         })
@@ -4091,7 +4152,10 @@ def start_withdrawal_transfer(withdrawal_id):
 def request_wallet_withdrawal(req_data):
     if not REQUESTS_AVAILABLE or not PAYSTACK_SECRET_KEY:
         return jsonify({'status': 'error', 'message': 'Withdrawals are temporarily unavailable.'}), 503
-    amount_raw = str(req_data.get('amount', '')).strip()
+    try:
+        amount_raw = str(gp_to_naira(req_data['amount_gp'])) if 'amount_gp' in req_data else str(req_data.get('amount', '')).strip()
+    except ValueError as error:
+        return jsonify({'status':'error','message':str(error)}), 400
     bank_name = str(req_data.get('bank_name', '')).strip()
     bank_code = str(req_data.get('bank_code', '')).strip()
     account_number = str(req_data.get('account_number', '')).strip()
@@ -4110,6 +4174,11 @@ def request_wallet_withdrawal(req_data):
             return jsonify({'status': 'error', 'message': 'An earlier withdrawal has this request ID. Check its receipt before starting another.', 'receipt_url': url_for('wallet_receipt', transaction_id=existing.id)}), 409
         db.session.commit()
         return jsonify(withdrawal_response(existing))
+    fee_kobo = withdrawal_fee_kobo(int(amount_raw))
+    if int(amount_raw) < 100:
+        return jsonify({'status':'error','message':'The minimum withdrawal is 10 GP (₦100).'}), 400
+    if req_data.get('fee_consent') is not True or req_data.get('fee_policy') != WITHDRAWAL_FEE_POLICY or str(req_data.get('fee_kobo')) != str(fee_kobo):
+        return jsonify({'status':'error','message':'Review the withdrawal fee and bank payout, then confirm. Refresh your wallet if needed.'}), 400
     try:
         verified = wallet_account_signer().loads(str(req_data.get('verification_token', '')), max_age=300)
         if verified.get('user_id') != current_user.id or verified.get('bank_code') != bank_code or verified.get('account_number') != account_number:
@@ -4128,7 +4197,7 @@ def request_wallet_withdrawal(req_data):
         return jsonify({'status': 'error', 'message': 'Insufficient wallet balance.'}), 400
     import uuid
     withdrawal = WalletTransaction(
-        user_id=owner.id, type='withdrawal', amount=amount, status='pending',
+        user_id=owner.id, type='withdrawal', amount=amount, status='pending', withdrawal_fee_kobo=fee_kobo,
         transaction_ref=f'wd_{uuid.uuid4().hex}', idempotency_key=idempotency_key,
         bank_name=bank_name[:120], bank_code=bank_code, account_number=account_number, account_name=verified['account_name'],
     )

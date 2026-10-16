@@ -82,6 +82,7 @@ def test_rate_limit_keeps_browser_form_and_json_api(client, monkeypatch):
 
 def test_google_callback_uses_canonical_domain(client, monkeypatch):
     monkeypatch.setattr(application, 'is_production', True)
+    monkeypatch.setitem(app.config, 'PUBLIC_BASE_URL', 'https://gamearena01.com')
     monkeypatch.setenv('GOOGLE_CLIENT_ID', 'test-client')
     monkeypatch.setenv('GOOGLE_REDIRECT_URI', 'https://gamearena.onrender.com/auth/google/callback')
     response = client.get('/login/google', base_url='https://gamearena01.com')
@@ -146,7 +147,7 @@ def test_managed_signup_does_not_keep_password_or_trust_signup_id(client, monkey
     signup = Mock(return_value={'user': {'id': 'unconfirmed-response'}})
     monkeypatch.setattr(auth, 'signup', signup)
     response = client.post('/register', data={'email': 'new@example.com',
-        'username': 'new_player', 'password': 'secret123'})
+        'username': 'new_player', 'password': 'secret123', 'accept_terms':'y'})
     assert '/verify-email' in response.location
     with app.app_context():
         user = User.query.filter_by(email='new@example.com').one()
@@ -229,3 +230,32 @@ def test_provider_errors_are_safe(monkeypatch, problem):
     monkeypatch.setattr(auth.requests, 'request', Mock(side_effect=requests.Timeout()) if problem == 'timeout' else Mock(return_value=response))
     with pytest.raises(auth.AuthError):
         auth.signin('player@example.com', 'secret')
+
+
+def test_signup_requires_explicit_agreement_before_account_or_email(client,monkeypatch):
+    send=Mock(return_value=True);monkeypatch.setattr(application,'send_verification_code',send)
+    data={'username':'agreement_player','email':'agreement@example.com','password':'secret123'}
+    response=client.post('/register',data=data)
+    assert response.status_code==200 and b'Please agree to the Terms of Use' in response.data
+    with app.app_context(): assert User.query.filter_by(email=data['email']).first() is None
+    send.assert_not_called()
+    response=client.post('/register',data={**data,'accept_terms':'y'})
+    assert response.status_code==302 and '/verify-email' in response.location
+    with app.app_context(): assert User.query.filter_by(email=data['email']).one()
+    send.assert_called_once()
+
+
+def test_resend_countdown_survives_refresh_and_preserves_current_code(client,monkeypatch):
+    user_id=player();send=Mock(return_value=True)
+    monkeypatch.setattr(application,'send_email',send)
+    monkeypatch.setattr(application,'queue_account_email',lambda *args:False)
+    monkeypatch.setattr(application,'create_and_emit_notification',lambda *args:None)
+    client.post('/verify-email',data={'email':'auth_player@example.com','action':'resend'})
+    for _ in range(2):
+        page=client.get('/verify-email?email=auth_player@example.com')
+        match=re.search(rb'data-resend-code data-cooldown="(\d+)"',page.data)
+        assert match and 0<int(match.group(1))<=60
+    with app.app_context(): first=db.session.get(User,user_id).verification_code
+    client.post('/verify-email',data={'email':'auth_player@example.com','action':'resend'})
+    assert send.call_count==1
+    with app.app_context(): assert db.session.get(User,user_id).verification_code==first

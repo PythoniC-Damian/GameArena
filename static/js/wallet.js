@@ -44,10 +44,10 @@
   retryAccount.addEventListener('click', resolveAccount);
   const balance = document.getElementById('walletBalance'), toggle = document.getElementById('toggleBalance');
   if (balance && toggle) {
-    const amount = balance.textContent; let hidden = false;
+    const amount = balance.textContent, equivalent = document.getElementById('walletNairaEquivalent'), equivalentText = equivalent?.textContent; let hidden = false;
     try { hidden = localStorage.getItem('gamearenaHideBalance') === '1'; } catch (_) {}
     function drawBalance() {
-      balance.textContent = hidden ? '****' : amount;
+      balance.textContent = hidden ? '****' : amount; if(equivalent) equivalent.textContent=hidden?'****':equivalentText;
       toggle.setAttribute('aria-label', hidden ? 'Show balance' : 'Hide balance');
       toggle.setAttribute('aria-pressed', String(hidden));
       toggle.querySelector('[data-eye-open]').hidden = hidden;
@@ -56,6 +56,16 @@
     toggle.addEventListener('click', () => {hidden = !hidden; drawBalance(); try {localStorage.setItem('gamearenaHideBalance',hidden?'1':'0');} catch (_) {}});
     drawBalance();
   }
+  const naira = value => '₦' + (value / 100).toLocaleString('en-NG',{minimumFractionDigits:value % 100 ? 2 : 0,maximumFractionDigits:2});
+  const gpInput = document.getElementById('depositGpAmount'), depositInput = document.getElementById('depositAmount');
+  function gpToNaira(value) { if (!/^[0-9]{1,9}(?:\.[0-9])?$/.test(String(value).trim())) return NaN; return Math.round(Number(value)*10); }
+  depositInput.addEventListener('input',()=>{gpInput.value=depositInput.value ? Number(depositInput.value)/10 : '';document.getElementById('depositConversion').textContent=depositInput.value ? `You receive ${gpInput.value} GP for ${naira(Number(depositInput.value)*100)}.` : '1 GP = ₦10';});
+  gpInput.addEventListener('input',()=>{const amount=gpToNaira(gpInput.value);depositInput.value=Number.isSafeInteger(amount) ? amount : '';document.getElementById('depositConversion').textContent=Number.isSafeInteger(amount) ? `You receive ${gpInput.value} GP for ${naira(amount*100)}.` : 'Enter GP in steps of 0.1.';});
+  document.getElementById('withdrawAmount').addEventListener('input',()=>{
+    document.getElementById('confirmWithdrawalFee').checked=false;
+    const amount=gpToNaira(document.getElementById('withdrawAmount').value),gross=Number.isSafeInteger(amount) ? amount*100 : 0,fee=Math.min(Number.isSafeInteger(amount)?amount:0,20000);
+    document.getElementById('withdrawGross').textContent=naira(gross);document.getElementById('withdrawFee').textContent=naira(fee);document.getElementById('withdrawPayout').textContent=naira(gross-fee);
+  });
   async function loadBanks() {
     const status = document.getElementById('bankStatus'), retry = document.getElementById('retryBanks');
     resetAccount(); status.textContent = 'Loading supported banks…'; retry.hidden = true;
@@ -103,10 +113,10 @@
     const form = document.getElementById(id);
     form.addEventListener('submit', async event => {
       event.preventDefault(); if (form.dataset.busy || !form.reportValidity()) return;
-      const amount = Number(document.getElementById(field).value);
+      const amount = withdrawal ? gpToNaira(document.getElementById(field).value) : Number(document.getElementById(field).value);
       const status = form.querySelector('[data-form-status]');
       if (!Number.isSafeInteger(amount) || amount < 100) { status.textContent = 'Enter a whole amount of at least ₦100.'; return; }
-      const body = { amount };
+      const body = withdrawal ? {amount_gp:document.getElementById(field).value,fee_policy:'gp-withdrawal-v1',fee_kobo:Math.min(amount,20000),fee_consent:document.getElementById('confirmWithdrawalFee').checked} : {amount_gp:String(amount/10)};
       if (withdrawal) {
         if (bankSelect.disabled || !bankSelect.value) { status.textContent = 'Choose a supported bank before requesting a withdrawal.'; return; }
         if (!verifiedAccount || verifiedAccount.bank !== bankSelect.value || verifiedAccount.number !== accountInput.value.trim() || verifiedAccount.expires < Date.now()) { status.textContent = 'Verify your account holder name before withdrawing.'; resolveAccount(); return; }

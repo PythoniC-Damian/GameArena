@@ -1,3 +1,4 @@
+{% from '_password_input.html' import password_input %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -78,13 +79,13 @@
                     </div>
                     <div>
                         {{ form.password.label(class="block text-sm font-medium text-slate-300 mb-2") }}
-                        {{ form.password(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
+                        {{ password_input(form.password, 'new-password') }}
                         {% if form.password.errors %}
                         <p class="mt-2 text-sm text-red-400">{{ form.password.errors[0] }}</p>
                         {% endif %}
                     </div>
-<p class="ga-signup-agreement">By creating an account, you agree to the <a href="{{ url_for('legal.terms') }}">Terms of Use</a>. Read our <a href="{{ url_for('legal.privacy') }}">Privacy Policy</a> to understand how we use your information.</p>
-{{ form.submit(class="w-full rounded-3xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400") }}
+<div class="ga-signup-agreement"><label class="ga-agreement-label">{{ form.accept_terms(required=true, **{'data-required-agreement': ''}) }}<span>I agree to the <a href="{{ url_for('legal.terms') }}" target="_blank" rel="noopener">Terms of Use</a> and acknowledge the <a href="{{ url_for('legal.privacy') }}" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>{% if form.accept_terms.errors %}<p class="ga-agreement-error" role="alert">{{ form.accept_terms.errors[0] }}</p>{% endif %}</div>
+{{ form.submit(disabled=not form.accept_terms.data, class="w-full rounded-3xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400") }}
                 </form>
                 <script>
                     (function () {

@@ -25,7 +25,9 @@ def test_baseline_is_repeatable_and_preserves_wallet_records(monkeypatch):
         command.upgrade(config, 'head'); command.upgrade(config, 'head')
         db.session.expire_all()
         assert owner.wallet_balance == 1200 and WalletTransaction.query.count() == 1
-        assert db.session.execute(text('SELECT version_num FROM alembic_version')).scalar() == '20261005_existing_schema'
+        from alembic.script import ScriptDirectory
+        assert db.session.execute(text('SELECT version_num FROM alembic_version')).scalar() == ScriptDirectory.from_config(config).get_current_head()
+        assert transaction.withdrawal_fee_kobo == 0
 
 
 def test_baseline_refuses_incomplete_history():

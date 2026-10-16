@@ -25,8 +25,10 @@ def verified(owner, **changes):
 
 
 def payload(owner, **changes):
-    data = {'amount': 300, 'bank_name': 'Untrusted browser name', 'bank_code': '999', 'account_number': '0000000000', 'idempotency_key': 'test_request_123456789', 'verification_token': verified(owner)}
+    data = {'amount': 300, 'bank_name': 'Untrusted browser name', 'bank_code': '999', 'account_number': '0000000000', 'idempotency_key': 'test_request_123456789', 'verification_token': verified(owner), 'fee_policy':'gp-withdrawal-v1', 'fee_consent':True, 'fee_kobo':300}
     data.update(changes)
+    from gamearena.gp import withdrawal_fee_kobo
+    if 'amount' in changes: data['fee_kobo']=withdrawal_fee_kobo(changes['amount'])
     return data
 
 

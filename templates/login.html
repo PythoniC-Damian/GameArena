@@ -1,3 +1,4 @@
+{% from '_password_input.html' import password_input %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -80,7 +81,7 @@
                     </div>
                     <div>
                         {{ form.password.label(class="block text-sm font-medium text-slate-300 mb-2") }}
-                        {{ form.password(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
+                        {{ password_input(form.password, 'current-password') }}
                         {% if form.password.errors %}
                         <p class="mt-2 text-sm text-red-400">{{ form.password.errors[0] }}</p>
                         {% endif %}

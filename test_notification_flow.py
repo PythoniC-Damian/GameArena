@@ -288,7 +288,7 @@ class NotificationFlowTests(unittest.TestCase):
                 'username': 'new_player',
                 'email': 'new-player@example.com',
                 'password': 'secret123',
-                'confirm_password': 'secret123',
+                'confirm_password': 'secret123', 'accept_terms':'y',
                 'csrf_token': token,
             }, follow_redirects=True)
 
@@ -403,8 +403,8 @@ class NotificationFlowTests(unittest.TestCase):
     def test_registration_and_password_reset_rate_limits(self):
         with patch.dict(app_module.RATE_LIMITS, {'register_ip': (1, 60), 'password_reset_ip': (1, 60)}, clear=False):
             register_token = self.csrf_token('/register')
-            self.client.post('/register', data={'username': 'new-user', 'email': 'new@example.com', 'password': 'secret123', 'confirm_password': 'secret123', 'csrf_token': register_token})
-            register_response = self.client.post('/register', data={'username': 'new-user-2', 'email': 'new2@example.com', 'password': 'secret123', 'confirm_password': 'secret123', 'csrf_token': register_token})
+            self.client.post('/register', data={'username': 'new-user', 'email': 'new@example.com', 'password': 'secret123', 'confirm_password': 'secret123', 'accept_terms':'y', 'csrf_token': register_token})
+            register_response = self.client.post('/register', data={'username': 'new-user-2', 'email': 'new2@example.com', 'password': 'secret123', 'confirm_password': 'secret123', 'accept_terms':'y', 'csrf_token': register_token})
             reset_token = self.csrf_token('/forgot-password')
             self.client.post('/forgot-password', data={'email': 'unknown@example.com', 'csrf_token': reset_token})
             reset_response = self.client.post('/forgot-password', data={'email': 'unknown2@example.com', 'csrf_token': reset_token})
