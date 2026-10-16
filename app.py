@@ -135,6 +135,8 @@ RATE_LIMITS = {
     'global_search': (40, 60),
     'payment_user': (10, 10 * 60),
     'payment_verification': (20, 10 * 60),
+    'wallet_withdraw_user': (5, 60),
+    'tournament_entry_user': (20, 60),
 }
 RATE_LIMIT_CLEANUP_INTERVAL = 100
 RATE_LIMIT_RETENTION_SECONDS = max(window for _, window in RATE_LIMITS.values()) + 60 * 60
@@ -887,6 +889,11 @@ def enforce_rate_limits():
         checks = [('user_report_ip:' + client_key, 'user_report')]
     elif path == '/search' and request.method == 'GET':
         checks = [('global_search_ip:' + client_key, 'global_search')]
+    elif path == '/wallet/withdraw' and request.method == 'POST':
+        # Account-bound: a shared hosting/carrier proxy must not block other wallets.
+        checks = [('wallet_withdraw_user:' + str(current_user.get_id()), 'wallet_withdraw_user')]
+    elif request.method == 'POST' and (path.startswith('/join-tournament/') or (path.startswith('/tournaments/') and path.endswith('/pay-gp'))):
+        checks = [('tournament_entry_user:' + str(current_user.get_id()), 'tournament_entry_user')]
     elif (path.startswith('/initialize-payment/') or path == '/wallet/initialize-deposit'):
         checks = [('payment_user:' + str(current_user.get_id()), 'payment_user')]
     elif path in {'/verify-payment', '/wallet/verify-deposit'}:
@@ -2953,9 +2960,10 @@ def create_tournament():
 @login_required
 def join_tournament(tournament_id):
     # Serialize the capacity check with other joins and payment confirmations.
-    tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+    tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404() if request.method == 'POST' else Tournament.query.get_or_404(tournament_id)
     if tournament.status != 'open':
         flash('Registration is closed for this tournament.', 'warning')
+        db.session.rollback()
         return redirect(url_for('tournament_details', tournament_id=tournament_id))
 
     existing_join = UserTournament.query.filter_by(
@@ -2965,17 +2973,21 @@ def join_tournament(tournament_id):
 
     if existing_join:
         if existing_join.payment_status == 'pending':
+            db.session.rollback()
             return redirect(url_for('pay_for_tournament', tournament_id=tournament_id))
         flash(f"You've already joined {tournament.game}!", "warning")
+        db.session.rollback()
         return redirect(url_for("dashboard"))
 
     entrant_count = UserTournament.query.filter(UserTournament.tournament_id == tournament_id, UserTournament.payment_status.in_(['paid', 'free'])).count()
     if entrant_count >= tournament.max_participants:
         flash(f"{tournament.game} is FULL!", "error")
+        db.session.rollback()
         return redirect(url_for("home"))
 
     # If tournament has entry fee, redirect to payment
     if tournament.entry_fee > 0:
+        db.session.rollback()
         return redirect(url_for('pay_for_tournament', tournament_id=tournament_id))
 
     if request.method == 'GET':
@@ -3536,7 +3548,9 @@ def checkout_failure_message(status_code):
 @app.route('/tournaments/<int:tournament_id>/pay-gp', methods=['POST'])
 @login_required
 def pay_tournament_gp(tournament_id):
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'status':'error','message':'Expected a JSON object.'}),400
     tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
     joined = UserTournament.query.filter_by(user_id=current_user.id, tournament_id=tournament_id).first()
     if joined and joined.payment_status in ('paid', 'free'):
@@ -3856,15 +3870,15 @@ def wallet_initialize_deposit():
         return jsonify({'status': 'error', 'message': 'Payment system not available'})
 
     data = request.get_json(silent=True)
-    if not data:
-        return jsonify({'status': 'error', 'message': 'Invalid request data'})
+    if not isinstance(data, dict) or not data:
+        return jsonify({'status': 'error', 'message': 'Invalid request data'}), 400
 
     try:
         amount = str(gp_to_naira(data['amount_gp'])) if 'amount_gp' in data else str(data.get('amount', '')).strip()
     except ValueError as error:
         return jsonify({'status':'error','message':str(error)}), 400
-    if not amount or not amount.isdigit() or int(amount) <= 0:
-        return jsonify({'status': 'error', 'message': 'Please enter a valid deposit amount.'})
+    if not re.fullmatch(r'[0-9]{1,10}', amount) or not 0 < int(amount) <= 2_000_000_000:
+        return jsonify({'status': 'error', 'message': 'Please enter a valid deposit amount.'}), 400
 
     amount = int(amount)
 
@@ -4007,7 +4021,9 @@ def wallet_resolve_account():
     retry = consume_rate_limit('wallet_resolve:' + str(current_user.id), 15, 60)
     if retry is not None:
         return rate_limit_response(retry)
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'status':'error','message':'Expected a JSON object.'}),400
     bank_code = str(data.get('bank_code', '')).strip()
     number = str(data.get('account_number', '')).strip()
     if not re.fullmatch(r'[A-Za-z0-9_-]{2,20}', bank_code) or not re.fullmatch(r'[0-9]{10}', number):
@@ -4197,7 +4213,7 @@ def request_wallet_withdrawal(req_data):
     bank_code = str(req_data.get('bank_code', '')).strip()
     account_number = str(req_data.get('account_number', '')).strip()
     idempotency_key = str(req_data.get('idempotency_key', '')).strip()
-    if not amount_raw.isdigit() or int(amount_raw) <= 0:
+    if not re.fullmatch(r'[0-9]{1,10}', amount_raw) or not 0 < int(amount_raw) <= 2_000_000_000:
         return jsonify({'status': 'error', 'message': 'Please enter a valid withdrawal amount.'}), 400
     if not bank_name or not re.fullmatch(r'[A-Za-z0-9_-]{2,20}', bank_code) or not re.fullmatch(r'\d{10}', account_number):
         return jsonify({'status': 'error', 'message': 'Please provide valid bank details.'}), 400
@@ -4264,8 +4280,8 @@ def request_wallet_withdrawal(req_data):
 @login_required
 def wallet_withdraw():
     req_data = request.get_json(silent=True)
-    if not req_data:
-        return jsonify({'status': 'error', 'message': 'Invalid request data'})
+    if not isinstance(req_data, dict) or not req_data:
+        return jsonify({'status': 'error', 'message': 'Invalid request data'}), 400
 
     return request_wallet_withdrawal(req_data)
 

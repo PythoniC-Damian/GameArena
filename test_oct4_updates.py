@@ -2,14 +2,16 @@ import io
 import uuid
 from PIL import Image
 import app as application
-from app import app, db, socketio, DirectMessage, GlobalChatMessage, ProfilePhoto, UserSettings, UserBlock
+from app import app, db, socketio, DirectMessage, GlobalChatMessage, ProfilePhoto, UserSettings, UserBlock, PlayerConnection
 from test_interface_contracts import player, client, token
 
 
 def test_http_and_socket_share_message_identity_and_deletion(monkeypatch):
     monkeypatch.setattr(socketio,'start_background_task',lambda *args,**kwargs:None)
     with app.app_context():
-        a,b=player('delivery_a'),player('delivery_b'); aid,bid=a.id,b.id; first,second=client(a),client(b)
+        a,b=player('delivery_a'),player('delivery_b'); aid,bid=a.id,b.id
+        db.session.add(PlayerConnection(low_id=min(aid,bid),high_id=max(aid,bid),requester_id=aid,status='accepted'));db.session.commit()
+        first,second=client(a),client(b)
     sender=socketio.test_client(app,flask_test_client=first); receiver=socketio.test_client(app,flask_test_client=second)
     csrf=token(first.get('/profile')); key=str(uuid.uuid4()); payload={'user_id':bid,'message':'Exactly once','client_message_id':key}
     sent=sender.emit('send_direct_message',payload,callback=True); assert sent['status']=='success'
@@ -29,7 +31,9 @@ def test_http_and_socket_share_message_identity_and_deletion(monkeypatch):
 
 def test_typing_is_scoped_and_respects_blocks():
     with app.app_context():
-        a,b,c=player('typing_a'),player('typing_b'),player('typing_c');aid,bid=a.id,b.id; first,second,third=client(a),client(b),client(c)
+        a,b,c=player('typing_a'),player('typing_b'),player('typing_c');aid,bid=a.id,b.id
+        db.session.add(PlayerConnection(low_id=min(aid,bid),high_id=max(aid,bid),requester_id=aid,status='accepted'));db.session.commit()
+        first,second,third=client(a),client(b),client(c)
     connections=[socketio.test_client(app,flask_test_client=x) for x in (first,second,third)]
     connections[0].emit('chat_typing',{'user_id':bid,'typing':True})
     assert [x for x in connections[1].get_received() if x['name']=='chat_typing']

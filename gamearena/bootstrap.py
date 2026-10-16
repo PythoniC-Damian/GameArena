@@ -10,6 +10,7 @@ def create_base_app(root, testing=False):
                 static_folder=os.path.join(root, 'static'),
                 instance_path=os.path.join(root, 'instance'))
     app.config.update(TESTING=testing,
+        MAX_CONTENT_LENGTH=5 * 1024 * 1024,
         SQLALCHEMY_ENGINE_OPTIONS=engine_options(os.environ),
         BACKGROUND_JOBS_ENABLED=not testing and os.environ.get('BACKGROUND_JOBS_ENABLED', '').lower() == 'true',
         JOB_REDIS_URL='' if testing else os.environ.get('JOB_REDIS_URL', ''),

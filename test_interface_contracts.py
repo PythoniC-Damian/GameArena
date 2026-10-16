@@ -141,7 +141,8 @@ def test_rankings_and_payouts_do_not_invent_data():
         ranking = viewer.get('/leaderboard').text
         assert 'View all tournaments' not in ranking and 'No player rankings' in ranking
         details = viewer.get(f'/tournament/{tournament.id}').text
-        assert '\u20a610,000' in details and '\u20a65,000' not in details and '\u20a62,500' not in details
+        assert '10,000 GP' in details and '5,000 GP' not in details and '2,500 GP' not in details
+        assert details.count('Not published') >= 3
 
 
 def test_cache_is_versioned_and_private_pages_are_not_cacheable():
