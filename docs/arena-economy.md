@@ -4,7 +4,7 @@ GP is a fixed internal credit, not cryptocurrency. 100 GP = NGN 100. Existing
 integer-naira ledger values, provider references, pending transfers and bank
 payouts are preserved; only the GP denomination changes. Whole GP inputs avoid
 rounding away customer money. Bank checkout and withdrawals explicitly show NGN.
-This release does not add international acquiring, FX quotes or foreign payouts.
+This release does not add international acquiring, executable bank FX conversion or foreign payouts.
 
 ## Balances
 
@@ -92,3 +92,12 @@ match creation must consume this quote and hold the fixed GP amount atomically;
 never trust a client-side currency amount or recalculate matched stakes at payout.
 The wallet calculator previews this flow. It does not create wager matches, reserve
 funds or launch the previously discussed future individual matchmaking feature.
+
+Production access check: ExchangeRate.fun returned HTTP403 from Render. The code
+therefore includes the public CC0 Currency API daily USD feed via jsDelivr, then
+its documented Cloudflare mirror. UI identifies this DAILY fallback and preserves
+its published UTC date. Daily snapshots have a 48-hour maximum source age; older
+snapshots are rejected. Both sources use the same one-hour cache. Quotes are
+indicative fixed GP values from the explicitly identified source, not executable
+bank FX offers. A provider accessible from Render is required for hourly source
+updates; refreshing the fallback hourly does not make its daily data hourly.

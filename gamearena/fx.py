@@ -4,6 +4,7 @@ import math
 import threading
 import time
 from decimal import Decimal, ROUND_CEILING, InvalidOperation
+from datetime import datetime, timezone
 from pathlib import Path
 import requests
 from flask import Blueprint, current_app, jsonify, request
@@ -15,6 +16,8 @@ from gamearena.models import User, UserSettings
 fx=Blueprint('fx',__name__)
 CURRENCIES=json.loads((Path(__file__).parent/'currencies.json').read_text(encoding='utf-8'))['currencies']
 SOURCE='https://api.exchangerate.fun/latest?base=USD'
+FALLBACKS=('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json',
+    'https://latest.currency-api.pages.dev/v1/currencies/usd.json')
 TTL=3600
 MAX_SOURCE_AGE=7200
 _cache=None
@@ -23,11 +26,11 @@ _lock=threading.Lock()
 
 class RatesUnavailable(ValueError): pass
 
-def validate_feed(payload, now):
+def validate_feed(payload, now, max_age=MAX_SOURCE_AGE):
     if not isinstance(payload,dict) or payload.get('base')!='USD':
         raise RatesUnavailable('Invalid exchange-rate response.')
     stamp=payload.get('timestamp')
-    if isinstance(stamp,bool) or not isinstance(stamp,(int,float)) or not math.isfinite(stamp) or stamp>now+300 or now-stamp>MAX_SOURCE_AGE:
+    if isinstance(stamp,bool) or not isinstance(stamp,(int,float)) or not math.isfinite(stamp) or stamp>now+300 or now-stamp>max_age:
         raise RatesUnavailable('The exchange-rate source is not current.')
     raw_rates=payload.get('rates')
     if not isinstance(raw_rates,dict):raise RatesUnavailable('Invalid exchange-rate response.')
@@ -42,18 +45,41 @@ def validate_feed(payload, now):
     normalized={code:str(value/rates['NGN']) for code,value in rates.items()}
     normalized['NGN']='1'
     return dict(base='NGN',rates=normalized,source='ExchangeRate.fun',source_url='https://www.exchangerate.fun/',
-        source_updated_at=int(stamp),fetched_at=int(now),refresh_after=int(now+TTL),
+        source_updated_at=int(stamp),fetched_at=int(now),refresh_after=int(now+TTL),max_source_age=max_age,cadence='hourly',
         currencies={code:CURRENCIES[code] for code in sorted(normalized)})
+
+def fetch_snapshot(now):
+    for index,url in enumerate((SOURCE,)+FALLBACKS):
+        try:
+            response=requests.get(url,timeout=(2,4))
+            response.raise_for_status()
+            payload=response.json()
+            if index==0:
+                return validate_feed(payload,now)
+            # The fallback publishes date-stamped DAILY data. Preserve that date;
+            # an hourly cache refresh must never re-label it as an hourly quote.
+            stamp=int(datetime.strptime(payload['date'],'%Y-%m-%d').replace(tzinfo=timezone.utc).timestamp())
+            raw=payload.get('usd')
+            if not isinstance(raw,dict):raise RatesUnavailable('Invalid daily rate data.')
+            snapshot=validate_feed(dict(base='USD',timestamp=stamp,rates={key.upper():value for key,value in raw.items()}),now,max_age=172800)
+            snapshot.update(source='Currency API',source_url='https://github.com/fawazahmed0/exchange-api',cadence='daily',degraded=True)
+            return snapshot
+        except (requests.RequestException,ValueError,TypeError,AttributeError,KeyError) as error:
+            reason=str(error) if isinstance(error,RatesUnavailable) else type(error).__name__
+            status=getattr(getattr(error,'response',None),'status_code',None)
+            current_app.logger.warning('FX provider unavailable provider=%s reason=%s upstream_status=%s','hourly' if index==0 else 'daily',reason,status)
+    raise RatesUnavailable('Exchange rates are temporarily unavailable.')
+
 
 def rate_snapshot():
     global _cache,_retry_after
     now=time.time()
     if _cache and now<_cache['refresh_after']:
-        return dict(_cache,stale=now-_cache['source_updated_at']>MAX_SOURCE_AGE)
+        return dict(_cache,stale=now-_cache['source_updated_at']>_cache.get('max_source_age',MAX_SOURCE_AGE))
     with _lock:
         now=time.time()
         if _cache and now<_cache['refresh_after']:
-            return dict(_cache,stale=now-_cache['source_updated_at']>MAX_SOURCE_AGE)
+            return dict(_cache,stale=now-_cache['source_updated_at']>_cache.get('max_source_age',MAX_SOURCE_AGE))
         redis=None
         url=current_app.config.get('CACHE_REDIS_URL')
         if url:
@@ -67,7 +93,7 @@ def rate_snapshot():
                     if candidate.get('base')=='NGN' and candidate.get('rates'):
                         _cache=candidate
                         if now<candidate['refresh_after']:
-                            return dict(candidate,stale=now-candidate['source_updated_at']>MAX_SOURCE_AGE)
+                            return dict(candidate,stale=now-candidate['source_updated_at']>candidate.get('max_source_age',MAX_SOURCE_AGE))
             except Exception:
                 redis=None
                 current_app.logger.warning('FX shared cache unavailable; using process cache.')
@@ -75,9 +101,7 @@ def rate_snapshot():
             if _cache and now-_cache['fetched_at']<86400:return dict(_cache,stale=True)
             raise RatesUnavailable('Exchange rates are temporarily unavailable.')
         try:
-            response=requests.get(SOURCE,timeout=(3.05,8))
-            response.raise_for_status()
-            _cache=validate_feed(response.json(),now)
+            _cache=fetch_snapshot(now)
             if redis:
                 try:redis.setex(key,86400,json.dumps(_cache))
                 except Exception:current_app.logger.warning('FX shared cache write unavailable.')
@@ -99,7 +123,7 @@ def quote_amount(amount, currency, snapshot=None):
         equivalent=value;stamp=None;rate=Decimal(1)
     else:
         snapshot=snapshot or rate_snapshot()
-        if snapshot['stale'] or time.time()-snapshot['source_updated_at']>MAX_SOURCE_AGE:
+        if snapshot['stale'] or time.time()-snapshot['source_updated_at']>snapshot.get('max_source_age',MAX_SOURCE_AGE):
             raise RatesUnavailable('Fresh rates are required to quote a match value.')
         if currency not in snapshot['rates']:raise ValueError('Unsupported currency.')
         rate=Decimal(snapshot['rates'][currency]);equivalent=value/rate;stamp=snapshot['source_updated_at']

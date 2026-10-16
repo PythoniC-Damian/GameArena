@@ -405,5 +405,6 @@
   "Calculate GP": "Calculer les GP",
   "NGN bank payout": "Versement bancaire en NGN",
   "Display estimates do not change GP balances or bank settlement.": "Les estimations ne modifient ni les soldes GP ni les paiements bancaires.",
-  "Quote expired. Calculate again.": "Le devis a expiré. Recalculez."
+  "Quote expired. Calculate again.": "Le devis a expiré. Recalculez.",
+  "Hourly feed unavailable. Using daily source rates.": "La source horaire est indisponible. Utilisation des taux quotidiens."
 }

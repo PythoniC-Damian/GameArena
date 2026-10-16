@@ -28,7 +28,8 @@
   function describe(){
     if(!state.snapshot){status.textContent=t('Rates unavailable. GP and NGN remain available.');return;}
     const source=new Date(state.snapshot.source_updated_at*1000).toLocaleString(locale);
-    status.textContent=(state.snapshot.stale?t('Rates are stale. Match quotes are paused.')+' ':t('Indicative rates.'))+' '+t('Source updated')+': '+source+'. '+t('Checked hourly. Bank payments settle in NGN.');
+    const sourceLink=document.querySelector('[data-fx-source]');if(sourceLink){sourceLink.textContent=state.snapshot.cadence==='daily'?'Currency API':'ExchangeRate.fun';sourceLink.href=state.snapshot.cadence==='daily'?'https://github.com/fawazahmed0/exchange-api':'https://www.exchangerate.fun/docs/';}
+    status.textContent=(state.snapshot.cadence==='daily'?t('Hourly feed unavailable. Using daily source rates.')+' ':'')+(state.snapshot.stale?t('Rates are stale. Match quotes are paused.')+' ':t('Indicative rates.'))+' '+t('Source updated')+': '+source+'. '+t('Checked hourly. Bank payments settle in NGN.');
   }
   function save(currency){
     const sequence=++saving;
@@ -47,7 +48,7 @@
   async function loadRates(){
     if(refreshing)return;refreshing=true;retry.hidden=true;
     try{
-      const response=await fetch(controls.dataset.ratesUrl,{headers:{Accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(15000)});
+      const response=await fetch(controls.dataset.ratesUrl,{headers:{Accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(20000)});
       if(!response.ok||response.redirected)throw Error();
       const snapshot=await response.json();
       if(snapshot.base!=='NGN'||!snapshot.rates?.USD||!snapshot.currencies)throw Error();
@@ -87,6 +88,6 @@
   }
   refresh();loadRates();
   setInterval(loadRates,3600000);
-  setInterval(()=>{if(state.snapshot&&Date.now()/1000-state.snapshot.source_updated_at>7200){state.snapshot.stale=true;describe();}},60000);
+  setInterval(()=>{if(state.snapshot&&Date.now()/1000-state.snapshot.source_updated_at>(state.snapshot.max_source_age||7200)){state.snapshot.stale=true;describe();}},60000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.snapshot&&Date.now()/1000>=state.snapshot.refresh_after)loadRates();});
 })();

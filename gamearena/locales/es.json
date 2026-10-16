@@ -405,5 +405,6 @@
   "Calculate GP": "Calcular GP",
   "NGN bank payout": "Pago bancario en NGN",
   "Display estimates do not change GP balances or bank settlement.": "Los valores estimados no cambian los saldos GP ni la liquidación bancaria.",
-  "Quote expired. Calculate again.": "La cotización ha caducado. Calcula de nuevo."
+  "Quote expired. Calculate again.": "La cotización ha caducado. Calcula de nuevo.",
+  "Hourly feed unavailable. Using daily source rates.": "La fuente horaria no está disponible. Se usan tipos de cambio diarios."
 }

@@ -60,7 +60,7 @@ def test_stale_fallback_never_issues_match_quote(monkeypatch):
     failed=Mock(side_effect=module.requests.Timeout());monkeypatch.setattr(module.requests,'get',failed)
     with app.app_context():
         stale=module.rate_snapshot();assert stale['stale']
-        assert module.rate_snapshot()['stale'] and failed.call_count==1
+        assert module.rate_snapshot()['stale'] and failed.call_count==3
         with pytest.raises(module.RatesUnavailable):module.quote_amount('5','USD',stale)
 
 
@@ -88,3 +88,23 @@ def test_currency_preference_and_quotes_are_owner_bound_and_csrf_protected(monke
         with pytest.raises(ValueError):module.verify_match_quote(quote.json['quote_token'],owner.id+1)
         with pytest.raises(ValueError):module.verify_match_quote(quote.json['quote_token']+'x',owner.id)
         db.session.refresh(owner);assert owner.wallet_balance==1000
+
+
+def test_daily_fallback_is_labelled_and_uses_its_original_date(monkeypatch):
+    from datetime import datetime,timezone
+    now=time.time()
+    daily=feed(now)
+    payload={'date':datetime.fromtimestamp(now,timezone.utc).strftime('%Y-%m-%d'),'usd':{k.lower():v for k,v in daily['rates'].items()}}
+    response=Mock();response.json.return_value=payload
+    denied=module.requests.HTTPError();denied.response=Mock(status_code=403)
+    get=Mock(side_effect=[denied,response]);monkeypatch.setattr(module.requests,'get',get)
+    with app.app_context():
+        snap=module.rate_snapshot()
+        assert snap['cadence']=='daily' and snap['degraded'] and not snap['stale']
+        assert snap['source']=='Currency API' and snap['source_updated_at']<=now
+        assert module.quote_amount('5','USD',snap)['amount_gp']==8000
+        assert module.rate_snapshot()['cadence']=='daily' and get.call_count==2
+
+
+def test_expired_daily_fallback_is_rejected():
+    with pytest.raises(module.RatesUnavailable):module.validate_feed(feed(time.time()-172801),time.time(),max_age=172800)
