@@ -1,10 +1,10 @@
 {% from '_password_input.html' import password_input %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Register - GameArena</title>
+<title>{{ t('Register - GameArena') }}</title>
 
 {% include '_pwa_meta.html' %}
 {% include '_design_assets.html' %}
@@ -38,28 +38,28 @@
                     <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-slate-950 font-bold shadow-xl shadow-cyan-500/20">G</div>
                     <div>
                         <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">GameArena</p>
-                        <p class="text-lg font-semibold text-white/90">Create your tournament profile.</p>
+                        <p class="text-lg font-semibold text-white/90">{{ t('Create your tournament profile.') }}</p>
                     </div>
                 </div>
                 <div class="space-y-4">
-                    <p class="text-sm uppercase tracking-[0.3em] text-emerald-300">Welcome to the arena</p>
-                    <h1 class="text-4xl font-bold text-white">Register for GameArena</h1>
-                    <p class="max-w-xl text-slate-400">Sign up to join tournaments, manage payments, and unlock match room credentials after verification.</p>
+                    <p class="text-sm uppercase tracking-[0.3em] text-emerald-300">{{ t('Welcome to the arena') }}</p>
+                    <h1 class="text-4xl font-bold text-white">{{ t('Register for GameArena') }}</h1>
+                    <p class="max-w-xl text-slate-400">{{ t('Sign up to join tournaments, manage payments, and unlock match room credentials after verification.') }}</p>
                 </div>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
-                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Secure signup</p>
-                        <p class="mt-3 text-base">Create your account, verify your email, and choose your next tournament.</p>
+                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t('Secure signup') }}</p>
+                        <p class="mt-3 text-base">{{ t('Create your account, verify your email, and choose your next tournament.') }}</p>
                     </div>
                     <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
-                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Instant access</p>
-                        <p class="mt-3 text-base">Start joining tournaments and following leaderboards once your account is created.</p>
+                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t('Instant access') }}</p>
+                        <p class="mt-3 text-base">{{ t('Start joining tournaments and following leaderboards once your account is created.') }}</p>
                     </div>
                 </div>
             </div>
             <div class="rounded-[32px] border border-white/10 bg-slate-950/90 p-8 shadow-xl shadow-slate-950/40">
-                <h2 class="text-3xl font-semibold text-white mb-3">Create Account</h2>
-                <p class="text-sm text-slate-400 mb-6">A verification code will be sent to your email after registration.</p>
+                <h2 class="text-3xl font-semibold text-white mb-3">{{ t('Create Account') }}</h2>
+                <p class="text-sm text-slate-400 mb-6">{{ t('A verification code will be sent to your email after registration.') }}</p>
                 {% include '_flash.html' %}
                 <form method="POST" data-auth-form data-cooldown="{{ auth_retry_after or 0 or 0 }}" class="space-y-5">
                     {{ form.hidden_tag() }}
@@ -84,12 +84,12 @@
                         <p class="mt-2 text-sm text-red-400">{{ form.password.errors[0] }}</p>
                         {% endif %}
                     </div>
-<div class="ga-signup-agreement"><label class="ga-agreement-label">{{ form.accept_terms(required=true, **{'data-required-agreement': ''}) }}<span>I agree to the <a href="{{ url_for('legal.terms') }}" target="_blank" rel="noopener">Terms of Use</a> and acknowledge the <a href="{{ url_for('legal.privacy') }}" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>{% if form.accept_terms.errors %}<p class="ga-agreement-error" role="alert">{{ form.accept_terms.errors[0] }}</p>{% endif %}</div>
+<div class="ga-signup-agreement"><label class="ga-agreement-label">{{ form.accept_terms(required=true, **{'data-required-agreement': ''}) }}<span>{{ t('I agree to the') }} <a href="{{ url_for('legal.terms') }}" target="_blank" rel="noopener">{{ t('Terms of Use') }}</a> {{ t('and acknowledge the') }} <a href="{{ url_for('legal.privacy') }}" target="_blank" rel="noopener">{{ t('Privacy Policy') }}</a>.</span></label>{% if form.accept_terms.errors %}<p class="ga-agreement-error" role="alert">{{ form.accept_terms.errors[0] }}</p>{% endif %}</div>
 {{ form.submit(disabled=not form.accept_terms.data, class="w-full rounded-3xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400") }}
                 </form>
                 <script>
                     (function () {
-                        var form = document.querySelector('form[method="POST"]');
+                        var form = document.querySelector('form[data-auth-form]');
                         if (form) {
                             form.addEventListener('submit', function () {
                                 try { sessionStorage.setItem('gamearenaShowSplash', '1'); } catch (e) {}
@@ -97,7 +97,7 @@
                         }
                     })();
                 </script>
-                <p class="mt-6 text-center text-sm text-slate-400">Already have an account? <a href="{{ url_for('login') }}" class="font-semibold text-emerald-300 hover:text-emerald-200">Login</a></p>
+                <p class="mt-6 text-center text-sm text-slate-400">{{ t('Already have an account?') }} <a href="{{ url_for('login') }}" class="font-semibold text-emerald-300 hover:text-emerald-200">{{ t('Login') }}</a></p>
             </div>
         </div>
     </div>

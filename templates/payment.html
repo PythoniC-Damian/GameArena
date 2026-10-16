@@ -2,18 +2,18 @@
 {% block title %}Tournament payment · GameArena{% endblock %}
 {% block content %}
 <section class="ga-panel ga-section ga-payment-panel">
-<p class="ga-eyebrow">Tournament entry</p><h1>Complete your entry</h1>
+<p class="ga-eyebrow">{{ t('Tournament entry') }}</p><h1>{{ t('Complete your entry') }}</h1>
 <h2>{{ tournament.name }}</h2><p class="ga-muted">{{ tournament.game }}</p>
-<div class="ga-record"><span>Entry fee</span><strong>{{ tournament.entry_fee|gp }} · {{ tournament.entry_fee|naira }}</strong></div>
-<div class="ga-record"><span>Total prize pool</span><strong>{{ tournament.prize_pool|naira }}</strong></div>
-<form id="gpEntryForm" data-url="{{ url_for('pay_tournament_gp', tournament_id=tournament.id) }}" data-amount="{{ tournament.entry_fee / 10 }}" class="ga-section"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><p class="ga-muted">Your GP wallet: {{ current_user.wallet_balance|gp }} · {{ current_user.wallet_balance|naira }}</p><button type="submit" class="ga-button">Pay {{ tournament.entry_fee|gp }} from wallet</button><p role="status" aria-live="polite" id="gpEntryStatus"></p><a href="{{ url_for('wallet') }}">Top up GP</a></form>
+<div class="ga-record"><span>{{ t('Entry fee') }}</span><strong>{{ tournament.entry_fee|gp }} · {{ tournament.entry_fee|naira }}</strong></div>
+<div class="ga-record"><span>{{ t('Total prize pool') }}</span><strong>{{ tournament.prize_pool|gp }}</strong></div>
+<form id="gpEntryForm" data-url="{{ url_for('pay_tournament_gp', tournament_id=tournament.id) }}" data-amount="{{ tournament.entry_fee }}" class="ga-section"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><p class="ga-muted">Your GP wallet: {{ current_user.wallet_balance|gp }} · {{ current_user.wallet_balance|naira }}</p><button type="submit" class="ga-button">Pay {{ tournament.entry_fee|gp }} from wallet</button><p role="status" aria-live="polite" id="gpEntryStatus"></p><a href="{{ url_for('wallet') }}">{{ t('Top up GP') }}</a></form>
 <form id="paymentForm" data-url="{{ url_for('initialize_payment', tournament_id=tournament.id) }}" class="ga-section">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<p class="ga-muted">Payment will open in secure Paystack checkout. Your entry is confirmed after verification.</p>
+<p class="ga-muted">{{ t('Payment will open in secure Paystack checkout. Your entry is confirmed after verification.') }}</p>
 <button type="submit" class="ga-button">Pay {{ tournament.entry_fee|naira }}</button>
 <p role="status" aria-live="polite" id="paymentStatus"></p>
 </form>
-<a class="ga-button ga-button-secondary" href="{{ url_for('tournament_details', tournament_id=tournament.id) }}">Back to tournament</a>
+<a class="ga-button ga-button-secondary" href="{{ url_for('tournament_details', tournament_id=tournament.id) }}">{{ t('Back to tournament') }}</a>
 </section>
 {% endblock %}
 {% block scripts %}<script src="{{ asset_url('js/payment.js') }}" defer></script><script src="{{ asset_url('js/gp-entry.js') }}" defer></script>{% endblock %}

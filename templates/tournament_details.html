@@ -2,7 +2,7 @@
 {% set active_page = 'tournaments' %}
 {% from '_icons.html' import icon %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -20,7 +20,7 @@
     {% include '_flash.html' %}
 
     {% if current_user.is_authenticated %}
-    <section class="ga-card ga-master-bookmark"><div class="ga-master-heading"><h2 class="ga-section-title">Save this tournament</h2><a href="{{ url_for('pro.membership') }}">{{ icon('shield') }}Master</a></div>{% if current_user.master_active %}<div class="ga-master-controls" data-saved-url="{{ url_for('pro.save_tournament', tournament_id=tournament.id) }}"><button type="button" class="ga-button ga-button-secondary" data-save-action="{{ 'remove' if saved_event else 'save' }}">{{ 'Saved · remove' if saved_event else 'Save tournament' }}</button><button type="button" class="ga-button ga-button-secondary" data-save-action="reminder" data-enabled="{{ 'false' if saved_event and saved_event.reminder_enabled else 'true' }}" aria-pressed="{{ 'true' if saved_event and saved_event.reminder_enabled else 'false' }}">{{ 'Reminder on' if saved_event and saved_event.reminder_enabled else 'Remind me' }}</button><p class="ga-muted text-sm">A notification within the hour before the scheduled start. A future start time must be set.</p><p data-master-feedback role="status" aria-live="polite"></p></div>{% else %}<p class="ga-muted">Master players can save events and set start reminders.</p>{% endif %}</section>
+    <section class="ga-card ga-master-bookmark"><div class="ga-master-heading"><h2 class="ga-section-title">{{ t('Save this tournament') }}</h2><a href="{{ url_for('pro.membership') }}">{{ icon('shield') }}Master</a></div>{% if current_user.master_active %}<div class="ga-master-controls" data-saved-url="{{ url_for('pro.save_tournament', tournament_id=tournament.id) }}"><button type="button" class="ga-button ga-button-secondary" data-save-action="{{ 'remove' if saved_event else 'save' }}">{{ 'Saved · remove' if saved_event else 'Save tournament' }}</button><button type="button" class="ga-button ga-button-secondary" data-save-action="reminder" data-enabled="{{ 'false' if saved_event and saved_event.reminder_enabled else 'true' }}" aria-pressed="{{ 'true' if saved_event and saved_event.reminder_enabled else 'false' }}">{{ 'Reminder on' if saved_event and saved_event.reminder_enabled else 'Remind me' }}</button><p class="ga-muted text-sm">A notification within the hour before the scheduled start. A future start time must be set.</p><p data-master-feedback role="status" aria-live="polite"></p></div>{% else %}<p class="ga-muted">{{ t('Master players can save events and set start reminders.') }}</p>{% endif %}</section>
     {% endif %}
     <!-- Tournament overview -->
     <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-8 shadow-2xl shadow-emerald-500/10">
@@ -32,7 +32,7 @@
                     {% endfor %}
                 </div>
                 <div>
-                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Tournament</p>
+                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t('Tournament') }}</p>
                     <h1 class="mt-3 text-4xl font-bold text-white">{{ tournament.name }}</h1>
                     <p class="mt-2 text-slate-400">{{ tournament.game }}</p>
                     <span class="mt-4 inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] {% if tournament.status == 'open' %}bg-emerald-500 text-slate-950{% elif tournament.status in ('ongoing', 'live', 'pending_confirmation') %}bg-amber-500 text-slate-950{% elif tournament.status == 'finished' %}bg-sky-500 text-slate-950{% else %}bg-slate-700 text-white{% endif %}">{{ tournament.status|capitalize }}</span>
@@ -40,15 +40,15 @@
             </div>
             <div class="grid gap-4 sm:grid-cols-3">
                 <div class="rounded-[28px] bg-slate-950/80 p-5 text-center">
-                    <p class="text-sm text-slate-400">Entry fee</p>
+                    <p class="text-sm text-slate-400">{{ t('Entry fee') }}</p>
                     <p class="mt-2 text-2xl font-semibold text-white">{{ tournament.entry_fee|gp }}</p>
                 </div>
                 <div class="rounded-[28px] bg-slate-950/80 p-5 text-center">
-                    <p class="text-sm text-slate-400">Prize pool</p>
-                    <p class="mt-2 text-2xl font-semibold text-emerald-300">{{ tournament.prize|naira }}</p>
+                    <p class="text-sm text-slate-400">{{ t('Prize pool') }}</p>
+                    <p class="mt-2 text-2xl font-semibold text-emerald-300">{{ tournament.prize|gp }}</p>
                 </div>
                 <div class="rounded-[28px] bg-slate-950/80 p-5 text-center">
-                    <p class="text-sm text-slate-400">Slots</p>
+                    <p class="text-sm text-slate-400">{{ t('Slots') }}</p>
                     <p class="mt-2 text-2xl font-semibold text-white">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</p>
                 </div>
             </div>
@@ -61,30 +61,30 @@
         <div class="mt-8 flex flex-wrap gap-3">
             {% if joined_participant %}
                 <span class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950">{{ icon('check') }} You're in this tournament</span>
-                <a href="{{ url_for('dashboard') }}" class="rounded-full bg-slate-800 px-6 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">Go to Dashboard</a>
+                <a href="{{ url_for('dashboard') }}" class="rounded-full bg-slate-800 px-6 py-4 text-sm font-semibold text-slate-200 hover:bg-slate-700">{{ t('Go to Dashboard') }}</a>
                 {% if can_matchmake %}
                 <form method="POST" action="{{ url_for('matchmake_player_pair', tournament_id=tournament.id) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-6 py-4 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20">Find Match</button>
+                    <button type="submit" class="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-6 py-4 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20">{{ t('Find Match') }}</button>
                 </form>
                 {% endif %}
             {% elif current_user.is_authenticated %}
                 {% if tournament.status == 'open' %}
                     {% if active_participant_count(tournament) >= tournament.max_participants %}
-                    <span class="rounded-full bg-red-500 px-6 py-4 text-sm font-semibold text-white">Full</span>
+                    <span class="rounded-full bg-red-500 px-6 py-4 text-sm font-semibold text-white">{{ t('Full') }}</span>
                     {% else %}
                     <a href="{{ url_for('pay_for_tournament' if pending_payment else 'join_tournament', tournament_id=tournament.id) }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">{{ 'Resume payment' if pending_payment else 'Join tournament' }}</a>
                     {% endif %}
                 {% else %}
-                <span class="rounded-full bg-slate-800 px-6 py-4 text-sm text-slate-300">Tournament is not open for registration</span>
+                <span class="rounded-full bg-slate-800 px-6 py-4 text-sm text-slate-300">{{ t('Tournament is not open for registration') }}</span>
                 {% endif %}
             {% else %}
                 {% if tournament.status != 'open' %}
-                <span class="ga-status">Registration closed</span>
+                <span class="ga-status">{{ t('Registration closed') }}</span>
                 {% elif active_participant_count(tournament) >= tournament.max_participants %}
-                <span class="ga-status">Full</span>
+                <span class="ga-status">{{ t('Full') }}</span>
                 {% else %}
-                <a href="{{ url_for('login', next=url_for('tournament_details', tournament_id=tournament.id)) }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Login to Join</a>
+                <a href="{{ url_for('login', next=url_for('tournament_details', tournament_id=tournament.id)) }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">{{ t('Login to Join') }}</a>
                 {% endif %}
             {% endif %}
         </div>
@@ -95,14 +95,14 @@
     <form method="POST" action="{{ url_for('create_matches', tournament_id=tournament.id) }}" class="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <p class="text-sm text-slate-300">Create a single-elimination bracket from eligible participants. The field must contain a power of two; no player is dropped.</p>
-        <button type="submit" class="mt-3 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950">Create bracket</button>
+        <button type="submit" class="mt-3 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950">{{ t('Create bracket') }}</button>
     </form>
     {% endif %}
     {% if matches %}
     <section class="mt-10 rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-2xl shadow-slate-950/20">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Schedule</p>
+                <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t('Schedule') }}</p>
                 <h2 class="mt-2 text-2xl font-semibold text-white">{% if matches[0].round_number %}Single-elimination bracket{% else %}Matches{% endif %}</h2>
             </div>
         </div>
@@ -118,13 +118,13 @@
                     <div class="flex items-center justify-between gap-3 rounded-[24px] bg-slate-900/80 p-4">
                         <span class="font-semibold text-white">{{ match.player_one.username if match.player_one else 'TBD' }} {{ master_badge(match.player_one) }}</span>
                         {% if match.status == 'confirmed' and match.winner and match.winner.id == match.player_one_user_id %}
-                        <span class="rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold text-slate-950">WINNER</span>
+                        <span class="rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold text-slate-950">{{ t('WINNER') }}</span>
                         {% endif %}
                     </div>
                     <div class="flex items-center justify-between gap-3 rounded-[24px] bg-slate-900/80 p-4">
                         <span class="font-semibold text-white">{{ match.player_two.username if match.player_two else 'TBD' }} {{ master_badge(match.player_two) }}</span>
                         {% if match.status == 'confirmed' and match.winner and match.winner.id == match.player_two_user_id %}
-                        <span class="rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold text-slate-950">WINNER</span>
+                        <span class="rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold text-slate-950">{{ t('WINNER') }}</span>
                         {% endif %}
                     </div>
                 </div>
@@ -132,13 +132,13 @@
                 {% set is_match_player = current_user.id in (match.player_one_user_id, match.player_two_user_id) %}
                 {% if match.room_code %}
                 <div class="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
-                    <div class="rounded-2xl bg-slate-900/80 p-3"><p class="text-xs text-slate-500">Room</p><p class="font-mono text-white">{{ match.room_code }}</p></div>
-                    {% if match.room_password %}<div class="rounded-2xl bg-slate-900/80 p-3"><p class="text-xs text-slate-500">Password</p><p class="font-mono text-white">{{ match.room_password }}</p></div>{% endif %}
+                    <div class="rounded-2xl bg-slate-900/80 p-3"><p class="text-xs text-slate-500">{{ t('Room') }}</p><p class="font-mono text-white">{{ match.room_code }}</p></div>
+                    {% if match.room_password %}<div class="rounded-2xl bg-slate-900/80 p-3"><p class="text-xs text-slate-500">{{ t('Password') }}</p><p class="font-mono text-white">{{ match.room_password }}</p></div>{% endif %}
                 </div>
                 {% endif %}
                 {% if match.winner %}
                 <div class="mt-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-sm text-slate-300">
-                    <p>Reported winner: <span class="font-semibold text-white">{{ match.winner.username }}</span></p>
+                    <p>{{ t('Reported winner:') }} <span class="font-semibold text-white">{{ match.winner.username }}</span></p>
                     {% if match.submitted_by %}<p class="mt-1">Submitted by {{ match.submitted_by.username }}</p>{% endif %}
                     {% if match.proof_note %}<p class="mt-3 whitespace-pre-wrap break-words">{{ match.proof_note }}</p>{% endif %}
                 </div>
@@ -147,7 +147,7 @@
                 {% if is_match_player and match.status in ('scheduled', 'ongoing') %}
                 <form method="POST" action="{{ url_for('submit_match_result_route', match_id=match.id) }}" class="mt-5 space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <h3 class="font-semibold text-white">Submit match result</h3>
+                    <h3 class="font-semibold text-white">{{ t('Submit match result') }}</h3>
                     <div class="grid gap-3 sm:grid-cols-2">
                         <label class="text-xs text-slate-400">Room code
                             <input name="room_code" maxlength="100" required value="{{ match.room_code or '' }}" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
@@ -164,7 +164,7 @@
                     </div>
                     <label class="block text-xs text-slate-400">Winner
                         <select name="winner_user_id" required class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
-                            <option value="">Choose the winner</option>
+                            <option value="">{{ t('Choose the winner') }}</option>
                             <option value="{{ match.player_one_user_id }}" {% if match.winner_user_id == match.player_one_user_id %}selected{% endif %}>{{ match.player_one.username }}</option>
                             <option value="{{ match.player_two_user_id }}" {% if match.winner_user_id == match.player_two_user_id %}selected{% endif %}>{{ match.player_two.username }}</option>
                         </select>
@@ -172,15 +172,15 @@
                     <label class="block text-xs text-slate-400">Evidence or result notes
                         <textarea name="proof_note" maxlength="2000" rows="3" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">{{ match.proof_note or '' }}</textarea>
                     </label>
-                    <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">Submit result</button>
+                    <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">{{ t('Submit result') }}</button>
                 </form>
                 {% elif is_match_player and not (current_user.is_admin and not current_user.suspended) and match.status == 'pending_confirmation' and current_user.id != match.submitted_by_user_id %}
                 <div class="mt-5 space-y-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
-                    <p class="text-sm text-amber-100">Review the reported result. Confirm it or send it to an admin for review.</p>
+                    <p class="text-sm text-amber-100">{{ t('Review the reported result. Confirm it or send it to an admin for review.') }}</p>
                     <div class="flex flex-wrap gap-2">
                         <form method="POST" action="{{ url_for('confirm_match_result', match_id=match.id) }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950">Confirm result</button>
+                            <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950">{{ t('Confirm result') }}</button>
                         </form>
                     </div>
                     <form method="POST" action="{{ url_for('dispute_match_result', match_id=match.id) }}" class="space-y-2">
@@ -188,7 +188,7 @@
                         <label class="block text-xs text-slate-400">Dispute reason
                             <textarea name="reason" maxlength="2000" rows="2" required class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"></textarea>
                         </label>
-                        <button type="submit" class="rounded-xl border border-amber-400/40 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/10">Dispute result</button>
+                        <button type="submit" class="rounded-xl border border-amber-400/40 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/10">{{ t('Dispute result') }}</button>
                     </form>
                 </div>
                 {% endif %}
@@ -202,12 +202,12 @@
                         <form method="POST" action="{{ url_for('review_match_dispute', match_id=match.id) }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="decision" value="confirm">
-                            <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950">Confirm reported result</button>
+                            <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950">{{ t('Confirm reported result') }}</button>
                         </form>
                         <form method="POST" action="{{ url_for('review_match_dispute', match_id=match.id) }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="decision" value="reopen">
-                            <button type="submit" class="rounded-xl border border-amber-400/40 px-4 py-2 text-sm font-semibold text-amber-100">Reopen match</button>
+                            <button type="submit" class="rounded-xl border border-amber-400/40 px-4 py-2 text-sm font-semibold text-amber-100">{{ t('Reopen match') }}</button>
                         </form>
                     </div>
                 </div>
@@ -225,10 +225,10 @@
         <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Rankings</p>
-                    <h2 class="mt-2 text-2xl font-semibold text-white">Leaderboard</h2>
+                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t('Rankings') }}</p>
+                    <h2 class="mt-2 text-2xl font-semibold text-white">{{ t('Leaderboard') }}</h2>
                 </div>
-                <a href="{{ url_for('leaderboard') }}" class="text-sm font-semibold text-emerald-300 hover:text-emerald-200">View all</a>
+                <a href="{{ url_for('leaderboard') }}" class="text-sm font-semibold text-emerald-300 hover:text-emerald-200">{{ t('View all') }}</a>
             </div>
             {% if tournament.leaderboard %}
             <div class="mt-6 space-y-3">
@@ -245,36 +245,36 @@
                 {% endfor %}
             </div>
             {% else %}
-            <div class="mt-6 rounded-[28px] border border-dashed border-slate-700 bg-slate-950/70 p-8 text-center text-slate-400">No ranking data yet. Check back once matches finish.</div>
+            <div class="mt-6 rounded-[28px] border border-dashed border-slate-700 bg-slate-950/70 p-8 text-center text-slate-400">{{ t('No ranking data yet. Check back once matches finish.') }}</div>
             {% endif %}
         </section>
 
         <!-- Prizes & info -->
         <aside class="space-y-6">
             <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
-                <h2 class="text-xl font-semibold text-white">Prizes</h2>
-                <p class="mt-2 text-sm text-slate-400">The prize pool is the announced total. Individual payouts below are shown only when the organizer publishes them.</p>
+                <h2 class="text-xl font-semibold text-white">{{ t('Prizes') }}</h2>
+                <p class="mt-2 text-sm text-slate-400">{{ t('The prize pool is the announced total. Individual payouts below are shown only when the organizer publishes them.') }}</p>
                 <div class="mt-5 space-y-3">
                     <div class="flex items-center justify-between rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-4">
-                        <span class="font-semibold text-emerald-200">1st Place</span>
-                        <span class="font-semibold text-white">{{ tournament.first_place|naira if tournament.first_place and tournament.first_place.isdigit() else (tournament.first_place or 'Not published') }}</span>
+                        <span class="font-semibold text-emerald-200">{{ t('1st Place') }}</span>
+                        <span class="font-semibold text-white">{{ tournament.first_place|gp if tournament.first_place and tournament.first_place.isdigit() else (tournament.first_place or 'Not published') }}</span>
                     </div>
                     <div class="flex items-center justify-between rounded-[28px] border border-slate-800 bg-slate-950/80 p-4">
-                        <span class="text-slate-300">2nd Place</span>
-                        <span class="font-semibold text-white">{{ tournament.second_place|naira if tournament.second_place and tournament.second_place.isdigit() else (tournament.second_place or 'Not published') }}</span>
+                        <span class="text-slate-300">{{ t('2nd Place') }}</span>
+                        <span class="font-semibold text-white">{{ tournament.second_place|gp if tournament.second_place and tournament.second_place.isdigit() else (tournament.second_place or 'Not published') }}</span>
                     </div>
                     <div class="flex items-center justify-between rounded-[28px] border border-slate-800 bg-slate-950/80 p-4">
-                        <span class="text-slate-300">3rd Place</span>
-                        <span class="font-semibold text-white">{{ tournament.third_place|naira if tournament.third_place and tournament.third_place.isdigit() else (tournament.third_place or 'Not published') }}</span>
+                        <span class="text-slate-300">{{ t('3rd Place') }}</span>
+                        <span class="font-semibold text-white">{{ tournament.third_place|gp if tournament.third_place and tournament.third_place.isdigit() else (tournament.third_place or 'Not published') }}</span>
                     </div>
                 </div>
             </section>
             <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
-                <h2 class="text-xl font-semibold text-white">Tournament info</h2>
+                <h2 class="text-xl font-semibold text-white">{{ t('Tournament info') }}</h2>
                 <div class="mt-5 space-y-3 text-sm text-slate-300">
-                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Entries</span><span class="font-semibold text-white">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</span></div>
-                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Match time</span><span class="font-semibold text-white">{{ tournament.match_time.strftime('%b %d, %Y · %H:%M') if tournament.match_time else 'To be announced' }} (organizer time)</span></div>
-                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>Status</span><span class="font-semibold text-emerald-300 capitalize">{{ tournament.status }}</span></div>
+                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Entries') }}</span><span class="font-semibold text-white">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</span></div>
+                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Match time') }}</span><span class="font-semibold text-white">{{ tournament.match_time.strftime('%b %d, %Y · %H:%M') if tournament.match_time else 'To be announced' }} (organizer time)</span></div>
+                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Status') }}</span><span class="font-semibold text-emerald-300 capitalize">{{ tournament.status }}</span></div>
                 </div>
             </section>
         </aside>
@@ -282,7 +282,7 @@
 </main>
 
 <footer class="border-t border-slate-800/70 bg-slate-950/80 p-8 pb-28 text-center text-sm text-slate-500 md:pb-8">
-    <p>© 2026 GameArena. Compete. Win. Earn.</p>
+    <p>{{ t('© 2026 GameArena. Compete. Win. Earn.') }}</p>
 </footer>
 
 {% include '_mobile_nav.html' %}

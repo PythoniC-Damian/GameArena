@@ -18,3 +18,5 @@
 {% if current_user.is_authenticated %}<script defer src="{{ asset_url('js/push.js') }}"></script>{% endif %}
 
 <script defer src="{{ asset_url('js/master.js') }}"></script>
+
+<script>window.gaCatalog={{ interface_catalog|tojson }};window.gaT=function(text,params){return (window.gaCatalog[text]||text).replace(/\{([a-z]+)\}/g,function(match,key){return params&&params[key]!==undefined?String(params[key]):match})};</script>

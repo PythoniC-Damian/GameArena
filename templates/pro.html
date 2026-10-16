@@ -4,7 +4,7 @@
 {% from '_pro_tiers.html' import tier_cards with context %}
 {% block title %}GameArena Pro memberships{% endblock %}
 {% block content %}
-<header class="ga-page-heading"><div><p class="ga-eyebrow">GameArena Pro</p><h1 class="ga-title">Your game. Your identity.</h1><p class="ga-description">More ways to express yourself, track progress and build your squad.</p></div><a class="ga-button ga-button-secondary" href="{{ url_for('profile') }}">My profile</a></header>
+<header class="ga-page-heading"><div><p class="ga-eyebrow">{{ t('GameArena Pro') }}</p><h1 class="ga-title">Your game. Your identity.</h1><p class="ga-description">More ways to express yourself, track progress and build your squad.</p></div><a class="ga-button ga-button-secondary" href="{{ url_for('profile') }}">{{ t('My profile') }}</a></header>
 <section class="ga-card ga-pro-catalogue" aria-label="GameArena Pro subscriptions">{{ tier_cards() }}</section>
 <div class="ga-master-layout"><div class="ga-stack">
 <section id="subscription" class="ga-card">

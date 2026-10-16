@@ -1,11 +1,12 @@
 (() => {
   'use strict';
+  const t=window.gaT||((text,params)=>text.replace(/\{([a-z]+)\}/g,(match,key)=>params?.[key]??match));
   document.querySelectorAll('[data-password-target]').forEach(toggle => {
     const input = document.getElementById(toggle.dataset.passwordTarget);
     if (!input) return;
     toggle.addEventListener('click', () => {
       const visible = input.type === 'password'; input.type = visible ? 'text' : 'password';
-      toggle.setAttribute('aria-pressed', String(visible)); toggle.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
+      toggle.setAttribute('aria-pressed', String(visible)); toggle.setAttribute('aria-label', t(visible ? 'Hide password' : 'Show password'));
       toggle.querySelector('[data-password-show]').hidden = visible;
       toggle.querySelector('[data-password-hide]').hidden = !visible;
     });
@@ -26,8 +27,8 @@
       const seconds = Math.max(0, Math.ceil((until - Date.now()) / 1000));
       button.disabled = submitting || seconds > 0 || Boolean(agreement && !agreement.checked);
       const countdown = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-      status.textContent = seconds ? (resend ? `You can request another code in ${countdown}.` : `Please wait ${seconds} seconds before trying again.`) : '';
-      const text = submitting ? 'Please wait…' : resend && seconds ? `Resend in ${countdown}` : label;
+      status.textContent = seconds ? (resend ? t('You can request another code in {time}.',{time:countdown}) : t('Please wait {seconds} seconds before trying again.',{seconds})) : '';
+      const text = submitting ? t('Please wait…') : resend && seconds ? t('Resend in {time}',{time:countdown}) : label;
       if (button.tagName === 'INPUT') button.value = text;
       else button.textContent = text;
       return seconds;

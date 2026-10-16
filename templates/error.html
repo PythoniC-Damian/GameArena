@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,8 +15,8 @@
     <h1 class="mt-4 text-3xl font-bold sm:text-4xl">{{ title }}</h1>
     <p class="mt-3 text-slate-400">{{ message }}</p>
     <div class="mt-7 flex flex-wrap justify-center gap-3">
-        <a href="{{ url_for('home') }}" class="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950">Home</a>
-        {% if current_user.is_authenticated %}<a href="{{ url_for('dashboard') }}" class="rounded-xl border border-slate-700 px-5 py-3 text-sm text-slate-200">Dashboard</a>{% else %}<a href="{{ url_for('login') }}" class="rounded-xl border border-slate-700 px-5 py-3 text-sm text-slate-200">Login</a>{% endif %}
+        <a href="{{ url_for('home') }}" class="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950">{{ t('Home') }}</a>
+        {% if current_user.is_authenticated %}<a href="{{ url_for('dashboard') }}" class="rounded-xl border border-slate-700 px-5 py-3 text-sm text-slate-200">{{ t('Dashboard') }}</a>{% else %}<a href="{{ url_for('login') }}" class="rounded-xl border border-slate-700 px-5 py-3 text-sm text-slate-200">{{ t('Login') }}</a>{% endif %}
     </div>
 </main>
 {% include '_pwa_register.html' %}

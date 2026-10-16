@@ -1,11 +1,13 @@
 {% from '_icons.html' import icon %}
-<a href="{{ url_for('dashboard') }}">{{ icon('home') }}Dashboard</a>
-{% if not mobile_menu|default(false) %}<a href="{{ url_for('profile') }}">{{ icon('user') }}My profile</a>{% endif %}
-<a href="{{ url_for('pro.membership') }}">{{ icon('shield') }}GameArena Pro</a>
-<a href="{{ url_for('wallet') }}">{{ icon('wallet') }}Wallet</a>
-<a href="{{ url_for('chat') }}">{{ icon('chat') }}Chat</a>
-<a href="{{ url_for('chat', inbox='requests') }}">{{ icon('user') }}Player requests</a>
-<a href="{{ url_for('settings') }}">{{ icon('settings') }}Settings</a>
-<a href="{{ url_for('support') }}">{{ icon('help') }}Help & support</a>
-{% if current_user.is_admin and not current_user.suspended %}<a href="{{ url_for('admin') }}">{{ icon('trophy') }}Admin panel</a><a href="{{ url_for('admin_reports') }}">{{ icon('help') }}Review reports</a>{% endif %}
-<form method="POST" action="{{ url_for('logout') }}" class="ga-menu-logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">{{ icon('logout') }}Log out</button></form>
+<a href="{{ url_for('dashboard') }}">{{ icon('home') }}{{ t('Dashboard') }}</a>
+{% if not mobile_menu|default(false) %}<a href="{{ url_for('profile') }}">{{ icon('user') }}{{ t('My profile') }}</a>{% endif %}
+<a href="{{ url_for('pro.membership') }}">{{ icon('shield') }}{{ t('GameArena Pro') }}</a>
+<a href="{{ url_for('market.shop') }}">{{ icon('shield') }}{{ t('Arena Shop') }}</a>
+<a href="{{ url_for('organizers.workspace') }}">{{ icon('trophy') }}{{ t('Organiser Studio') }}</a>
+<a href="{{ url_for('wallet') }}">{{ icon('wallet') }}{{ t('Wallet') }}</a>
+<a href="{{ url_for('chat') }}">{{ icon('chat') }}{{ t('Chat') }}</a>
+<a href="{{ url_for('chat', inbox='requests') }}">{{ icon('user') }}{{ t('Player requests') }}</a>
+<a href="{{ url_for('settings') }}">{{ icon('settings') }}{{ t('Settings') }}</a>
+<a href="{{ url_for('support') }}">{{ icon('help') }}{{ t('Help & support') }}</a>
+{% if current_user.is_admin and not current_user.suspended %}<a href="{{ url_for('admin') }}">{{ icon('trophy') }}{{ t('Admin panel') }}</a><a href="{{ url_for('admin_reports') }}">{{ icon('help') }}{{ t('Review reports') }}</a>{% endif %}
+<form method="POST" action="{{ url_for('logout') }}" class="ga-menu-logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">{{ icon('logout') }}{{ t('Log out') }}</button></form>

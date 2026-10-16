@@ -1,6 +1,6 @@
 {% from '_master.html' import master_badge %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_language }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -97,7 +97,7 @@
             {% if conversation_user %}
             <div class="mt-5 flex flex-wrap gap-2">
                 {% if is_blocked %}
-                <form method="POST" action="{{ url_for('unblock_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-3 py-2 text-sm">Unblock</button></form>
+                <form method="POST" action="{{ url_for('unblock_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-3 py-2 text-sm">{{ t('Unblock') }}</button></form>
                 {% else %}
                 <form method="POST" action="{{ url_for('block_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-3 py-2 text-sm">Block</button></form>
                 {% endif %}
@@ -111,12 +111,12 @@
 {% include '_mobile_nav.html' %}
 
 <footer class="border-t border-slate-800/70 bg-slate-950/80 p-8 text-center text-sm text-slate-500 pb-28 md:pb-8">
-    <p>© 2026 GameArena. Compete. Win. Earn.</p>
+    <p>{{ t('© 2026 GameArena. Compete. Win. Earn.') }}</p>
 </footer>
 
 <script defer src="{{ asset_url('js/chat.js') }}"></script>
 
 {% include '_pwa_register.html' %}
-<dialog id="messageActions" class="ga-message-actions"><h2>Message actions</h2><button type="button" data-action-reply>Reply</button><button type="button" data-delete-message>Delete for everyone</button><button type="button" data-delete-confirm hidden>Confirm deletion for everyone</button><p data-action-status role="status"></p><button type="button" data-action-cancel>Cancel</button></dialog>
+<dialog id="messageActions" class="ga-message-actions"><h2>Message actions</h2><button type="button" data-action-reply>Reply</button><button type="button" data-delete-message>Delete for everyone</button><button type="button" data-delete-confirm hidden>Confirm deletion for everyone</button><p data-action-status role="status"></p><button type="button" data-action-cancel>{{ t('Cancel') }}</button></dialog>
 </body>
 </html>

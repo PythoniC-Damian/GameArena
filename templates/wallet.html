@@ -2,18 +2,21 @@
 {% block title %}Wallet · GameArena{% endblock %}
 {% block content %}
 {% from "_icons.html" import icon %}
-<h1>Wallet</h1>
+<h1>{{ t('Wallet') }}</h1>
 <section class="ga-panel ga-section">
-<div class="ga-actions"><p class="ga-eyebrow">Available balance</p><button id="toggleBalance" type="button" class="ga-icon-button" aria-label="Hide balance" aria-pressed="false"><span data-eye-open>{{ icon("eye") }}</span><span data-eye-closed hidden>{{ icon("eye-off") }}</span></button></div><p class="ga-balance" id="walletBalance" aria-live="polite">{{ wallet_balance|gp }}</p><p id="walletNairaEquivalent" class="ga-muted">{{ wallet_balance|naira }} equivalent</p>
-<p class="ga-muted">1 GP = ₦10. Top up, pay tournament entry fees, or withdraw to your bank. Withdrawals cost 1%, capped at ₦200, deducted from the amount requested.</p>
-<div class="ga-actions"><button class="ga-button" onclick="openAddMoneyModal()">Deposit</button><button class="ga-button ga-button-secondary" onclick="openWithdrawModal()">Withdraw</button></div>
+<div class="ga-actions"><p class="ga-eyebrow">{{ t('Available balance') }}</p><button id="toggleBalance" type="button" class="ga-icon-button" aria-label="Hide balance" aria-pressed="false"><span data-eye-open>{{ icon("eye") }}</span><span data-eye-closed hidden>{{ icon("eye-off") }}</span></button></div><p class="ga-balance" id="walletBalance" data-money-naira="{{ wallet_balance }}" aria-live="polite">{{ wallet_balance|gp }}</p><p id="walletNairaEquivalent" class="ga-muted">{{ wallet_balance|naira }} equivalent</p>
+{% include '_wallet_currency.html' %}
+<p class="ga-muted">{{ t('1 GP = ₦1. Top up, pay tournament entry fees, or withdraw to your bank. Withdrawals cost 1%, capped at ₦200, deducted from the amount requested.') }}</p>
+<div class="ga-credit-grid" data-balance-breakdown><div><span>{{ t('Purchased GP') }}</span><strong><span data-money-naira="{{ current_user.purchased_balance }}">{{ current_user.purchased_balance|gp }}</span></strong></div><div><span>{{ t('Winnings GP') }}</span><strong><span data-money-naira="{{ current_user.wallet_winnings_balance }}">{{ current_user.wallet_winnings_balance|gp }}</span></strong></div><div><span>{{ t('Bonus GP') }}</span><strong><span data-money-naira="{{ current_user.wallet_bonus_balance }}">{{ current_user.wallet_bonus_balance|gp }}</span></strong></div></div><p class="ga-muted">{{ t('Purchased GP and wallet winnings can be withdrawn. Bonus GP is for cosmetics only. Prizes paid directly to your bank are not counted again here.') }}</p>
+<div class="ga-actions"><button class="ga-button" onclick="openAddMoneyModal()">{{ t('Deposit') }}</button><button class="ga-button ga-button-secondary" onclick="openWithdrawModal()">{{ t('Withdraw') }}</button></div>
 </section>
-<section class="ga-panel ga-section"><h2>Transaction history</h2>
-<p class="ga-muted">Your 5 most recent transactions.</p>
+<section class="ga-panel ga-section"><h2>{{ t('Transaction history') }}</h2>
+<p class="ga-muted">{{ t('Your 5 most recent transactions.') }}</p>
 {% include '_wallet_records.html' %}
-<a class="ga-button ga-button-secondary" href="{{ url_for('wallet_history') }}">View all transaction history</a></section>
-<section class="ga-panel ga-section"><h2>Tournament entries</h2><p class="ga-muted">Total paid: {{ total_spent|gp }} ({{ total_spent|naira }}) · {{ pending_count }} pending. Showing the 20 most recent entries.</p>
-{% for ut in transactions %}<article class="ga-record"><div><a href="{{ url_for('tournament_details', tournament_id=ut.tournament_id) }}">{{ ut.tournament.name }}</a><p class="ga-muted">{{ ut.joined_at.strftime('%b %d, %Y') if ut.joined_at else '' }}</p></div><div class="ga-text-right"><strong>{{ ut.amount_paid|gp }}</strong><p class="ga-muted">{{ ut.payment_status|capitalize }}</p>{% if ut.payment_status == 'pending' and ut.tournament.status == 'open' %}<a href="{{ url_for('pay_for_tournament', tournament_id=ut.tournament_id) }}">Resume payment</a>{% endif %}</div></article>{% else %}<p class="ga-empty">No tournament entries yet.</p>{% endfor %}</section>
+<a class="ga-button ga-button-secondary" href="{{ url_for('wallet_history') }}">{{ t('View all transaction history') }}</a></section>
+<section class="ga-panel ga-section"><h2>{{ t('Tournament entries') }}</h2><p class="ga-muted">Total paid: <span data-money-naira="{{ total_spent }}">{{ total_spent|gp }}</span> · {{ pending_count }} pending. Showing the 20 most recent entries.</p>
+{% for ut in transactions %}<article class="ga-record"><div><a href="{{ url_for('tournament_details', tournament_id=ut.tournament_id) }}">{{ ut.tournament.name }}</a><p class="ga-muted">{{ ut.joined_at.strftime('%b %d, %Y') if ut.joined_at else '' }}</p></div><div class="ga-text-right"><strong><span data-money-naira="{{ ut.amount_paid }}">{{ ut.amount_paid|gp }}</span></strong><p class="ga-muted">{{ ut.payment_status|capitalize }}</p>{% if ut.payment_status == 'pending' and ut.tournament.status == 'open' %}<a href="{{ url_for('pay_for_tournament', tournament_id=ut.tournament_id) }}">{{ t('Resume payment') }}</a>{% endif %}</div></article>{% else %}<p class="ga-empty">{{ t('No tournament entries yet.') }}</p>{% endfor %}</section>
+<details class="ga-panel ga-section"><summary>{{ t('Match value calculator') }}</summary><p class="ga-muted">{{ t('Preview a match amount in GP. This calculator does not create a match or charge your wallet.') }}</p><form method="POST" action="{{ url_for('fx.quote') }}" data-match-value-quote class="ga-match-quote"><label>{{ t('Amount') }}<input name="amount" type="number" min="0.0001" step="0.0001" value="5" required></label><label>{{ t('Currency') }}<select name="currency" data-match-quote-currency><option value="USD">USD</option><option value="GP">GP</option><option value="NGN">NGN</option></select></label><button class="ga-button">{{ t('Calculate GP') }}</button><p data-match-quote-result role="status" aria-live="polite"></p></form></details>
 {% endblock %}
 {% block scripts %}
 <!-- Modals -->
@@ -21,19 +24,19 @@
     <div class="w-full max-w-md rounded-[32px] border border-slate-800 bg-slate-950 p-8 shadow-2xl">
         <div class="flex items-center justify-between">
             <div>
-                <h2 id="depositTitle" class="text-xl font-bold text-white">Deposit</h2>
-                <p class="mt-2 text-sm text-slate-400">Top up GP using Paystack. ₦1,000 gives you 100 GP. Withdrawals cost 1%, capped at ₦200.</p>
+                <h2 id="depositTitle" class="text-xl font-bold text-white">{{ t('Deposit') }}</h2>
+                <p class="mt-2 text-sm text-slate-400">{{ t('Top up GP using Paystack. ₦1,000 gives you 1,000 GP. Withdrawals cost 1%, capped at ₦200.') }}</p>
             </div>
             <button aria-label="Close deposit" onclick="closeAddMoneyModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
         </div>
         <form data-url="{{ url_for('wallet_initialize_deposit') }}" id="addMoneyForm" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <div>
-                <label for="depositAmount" class="block text-sm font-semibold text-emerald-300 mb-2">Amount (₦)</label>
+                <label for="depositAmount" class="block text-sm font-semibold text-emerald-300 mb-2">{{ t('Amount (₦)') }}</label>
                 <input id="depositAmount" type="number" min="100" step="1" placeholder="Enter amount" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none" required />
             </div>
-            <div><label for="depositGpAmount">GP to receive</label><input id="depositGpAmount" type="number" min="10" step="0.1" placeholder="100 GP = ₦1,000" class="ga-gp-input" /><p class="ga-muted" id="depositConversion">1 GP = ₦10 · Minimum top-up: 10 GP (₦100).</p></div>
-            <button type="submit" class="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-emerald-400 hover:to-cyan-400">Top up GP</button>
+            <div><label for="depositGpAmount">{{ t('GP to receive') }}</label><input id="depositGpAmount" type="number" min="100" step="1" placeholder="100 GP = ₦100" class="ga-gp-input" /><p class="ga-muted" id="depositConversion">{{ t('1 GP = ₦1 · Minimum top-up: 100 GP (₦100).') }}</p></div>
+            <button type="submit" class="w-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-emerald-400 hover:to-cyan-400">{{ t('Top up GP') }}</button>
         <p class="ga-muted" role="status" aria-live="polite" data-form-status></p></form>
     </div>
 </div>
@@ -42,32 +45,34 @@
     <div class="w-full max-w-md rounded-[32px] border border-slate-800 bg-slate-950 p-8 shadow-2xl">
         <div class="flex items-center justify-between">
             <div>
-                <h2 id="withdrawTitle" class="text-xl font-bold text-white">Withdraw</h2>
-                <p class="mt-2 text-sm text-slate-400">Send money to your bank account. Your account name is verified securely before transfer.</p>
+                <h2 id="withdrawTitle" class="text-xl font-bold text-white">{{ t('Withdraw') }}</h2>
+                <p class="mt-2 text-sm text-slate-400">{{ t('Send money to your bank account. Your account name is verified securely before transfer.') }}</p>
             </div>
             <button aria-label="Close withdrawal" onclick="closeWithdrawModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
         </div>
         <form data-url="{{ url_for('wallet_withdraw') }}" data-resolve-url="{{ url_for('wallet_resolve_account') }}" id="withdrawForm" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <div>
-                <label for="withdrawAmount" class="block text-sm font-semibold text-cyan-300 mb-2">Amount to withdraw (GP)</label>
-                <input id="withdrawAmount" type="number" min="10" step="0.1" placeholder="Enter amount" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
+                <label for="withdrawAmount" class="block text-sm font-semibold text-cyan-300 mb-2">{{ t('Amount to withdraw (GP)') }}</label>
+                <input id="withdrawAmount" type="number" min="100" step="1" placeholder="Enter amount" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
             </div>
 
 
-            <div><label for="withdrawBank" class="block text-sm font-semibold text-cyan-300 mb-2">Bank</label><select id="withdrawBank" data-url="{{ url_for('wallet_banks') }}" required class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"><option value="">Choose your bank</option></select><p id="bankStatus" class="ga-muted" role="status"></p><button id="retryBanks" type="button" class="ga-button ga-button-secondary" hidden>Retry loading banks</button></div>
+            <div><label for="withdrawBank" class="block text-sm font-semibold text-cyan-300 mb-2">{{ t('Bank') }}</label><select id="withdrawBank" data-url="{{ url_for('wallet_banks') }}" required class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"><option value="">{{ t('Choose your bank') }}</option></select><p id="bankStatus" class="ga-muted" role="status"></p><button id="retryBanks" type="button" class="ga-button ga-button-secondary" hidden>{{ t('Retry loading banks') }}</button></div>
 <div>
-                <label for="accountNumber" class="block text-sm font-semibold text-cyan-300 mb-2">Account number</label>
+                <label for="accountNumber" class="block text-sm font-semibold text-cyan-300 mb-2">{{ t('Account number') }}</label>
                 <input id="accountNumber" type="text" maxlength="10" inputmode="numeric" pattern="[0-9]{10}" placeholder="0123456789" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />
             </div>
 
-            <div><p class="ga-muted">Account holder</p><p id="resolvedAccountName" role="status" aria-live="polite">Select your bank and enter your account number.</p><button type="button" id="retryAccount" class="ga-button ga-button-secondary" hidden>Retry account verification</button></div>
-            <div class="ga-gp-quote" aria-live="polite"><p><span>Withdrawal value</span><strong id="withdrawGross">₦0</strong></p><p><span>Fee · 1%, max ₦200</span><strong id="withdrawFee">₦0</strong></p><p><span>You receive in your bank</span><strong id="withdrawPayout">₦0</strong></p></div>
-            <label class="ga-agreement-label"><input id="confirmWithdrawalFee" type="checkbox" required /><span>I agree to the displayed withdrawal fee and bank payout.</span></label>
-            <button type="submit" disabled class="w-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-cyan-400 hover:to-emerald-400">Withdraw Now</button>
+            <div><p class="ga-muted">{{ t('Account holder') }}</p><p id="resolvedAccountName" role="status" aria-live="polite">{{ t('Select your bank and enter your account number.') }}</p><button type="button" id="retryAccount" class="ga-button ga-button-secondary" hidden>{{ t('Retry account verification') }}</button></div>
+            <div class="ga-gp-quote" aria-live="polite"><p><span>{{ t('Withdrawal value') }}</span><strong id="withdrawGross" data-money-kobo="0">₦0</strong></p><p><span>{{ t('Fee · 1%, max ₦200') }}</span><strong id="withdrawFee" data-money-kobo="0">₦0</strong></p><p><span>{{ t('You receive in your bank') }}</span><strong id="withdrawPayout" data-money-kobo="0">₦0</strong></p><p class="ga-muted">{{ t('NGN bank payout') }}: <span id="withdrawPayoutSettlement">₦0</span></p></div>
+            <label class="ga-agreement-label"><input id="confirmWithdrawalFee" type="checkbox" required /><span>{{ t('I agree to the displayed withdrawal fee and bank payout.') }}</span></label>
+            <button type="submit" disabled class="w-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 px-5 py-4 text-sm font-semibold text-slate-950 hover:from-cyan-400 hover:to-emerald-400">{{ t('Withdraw Now') }}</button>
         <p class="ga-muted" role="status" aria-live="polite" data-form-status></p></form>
     </div>
 </div>
 
+
+<script src="{{ asset_url('js/wallet-currency.js') }}" defer></script>
 <script src="{{ asset_url('js/wallet.js') }}" defer></script>
 {% endblock %}

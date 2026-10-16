@@ -11,7 +11,7 @@
   function resetAccount() {
     clearTimeout(resolveTimer); resolveController?.abort(); resolveSequence++;
     verifiedAccount = null; withdrawButton.disabled = true; retryAccount.hidden = true;
-    accountStatus.textContent = 'Select your bank and enter your account number.';
+    accountStatus.textContent = window.gaT('Select your bank and enter your account number.');
   }
   async function resolveAccount() {
     resetAccount();
@@ -21,10 +21,10 @@
     const controller = new AbortController();
     resolveController = controller;
     const timeout = setTimeout(() => controller.abort(), 20000);
-    accountStatus.textContent = 'Verifying account holder…';
+    accountStatus.textContent = window.gaT('Verifying account holder…');
     try {
       const response = await fetch(withdrawForm.dataset.resolveUrl, {method:'POST', headers:{Accept:'application/json','Content-Type':'application/json','X-CSRFToken':withdrawForm.csrf_token.value},body:JSON.stringify({bank_code:bank,account_number:number}),signal:controller.signal,cache:'no-store'});
-      if (response.redirected || response.status === 401) throw new Error('Your session expired. Log in again.');
+      if (response.redirected || response.status === 401) throw new Error(window.gaT('Your session expired. Log in again.'));
       if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Account verification is unavailable. Please retry.');
       const data = await response.json();
       if (!response.ok || !data.account_name || !data.verification_token) throw new Error(data.message || 'Unable to verify this account.');
@@ -47,7 +47,10 @@
     const amount = balance.textContent, equivalent = document.getElementById('walletNairaEquivalent'), equivalentText = equivalent?.textContent; let hidden = false;
     try { hidden = localStorage.getItem('gamearenaHideBalance') === '1'; } catch (_) {}
     function drawBalance() {
-      balance.textContent = hidden ? '****' : amount; if(equivalent) equivalent.textContent=hidden?'****':equivalentText;
+      document.querySelectorAll('[data-balance-breakdown]').forEach(el=>{el.hidden=hidden;});
+      balance.dataset.balanceHidden=String(hidden);
+      balance.textContent = hidden ? '****' : (window.GameArenaWalletCurrency?.format(Number(balance.dataset.moneyNaira)) || amount); if(equivalent) equivalent.textContent=hidden?'****':equivalentText;
+      window.GameArenaWalletCurrency?.refresh();
       toggle.setAttribute('aria-label', hidden ? 'Show balance' : 'Hide balance');
       toggle.setAttribute('aria-pressed', String(hidden));
       toggle.querySelector('[data-eye-open]').hidden = hidden;
@@ -58,13 +61,15 @@
   }
   const naira = value => '₦' + (value / 100).toLocaleString('en-NG',{minimumFractionDigits:value % 100 ? 2 : 0,maximumFractionDigits:2});
   const gpInput = document.getElementById('depositGpAmount'), depositInput = document.getElementById('depositAmount');
-  function gpToNaira(value) { if (!/^[0-9]{1,9}(?:\.[0-9])?$/.test(String(value).trim())) return NaN; return Math.round(Number(value)*10); }
-  depositInput.addEventListener('input',()=>{gpInput.value=depositInput.value ? Number(depositInput.value)/10 : '';document.getElementById('depositConversion').textContent=depositInput.value ? `You receive ${gpInput.value} GP for ${naira(Number(depositInput.value)*100)}.` : '1 GP = ₦10';});
-  gpInput.addEventListener('input',()=>{const amount=gpToNaira(gpInput.value);depositInput.value=Number.isSafeInteger(amount) ? amount : '';document.getElementById('depositConversion').textContent=Number.isSafeInteger(amount) ? `You receive ${gpInput.value} GP for ${naira(amount*100)}.` : 'Enter GP in steps of 0.1.';});
+  function gpToNaira(value) { if (!/^[0-9]{1,10}$/.test(String(value).trim())) return NaN; return Number(value); }
+  depositInput.addEventListener('input',()=>{gpInput.value=depositInput.value ? Number(depositInput.value) : '';document.getElementById('depositConversion').textContent=depositInput.value ? window.gaT('You receive {gp} GP for {amount}.',{gp:gpInput.value,amount:naira(Number(depositInput.value)*100)}) : '1 GP = ₦1';});
+  gpInput.addEventListener('input',()=>{const amount=gpToNaira(gpInput.value);depositInput.value=Number.isSafeInteger(amount) ? amount : '';document.getElementById('depositConversion').textContent=Number.isSafeInteger(amount) ? window.gaT('You receive {gp} GP for {amount}.',{gp:gpInput.value,amount:naira(amount*100)}) : window.gaT('Enter a whole GP amount.');});
   document.getElementById('withdrawAmount').addEventListener('input',()=>{
     document.getElementById('confirmWithdrawalFee').checked=false;
     const amount=gpToNaira(document.getElementById('withdrawAmount').value),gross=Number.isSafeInteger(amount) ? amount*100 : 0,fee=Math.min(Number.isSafeInteger(amount)?amount:0,20000);
     document.getElementById('withdrawGross').textContent=naira(gross);document.getElementById('withdrawFee').textContent=naira(fee);document.getElementById('withdrawPayout').textContent=naira(gross-fee);
+    [['withdrawGross',gross],['withdrawFee',fee],['withdrawPayout',gross-fee]].forEach(([id,value])=>document.getElementById(id).dataset.moneyKobo=String(value));
+    document.getElementById('withdrawPayoutSettlement').textContent=naira(gross-fee);window.GameArenaWalletCurrency?.refresh();
   });
   async function loadBanks() {
     const status = document.getElementById('bankStatus'), retry = document.getElementById('retryBanks');
@@ -76,7 +81,7 @@
       if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('The bank service is temporarily unavailable. Please try again.');
       const data = await response.json();
       if (!response.ok || !data.banks?.length) throw new Error(data.message || 'No banks are available. Please try again.');
-      bankSelect.replaceChildren(new Option('Choose your bank', ''));
+      bankSelect.replaceChildren(new Option(window.gaT('Choose your bank'), ''));
       data.banks.forEach(bank => bankSelect.add(new Option(bank.name, bank.code)));
       bankSelect.disabled = false; status.textContent = '';
     } catch (error) { status.textContent = error.name === 'TimeoutError' ? 'Loading banks timed out. Please try again.' : error.message; retry.hidden = false; }
@@ -115,8 +120,8 @@
       event.preventDefault(); if (form.dataset.busy || !form.reportValidity()) return;
       const amount = withdrawal ? gpToNaira(document.getElementById(field).value) : Number(document.getElementById(field).value);
       const status = form.querySelector('[data-form-status]');
-      if (!Number.isSafeInteger(amount) || amount < 100) { status.textContent = 'Enter a whole amount of at least ₦100.'; return; }
-      const body = withdrawal ? {amount_gp:document.getElementById(field).value,fee_policy:'gp-withdrawal-v1',fee_kobo:Math.min(amount,20000),fee_consent:document.getElementById('confirmWithdrawalFee').checked} : {amount_gp:String(amount/10)};
+      if (!Number.isSafeInteger(amount) || amount < 100) { status.textContent = window.gaT('Enter a whole amount of at least ₦100.'); return; }
+      const body = withdrawal ? {amount_gp:document.getElementById(field).value,fee_policy:'gp-withdrawal-v1',fee_kobo:Math.min(amount,20000),fee_consent:document.getElementById('confirmWithdrawalFee').checked} : {amount_gp:String(amount)};
       if (withdrawal) {
         if (bankSelect.disabled || !bankSelect.value) { status.textContent = 'Choose a supported bank before requesting a withdrawal.'; return; }
         if (!verifiedAccount || verifiedAccount.bank !== bankSelect.value || verifiedAccount.number !== accountInput.value.trim() || verifiedAccount.expires < Date.now()) { status.textContent = 'Verify your account holder name before withdrawing.'; resolveAccount(); return; }

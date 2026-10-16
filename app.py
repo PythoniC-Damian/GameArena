@@ -378,6 +378,15 @@ from gamearena.extensions import db
 db.init_app(app)
 from gamearena.pro import pro, performance_summary
 app.register_blueprint(pro)
+from gamearena.market import market
+app.register_blueprint(market)
+from gamearena.organizers import organizers
+app.register_blueprint(organizers)
+from gamearena.i18n import i18n, translate
+app.register_blueprint(i18n)
+app.jinja_env.globals['t'] = translate
+from gamearena.fx import fx
+app.register_blueprint(fx)
 from gamearena.legal import legal
 app.register_blueprint(legal)
 from gamearena.master_billing import billing as master_billing, handle_event as handle_master_billing_event
@@ -911,7 +920,7 @@ def get_or_create_user_settings(user_id):
     if settings:
         return settings
     db.session.execute(
-        postgresql_insert(UserSettings).values(user_id=user_id).on_conflict_do_nothing(
+        postgresql_insert(UserSettings).values(user_id=user_id, language=session.get('language') if session.get('language') in {'en','es','fr','pt'} else 'en').on_conflict_do_nothing(
             index_elements=['user_id'],
         )
     )
@@ -1425,7 +1434,7 @@ def wallet_history():
     category = request.args.get('category', '')
     status = request.args.get('status', '')
     month = request.args.get('month', '')
-    if category not in ('', 'deposit', 'withdrawal', 'tournament_entry') or status not in ('', 'completed', 'pending', 'failed'):
+    if category not in ('', 'deposit', 'withdrawal', 'tournament_entry', 'cosmetic_purchase') or status not in ('', 'completed', 'pending', 'failed'):
         abort(400)
     owned = WalletTransaction.query.filter_by(user_id=current_user.id)
     month_values = db.session.query(db.func.date_trunc('month', WalletTransaction.created_at)).filter(
@@ -1478,7 +1487,7 @@ def wallet_history():
     totals = dict(totals)
     filters = {'category': category, 'status': status, 'month': month}
     response = app.make_response(render_template('wallet_history.html', wallet_transactions=pagination.items,
-        pagination=pagination, months=months, filters=filters, incoming=totals.get('deposit', 0), outgoing=totals.get('withdrawal', 0) + totals.get('tournament_entry', 0)))
+        pagination=pagination, months=months, filters=filters, incoming=totals.get('deposit', 0), outgoing=totals.get('withdrawal', 0) + totals.get('tournament_entry', 0) + totals.get('cosmetic_purchase', 0)))
     response.headers['Cache-Control'] = 'private, no-store'
     return response
 
@@ -3538,8 +3547,9 @@ def pay_tournament_gp(tournament_id):
         joined = UserTournament(user_id=owner.id, tournament_id=tournament.id)
         db.session.add(joined)
     joined.payment_status='paid'; joined.amount_paid=amount; joined.transaction_ref=reference
-    owner.wallet_balance -= amount
-    payment = WalletTransaction(user_id=owner.id,type='tournament_entry',amount=amount,status='completed',
+    from gamearena.economy import spend_cash
+    winnings_spent = spend_cash(owner, amount)
+    payment = WalletTransaction(user_id=owner.id,type='tournament_entry',amount=amount,status='completed',winnings_spent=winnings_spent,
         transaction_ref=reference,account_name=tournament.name,completed_at=datetime.utcnow())
     db.session.add(payment)
     try:
@@ -4040,10 +4050,11 @@ def release_failed_withdrawal(withdrawal_id, reason, provider_transfer_code=None
     if not withdrawal or withdrawal.status in WITHDRAWAL_FINAL_STATUSES:
         db.session.commit()
         return withdrawal
-    owner = User.query.filter_by(id=withdrawal.user_id).with_for_update().first()
+    owner = User.query.filter_by(id=withdrawal.user_id).with_for_update().populate_existing().first()
     if not owner:
         raise RuntimeError('Withdrawal wallet owner was not found.')
-    owner.wallet_balance = (owner.wallet_balance or 0) + withdrawal.amount
+    from gamearena.economy import refund_cash
+    refund_cash(owner, withdrawal)
     withdrawal.status = 'failed'
     withdrawal.failure_reason = (reason or 'Transfer failed.')[:500]
     app.logger.warning('Withdrawal rejected id=%s reason=%s', withdrawal.id, withdrawal.failure_reason)
@@ -4201,7 +4212,8 @@ def request_wallet_withdrawal(req_data):
         transaction_ref=f'wd_{uuid.uuid4().hex}', idempotency_key=idempotency_key,
         bank_name=bank_name[:120], bank_code=bank_code, account_number=account_number, account_name=verified['account_name'],
     )
-    owner.wallet_balance = (owner.wallet_balance or 0) - amount
+    from gamearena.economy import spend_cash
+    withdrawal.winnings_spent = spend_cash(owner, amount)
     db.session.add(withdrawal)
     try:
         db.session.commit()

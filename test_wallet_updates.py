@@ -169,7 +169,7 @@ def test_history_filters_totals_and_private_csv(monkeypatch):
         assert csv.cache_control.private and csv.cache_control.no_store
         assert browser.get('/wallet/transactions?status=pending').text.count('data-wallet-transaction')==1
         summary=browser.get('/wallet/transactions?month=2026-10')
-        assert '+₦500' in summary.text and '−₦2,200' in summary.text
+        assert '+500 GP' in summary.text and '−2,200 GP' in summary.text
         assert browser.get('/wallet/transactions?month=2026-09').text.count('data-wallet-transaction')==1
         for invalid in ('month=2026-99','category=unknown','status=unknown'):
             assert browser.get('/wallet/transactions?'+invalid).status_code==400

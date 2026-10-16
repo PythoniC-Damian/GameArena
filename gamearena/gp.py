@@ -1,13 +1,13 @@
 """Fixed-value GP conversion and exact withdrawal fees (integer naira/kobo)."""
 import re
 from decimal import Decimal
-NAIRA_PER_GP = 10
+NAIRA_PER_GP = 1
 WITHDRAWAL_FEE_POLICY = 'gp-withdrawal-v1'
 
 def gp_to_naira(value):
     text = str(value).strip()
-    if not re.fullmatch(r'[0-9]{1,9}(?:\.[0-9])?', text):
-        raise ValueError('Enter a GP amount with at most one decimal place.')
+    if not re.fullmatch(r'[0-9]{1,10}', text):
+        raise ValueError('Enter a whole GP amount.')
     amount = int(Decimal(text) * NAIRA_PER_GP)
     if not 0 < amount <= 2_000_000_000:
         raise ValueError('Enter a valid GP amount.')

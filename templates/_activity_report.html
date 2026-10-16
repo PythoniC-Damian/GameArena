@@ -1,4 +1,4 @@
-<header class="ga-page-heading"><div><p class="ga-eyebrow">Admin analytics</p><h1 class="ga-title">Player activity</h1><p class="ga-description">{{ report.start.strftime('%d %b') }} &ndash; {{ report.today.strftime('%d %b %Y') }} &middot; Lagos time</p></div><a class="ga-button ga-button-secondary" href="{{ url_for('admin') }}">Admin panel</a></header>
+<header class="ga-page-heading"><div><p class="ga-eyebrow">Admin analytics</p><h1 class="ga-title">Player activity</h1><p class="ga-description">{{ report.start.strftime('%d %b') }} &ndash; {{ report.today.strftime('%d %b %Y') }} &middot; Lagos time</p></div><a class="ga-button ga-button-secondary" href="{{ url_for('admin') }}">{{ t('Admin panel') }}</a></header>
 <div class="ga-activity-metrics">
 {% for label, value in [('Registered players', report.total), ('Active today', report.active_today), ('Active in 7 days', report.active_7), ('Active in 30 days', report.active_30)] %}
 <section class="ga-card"><p class="ga-muted">{{ label }}</p><p class="ga-activity-number">{{ value }}</p></section>{% endfor %}

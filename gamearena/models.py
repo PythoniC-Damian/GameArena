@@ -35,6 +35,17 @@ class User(db.Model, UserMixin):
 
     # Wallet balance for deposits/withdrawals
     wallet_balance = db.Column(db.Integer, default=0)
+    wallet_winnings_balance = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    wallet_bonus_balance = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    cosmetic_frame = db.Column(db.String(40), nullable=True)
+
+    @property
+    def purchased_balance(self):
+        return (self.wallet_balance or 0) - (self.wallet_winnings_balance or 0)
+
+    @property
+    def profile_frame(self):
+        return self.cosmetic_frame or (self.master_frame if self.master_active else '')
 
     # Payout / prize receiving details (needed for Paystack transfers)
     payout_bank = db.Column(db.String(120), nullable=True)
@@ -62,6 +73,8 @@ class UserSettings(db.Model):
     profile_public = db.Column(db.Boolean, nullable=False, default=True)
     allow_direct_messages = db.Column(db.Boolean, nullable=False, default=True)
     theme = db.Column(db.String(20), nullable=False, default='dark')
+    display_currency = db.Column(db.String(3), nullable=False, default='GP', server_default='GP')
+    language = db.Column(db.String(8), nullable=False, default='en', server_default='en')
     reduce_motion = db.Column(db.Boolean, nullable=False, default=False)
     larger_text = db.Column(db.Boolean, nullable=False, default=False)
     preferred_games = db.Column(db.JSON, nullable=False, default=list)
@@ -177,6 +190,8 @@ class WalletTransaction(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     type = db.Column(db.String(20), nullable=False)  # 'deposit' or 'withdrawal'
     amount = db.Column(db.Integer, nullable=False, default=0)
+    winnings_spent = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    bonus_spent = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     # Deposits retain their existing pending/completed/failed lifecycle.
     # Withdrawals use pending -> processing -> completed, with failed for a
     # definitive provider failure after the reserved funds have been released.
@@ -471,3 +486,30 @@ class UserActivityDay(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), primary_key=True)
     activity_date = db.Column(db.Date, primary_key=True)
     __table_args__ = (db.Index('ix_user_activity_day_date', 'activity_date', 'user_id'),)
+
+
+class CosmeticOwnership(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    item_key = db.Column(db.String(40), nullable=False)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('wallet_transaction.id'), nullable=True)
+    acquired_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('user_id', 'item_key', name='unique_owned_cosmetic'),)
+
+
+class OrganizerDraft(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    game = db.Column(db.String(100), nullable=False)
+    rules = db.Column(db.Text, nullable=False)
+    entry_fee = db.Column(db.Integer, nullable=False, default=0)
+    prize_pool = db.Column(db.Integer, nullable=False, default=0)
+    capacity = db.Column(db.Integer, nullable=False, default=16)
+    starts_at = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='draft')
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=True, unique=True)
+    review_note = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    tournament = db.relationship('Tournament')
+    owner = db.relationship('User')

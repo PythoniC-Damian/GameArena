@@ -1,5 +1,5 @@
 {% from '_icons.html' import icon %}
 <nav class="ga-menu" aria-label="More destinations">
 {% if current_user.is_authenticated %}{% with mobile_menu=true %}{% include '_account_links.html' %}{% endwith %}
-{% else %}<a href="{{ url_for('login') }}">{{ icon('user') }}Login</a><a href="{{ url_for('register') }}">{{ icon('edit') }}Create account</a>{% endif %}
-</nav>
+{% else %}<a href="{{ url_for('login') }}">{{ icon('user') }}{{ t('Login') }}</a><a href="{{ url_for('register') }}">{{ icon('edit') }}{{ t('Create account') }}</a>{% endif %}
+{% include '_language_picker.html' %}</nav>

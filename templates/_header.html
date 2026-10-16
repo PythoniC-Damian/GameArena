@@ -1,12 +1,12 @@
 {% from '_icons.html' import icon %}
 {% include '_preloader.html' %}
-<a class="ga-skip" href="#main-content">Skip to content</a>
+<a class="ga-skip" href="#main-content">{{ t('Skip to content') }}</a>
 <header class="ga-header" data-user-id="{{ current_user.id if current_user.is_authenticated else '' }}" data-unread-url="{{ url_for('notification_count') if current_user.is_authenticated else '' }}">
   <div class="ga-header-inner">
     <a class="ga-brand" href="{{ url_for('home') }}" aria-label="GameArena Home"><span class="ga-brand-mark">G</span><span>Game<span class="ga-brand-accent">Arena</span></span></a>
     <nav class="ga-primary" aria-label="Primary navigation">
       {% for endpoint, label in [('home','Home'),('tournaments_page','Tournaments'),('leaderboard','Leaderboard')] %}
-      <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint or (endpoint == 'tournaments_page' and request.endpoint in ['tournament_details','pay_for_tournament','join_tournament']) %}aria-current="page"{% endif %}>{{ label }}</a>
+      <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint or (endpoint == 'tournaments_page' and request.endpoint in ['tournament_details','pay_for_tournament','join_tournament']) %}aria-current="page"{% endif %}>{{ t(label) }}</a>
       {% endfor %}
     </nav>
     <div class="ga-utilities">
@@ -14,13 +14,13 @@
       {% if current_user.is_authenticated %}
       <details class="ga-notification-menu" data-menu data-notification-menu>
       <summary class="ga-icon-button ga-notifications" aria-label="Notifications{% if nav_unread_count %}, {{ nav_unread_count }} unread{% endif %}" title="Notifications">{{ icon('bell') }}<span class="ga-notification-badge" data-unread-badge {% if not nav_unread_count %}hidden{% endif %}>{{ '99+' if nav_unread_count > 99 else nav_unread_count }}</span></summary>
-      <section class="ga-menu ga-notification-panel" aria-label="Notification preview" data-preview-url="{{ url_for('notification_preview') }}"><div class="ga-preview-heading"><h2>Notifications</h2><button type="button" data-notifications-read-all data-url="{{ url_for('read_all_notifications') }}">Mark all read</button></div><div data-notification-preview role="status"><p class="ga-muted">Open to see recent updates.</p></div><a class="ga-button ga-button-secondary" href="{{ url_for('notifications') }}">View all notifications</a></section>
+      <section class="ga-menu ga-notification-panel" aria-label="Notification preview" data-preview-url="{{ url_for('notification_preview') }}"><div class="ga-preview-heading"><h2>{{ t('Notifications') }}</h2><button type="button" data-notifications-read-all data-url="{{ url_for('read_all_notifications') }}">{{ t('Mark all read') }}</button></div><div data-notification-preview role="status"><p class="ga-muted">{{ t('Open to see recent updates.') }}</p></div><a class="ga-button ga-button-secondary" href="{{ url_for('notifications') }}">{{ t('View all notifications') }}</a></section>
       </details>
       <details class="ga-account ga-desktop-account" data-menu>
         <summary class="ga-icon-button" aria-label="Account menu" title="Account menu">{% if current_user.avatar_url %}<img src="{{ current_user.avatar_url }}" alt="" class="ga-avatar-small" width="32" height="32">{% else %}<span class="ga-avatar-small">{{ current_user.username[:1]|upper }}</span>{% endif %}</summary>
         <div class="ga-menu"><p class="ga-menu-identity">{{ current_user.username }}</p>{% include '_account_links.html' %}</div>
       </details>
-      {% else %}<a class="ga-login" href="{{ url_for('login') }}">Login</a><a class="ga-button ga-button-primary ga-register" href="{{ url_for('register') }}">Register</a>{% endif %}
+      {% else %}<a class="ga-login" href="{{ url_for('login') }}">{{ t('Login') }}</a><a class="ga-button ga-button-primary ga-register" href="{{ url_for('register') }}">{{ t('Register') }}</a>{% endif %}
       <details class="ga-mobile-menu" data-menu>
         <summary class="ga-icon-button" aria-label="Navigation menu" title="Menu">{{ icon('menu') }}</summary>
         {% include '_mobile_menu.html' %}
@@ -29,4 +29,4 @@
   </div>
 </header>
 {% if current_user.is_authenticated %}<template data-ios-guide-template>{% include '_ios_push_guide.html' %}</template>{% endif %}
-{% if current_user.is_authenticated %}<dialog id="logoutConfirmation" class="ga-confirm-dialog" aria-labelledby="logoutTitle" aria-describedby="logoutDescription"><h2 id="logoutTitle">Log out of GameArena?</h2><p id="logoutDescription">You'll need to sign in to keep using GameArena.</p><div class="ga-connection-controls"><button type="button" class="ga-button ga-button-secondary" data-cancel-logout autofocus>Cancel</button><form method="POST" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirmed" value="1"><button class="ga-button ga-button-primary" type="submit">Log out</button></form></div></dialog>{% endif %}
+{% if current_user.is_authenticated %}<dialog id="logoutConfirmation" class="ga-confirm-dialog" aria-labelledby="logoutTitle" aria-describedby="logoutDescription"><h2 id="logoutTitle">{{ t('Log out of GameArena?') }}</h2><p id="logoutDescription">{{ t("You'll need to sign in to keep using GameArena.") }}</p><div class="ga-connection-controls"><button type="button" class="ga-button ga-button-secondary" data-cancel-logout autofocus>{{ t('Cancel') }}</button><form method="POST" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="confirmed" value="1"><button class="ga-button ga-button-primary" type="submit">{{ t('Log out') }}</button></form></div></dialog>{% endif %}

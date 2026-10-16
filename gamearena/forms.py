@@ -2,7 +2,15 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, BooleanField, validators
 
-class RegistrationForm(FlaskForm):
+class LocalizedForm(FlaskForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from gamearena.i18n import translate
+        for field in self:
+            field.label.text = translate(field.label.text)
+
+
+class RegistrationForm(LocalizedForm):
     username = StringField('Username', [
         validators.DataRequired(),
         validators.Length(min=3, max=150),
@@ -21,7 +29,7 @@ class RegistrationForm(FlaskForm):
     submit = SubmitField('Create Account')
 
 
-class LoginForm(FlaskForm):
+class LoginForm(LocalizedForm):
     email = StringField('Email', [
         validators.DataRequired(),
         validators.Email()
@@ -30,7 +38,7 @@ class LoginForm(FlaskForm):
     submit = SubmitField('Login')
 
 
-class EmailVerificationForm(FlaskForm):
+class EmailVerificationForm(LocalizedForm):
     email = StringField('Email', [
         validators.DataRequired(),
         validators.Email()
@@ -42,7 +50,7 @@ class EmailVerificationForm(FlaskForm):
     submit = SubmitField('Verify Email')
 
 
-class ForgotPasswordForm(FlaskForm):
+class ForgotPasswordForm(LocalizedForm):
     email = StringField('Email', [
         validators.DataRequired(),
         validators.Email()
@@ -50,7 +58,7 @@ class ForgotPasswordForm(FlaskForm):
     submit = SubmitField('Send Reset Code')
 
 
-class ResetPasswordForm(FlaskForm):
+class ResetPasswordForm(LocalizedForm):
     email = StringField('Email', [
         validators.DataRequired(),
         validators.Email()
@@ -66,16 +74,16 @@ class ResetPasswordForm(FlaskForm):
     submit = SubmitField('Reset Password')
 
 
-class TournamentForm(FlaskForm):
+class TournamentForm(LocalizedForm):
     game = StringField('Game Name', [
         validators.DataRequired(),
         validators.Length(min=3, max=100)
     ])
-    entry_fee = StringField('Entry Fee (₦)', [
+    entry_fee = StringField('Entry Fee (GP)', [
         validators.DataRequired(),
         validators.Regexp(r'^\d+$', message="Entry fee must be a number")
     ])
-    prize_pool = StringField('Prize Pool (₦)', [
+    prize_pool = StringField('Prize Pool (GP)', [
         validators.DataRequired(),
         validators.Regexp(r'^\d+$', message="Prize pool must be a number")
     ])
@@ -90,12 +98,12 @@ class TournamentForm(FlaskForm):
     submit = SubmitField('Create Tournament')
 
 
-class TournamentSetupForm(FlaskForm):
-    entry_fee = StringField('Entry Fee (₦)', [
+class TournamentSetupForm(LocalizedForm):
+    entry_fee = StringField('Entry Fee (GP)', [
         validators.DataRequired(),
         validators.Regexp(r'^\d+$', message="Entry fee must be a number")
     ])
-    prize_pool = StringField('Prize Pool (₦)', [
+    prize_pool = StringField('Prize Pool (GP)', [
         validators.DataRequired(),
         validators.Regexp(r'^\d+$', message="Prize pool must be a number")
     ])
@@ -136,7 +144,7 @@ class TournamentSetupForm(FlaskForm):
     submit = SubmitField('Save Tournament Setup')
 
 
-class LeaderboardEntryForm(FlaskForm):
+class LeaderboardEntryForm(LocalizedForm):
     user_id = SelectField('Player', coerce=int, validators=[validators.DataRequired()])
     wins = IntegerField('Wins', [validators.DataRequired(), validators.NumberRange(min=0)])
     kills = IntegerField('Kills', [validators.DataRequired(), validators.NumberRange(min=0)])
