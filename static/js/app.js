@@ -206,3 +206,12 @@
     else img.src = '/static/images/gaming-fallback.svg';
   }));
 })();
+
+// Each picker owns its CSRF-protected form; selecting a language applies it immediately.
+document.addEventListener('change', event => {
+  const picker = event.target.closest('.ga-language-menu select[name="language"]');
+  if (picker && !picker.form.dataset.submitting) {
+    picker.form.dataset.submitting = 'true';
+    picker.form.requestSubmit();
+  }
+});

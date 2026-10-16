@@ -1,4 +1,4 @@
-document.getElementById('paymentForm').addEventListener('submit', async event => {
+document.getElementById('paymentForm')?.addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget, button = form.querySelector('button'), status = document.getElementById('paymentStatus');
   if (button.disabled) return;

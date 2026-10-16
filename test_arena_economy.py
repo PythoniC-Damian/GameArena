@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import pytest
 from app import app, db, User, WalletTransaction
-from gamearena.models import CosmeticOwnership, OrganizerDraft, UserSettings, Tournament
+from gamearena.models import CosmeticOwnership, OrganizerDraft, UserSettings, Tournament, OrganizerProfile
 from gamearena.economy import spend_cash, refund_cash
 from gamearena.gp import gp_to_naira
 from test_interface_contracts import player, client, token
@@ -59,6 +59,8 @@ def test_cash_sources_and_refund_do_not_convert_bonus():
 def test_organizer_draft_requires_owner_and_admin_review():
     with app.app_context():
         owner=player('creator');other=player('not_creator');admin=player('review_admin');admin.is_admin=True;db.session.commit()
+        owner.wallet_balance=1000
+        db.session.add(OrganizerProfile(user_id=owner.id,contact='verified@example.test',status='approved'));db.session.commit()
         browser=client(owner)
         data=dict(name='Arena test cup',game='Free Fire',rules='First to the published score wins. No cheating.',entry_gp='100',prize_gp='1000',capacity='16',starts_at=(datetime.utcnow()+timedelta(days=3)).strftime('%Y-%m-%dT%H:%M'))
         assert post(browser,'/organizers',data,page='/organizers').status_code==302
@@ -69,12 +71,14 @@ def test_organizer_draft_requires_owner_and_admin_review():
         assert post(browser,f'/organizers/{row.id}/edit',dict(data,name='Updated arena cup'),page='/organizers').status_code==302
         db.session.refresh(row);assert row.name=='Updated arena cup'
         assert post(stranger,f'/organizers/{row.id}/submit',{},page='/organizers').status_code==404
-        assert post(browser,f'/organizers/{row.id}/submit',{},page='/organizers').status_code==302
+        assert post(browser,f'/organizers/{row.id}/submit',{},page='/organizers').status_code==400
+        assert post(browser,f'/organizers/{row.id}/submit',{'agree':'yes'},page='/organizers').status_code==302
         assert post(browser,f'/organizers/{row.id}/review',{'action':'approve','checked':'yes'},page='/organizers').status_code==403
         reviewer=client(admin)
         assert post(reviewer,f'/organizers/{row.id}/review',{'action':'approve'},page='/organizers').status_code==400
         assert post(reviewer,f'/organizers/{row.id}/review',{'action':'approve','checked':'yes'},page='/organizers').status_code==302
         db.session.refresh(row);assert row.status=='published' and row.tournament_id
+        db.session.refresh(owner);assert owner.wallet_balance==0 and row.accepted_at and row.agreement_version
         assert post(reviewer,f'/organizers/{row.id}/review',{'action':'approve','checked':'yes'},page='/organizers').status_code==409
         assert Tournament.query.count()==1
         assert browser.get(f'/organizers/{row.id}/participants.csv').status_code==200

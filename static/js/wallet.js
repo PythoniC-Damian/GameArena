@@ -47,7 +47,7 @@
     const amount = balance.textContent, equivalent = document.getElementById('walletNairaEquivalent'), equivalentText = equivalent?.textContent; let hidden = false;
     try { hidden = localStorage.getItem('gamearenaHideBalance') === '1'; } catch (_) {}
     function drawBalance() {
-      document.querySelectorAll('[data-balance-breakdown]').forEach(el=>{el.hidden=hidden;});
+      document.querySelectorAll('[data-wallet-balance]').forEach(el=>{el.dataset.balanceHidden=String(hidden);el.textContent=hidden?'****':window.GameArenaWalletCurrency?.format(Number(el.dataset.moneyNaira))||el.dataset.moneyNaira+' GP';});
       balance.dataset.balanceHidden=String(hidden);
       balance.textContent = hidden ? '****' : (window.GameArenaWalletCurrency?.format(Number(balance.dataset.moneyNaira)) || amount); if(equivalent) equivalent.textContent=hidden?'****':equivalentText;
       window.GameArenaWalletCurrency?.refresh();
@@ -101,7 +101,8 @@
     activeDialog = null; main.inert = false; previousFocus?.focus();
   }
   window.openAddMoneyModal = () => open('addMoneyModal');
-  window.openWithdrawModal = () => open('withdrawModal');
+  window.openWithdrawModal = (source='purchased') => { document.getElementById('withdrawSource').value=source; open('withdrawModal'); };
+  document.getElementById('withdrawSource').addEventListener('change',()=>{document.getElementById('confirmWithdrawalFee').checked=false;});
   window.closeAddMoneyModal = window.closeWithdrawModal = close;
   document.addEventListener('keydown', event => {
     if (!activeDialog) return;
@@ -125,6 +126,7 @@
       if (withdrawal) {
         if (bankSelect.disabled || !bankSelect.value) { status.textContent = 'Choose a supported bank before requesting a withdrawal.'; return; }
         if (!verifiedAccount || verifiedAccount.bank !== bankSelect.value || verifiedAccount.number !== accountInput.value.trim() || verifiedAccount.expires < Date.now()) { status.textContent = 'Verify your account holder name before withdrawing.'; resolveAccount(); return; }
+        body.wallet_source = document.getElementById('withdrawSource').value;
         body.verification_token = verifiedAccount.token;
         body.bank_name = bankSelect.selectedOptions[0].textContent;
         body.bank_code = bankSelect.value;
@@ -160,4 +162,14 @@
       finally { delete form.dataset.busy; button.disabled = withdrawal && (!verifiedAccount || verifiedAccount.expires < Date.now()); button.removeAttribute('aria-busy'); }
     });
   }
+})();
+
+(() => {
+  const track=document.querySelector('.ga-wallet-track');if(!track)return;
+  const cards=[...track.querySelectorAll('[data-wallet-card]')],dots=[...document.querySelectorAll('[data-wallet-index]')];let active=0;
+  function go(index){active=Math.max(0,Math.min(cards.length-1,index));track.scrollTo({left:track.scrollLeft+cards[active].getBoundingClientRect().left-track.getBoundingClientRect().left,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});}
+  dots.forEach((dot,i)=>dot.addEventListener('click',()=>go(i)));
+  document.querySelectorAll('[data-wallet-step]').forEach(button=>button.addEventListener('click',()=>go(active+Number(button.dataset.walletStep))));
+  track.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();go(active+(e.key==='ArrowRight'?1:-1));}});
+  const observer=new IntersectionObserver(entries=>{entries.forEach(entry=>{if(entry.intersectionRatio>.6){active=cards.indexOf(entry.target);dots.forEach((dot,i)=>dot.setAttribute('aria-current',String(i===active)));document.querySelectorAll('[data-wallet-step]').forEach(button=>button.disabled=Number(button.dataset.walletStep)<0?active===0:active===cards.length-1);}});},{root:track,threshold:.6});cards.forEach(card=>observer.observe(card));
 })();

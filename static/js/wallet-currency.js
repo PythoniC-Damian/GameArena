@@ -20,8 +20,10 @@
       const value=el.hasAttribute('data-money-kobo')?Number(el.dataset.moneyKobo)/100:Number(el.dataset.moneyNaira);
       el.textContent=(el.dataset.moneySign||'')+format(value);
     });
-    const equivalent=document.getElementById('walletNairaEquivalent'),balance=document.getElementById('walletBalance');
-    if(equivalent&&balance){equivalent.hidden=state.currency==='GP';equivalent.textContent=balance.dataset.balanceHidden==='true'?'****':t('Wallet value')+': '+Number(balance.dataset.moneyNaira).toLocaleString(locale)+' GP';}
+    document.querySelectorAll('[data-wallet-card]').forEach(card=>{
+      const balance=card.querySelector('[data-wallet-balance]'),equivalent=card.querySelector('[data-wallet-equivalent]');
+      equivalent.hidden=state.currency==='GP';equivalent.textContent=balance.dataset.balanceHidden==='true'?'****':Number(balance.dataset.moneyNaira).toLocaleString(locale)+' GP';
+    });
     const output=document.querySelector('[data-match-quote-result]');
     if(output?.dataset.quoteGp)output.textContent=output.dataset.quoteGp+' GP · '+format(Number(output.dataset.quoteGp))+'. '+t('Quote valid for 5 minutes. Rounded up to whole GP.');
   }
@@ -29,7 +31,8 @@
     if(!state.snapshot){status.textContent=t('Rates unavailable. GP and NGN remain available.');return;}
     const source=new Date(state.snapshot.source_updated_at*1000).toLocaleString(locale);
     const sourceLink=document.querySelector('[data-fx-source]');if(sourceLink){sourceLink.textContent=state.snapshot.cadence==='daily'?'Currency API':'ExchangeRate.fun';sourceLink.href=state.snapshot.cadence==='daily'?'https://github.com/fawazahmed0/exchange-api':'https://www.exchangerate.fun/docs/';}
-    status.textContent=(state.snapshot.cadence==='daily'?t('Hourly feed unavailable. Using daily source rates.')+' ':'')+(state.snapshot.stale?t('Rates are stale. Match quotes are paused.')+' ':t('Indicative rates.'))+' '+t('Source updated')+': '+source+'. '+t('Checked hourly. Bank payments settle in NGN.');
+    const detail=document.querySelector('[data-fx-detail]');if(detail)detail.textContent=(state.snapshot.cadence==='daily'?t('Hourly feed unavailable. Using daily source rates.')+' ':'')+(state.snapshot.stale?t('Rates are stale. Match quotes are paused.')+' ':t('Indicative rates.'))+' '+t('Source updated')+': '+source+'. '+t('Checked hourly. Bank payments settle in NGN.');
+    status.textContent=state.snapshot.stale?t('Rates are stale. Match quotes are paused.'):state.snapshot.cadence==='daily'?t('Daily rates · estimates'):t('Hourly rates · estimates');
   }
   function save(currency){
     const sequence=++saving;

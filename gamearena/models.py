@@ -191,12 +191,23 @@ class WalletTransaction(db.Model):
     type = db.Column(db.String(20), nullable=False)  # 'deposit' or 'withdrawal'
     amount = db.Column(db.Integer, nullable=False, default=0)
     winnings_spent = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    wallet_source = db.Column(db.String(12), nullable=False, default='combined', server_default='combined')
     bonus_spent = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     # Deposits retain their existing pending/completed/failed lifecycle.
     # Withdrawals use pending -> processing -> completed, with failed for a
     # definitive provider failure after the reserved funds have been released.
     status = db.Column(db.String(20), default='completed')
     withdrawal_fee_kobo = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+
+    @property
+    def incoming(self):
+        return self.type in {'deposit', 'prize_credit', 'entry_refund', 'organizer_income', 'reserve_refund'}
+
+    @property
+    def category_label(self):
+        return {'deposit':'Wallet deposit', 'withdrawal':'Bank withdrawal', 'tournament_entry':'Tournament entry',
+            'cosmetic_purchase':'Cosmetic purchase', 'prize_reserve':'Prize funding', 'prize_credit':'Tournament prize',
+            'entry_refund':'Entry refund', 'organizer_income':'Organiser earnings', 'reserve_refund':'Prize funding returned'}.get(self.type, self.type.replace('_',' ').capitalize())
 
     @property
     def payout_kobo(self):
@@ -498,6 +509,7 @@ class CosmeticOwnership(db.Model):
 
 
 class OrganizerDraft(db.Model):
+    __table_args__ = (db.Index('ix_organizer_draft_owner_status', 'owner_id', 'status'),)
     id = db.Column(db.Integer, primary_key=True)
     owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
     name = db.Column(db.String(120), nullable=False)
@@ -510,6 +522,35 @@ class OrganizerDraft(db.Model):
     status = db.Column(db.String(20), nullable=False, default='draft')
     tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=True, unique=True)
     review_note = db.Column(db.String(500), nullable=True)
+    agreement_version = db.Column(db.String(40))
+    accepted_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     tournament = db.relationship('Tournament')
     owner = db.relationship('User')
+
+
+class OrganizerProfile(db.Model):
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    contact = db.Column(db.String(150), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    review_note = db.Column(db.String(500))
+    reviewed_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    reviewed_at = db.Column(db.DateTime)
+    user = db.relationship('User', foreign_keys=[user_id])
+
+
+class OrganizerFinance(db.Model):
+    """One funded event; locked with its tournament before any settlement."""
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    prize_reserved = db.Column(db.Integer, nullable=False)
+    reserve_winnings = db.Column(db.Integer, nullable=False, default=0)
+    fee_bps = db.Column(db.Integer, nullable=False, default=500)
+    agreement_version = db.Column(db.String(40), nullable=False)
+    accepted_at = db.Column(db.DateTime, nullable=False)
+    state = db.Column(db.String(20), nullable=False, default='funded')
+    entry_revenue = db.Column(db.Integer, nullable=False, default=0)
+    platform_fee = db.Column(db.Integer, nullable=False, default=0)
+    settled_at = db.Column(db.DateTime)
+    settled_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    settlement_note = db.Column(db.String(500))

@@ -6,13 +6,27 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
 from gamearena.extensions import db
-from gamearena.models import OrganizerDraft, Tournament, UserTournament
+from gamearena.models import OrganizerDraft, Tournament, UserTournament, OrganizerProfile, OrganizerFinance, User
+from gamearena.organizer_finance import AGREEMENT_VERSION, fund, close_event
 from gamearena.gp import gp_to_naira
 
 organizers = Blueprint('organizers', __name__)
 
 def can_use():
     if current_user.suspended: abort(403)
+    if request.method == 'POST':
+        from app import consume_rate_limit
+        if consume_rate_limit('organizer:' + str(current_user.id), 20, 60) is not None:
+            abort(429, description='Too many changes. Please try again in a minute.')
+
+
+def render_workspace(**context):
+    profile = db.session.get(OrganizerProfile, current_user.id)
+    profiles = OrganizerProfile.query.options(joinedload(OrganizerProfile.user)).filter_by(status='pending').limit(50).all() if current_user.is_admin else []
+    ids = [d.tournament_id for d in context.get('drafts', []) if d.tournament_id]
+    finances = {f.tournament_id:f for f in OrganizerFinance.query.filter(OrganizerFinance.tournament_id.in_(ids)).all()} if ids else {}
+    funded_events=OrganizerDraft.query.join(OrganizerFinance, OrganizerFinance.tournament_id == OrganizerDraft.tournament_id).order_by(OrganizerDraft.id.desc()).limit(50).all() if current_user.is_admin else []
+    return render_template('organizers.html', profile=profile, profile_reviews=profiles, finances=finances, funded_events=funded_events, **context)
 
 def money(value):
     return 0 if value == '0' else gp_to_naira(value)
@@ -50,7 +64,7 @@ def edit(draft_id):
         return redirect(url_for('.workspace'))
     # Release the write lock before rendering a read-only page.
     db.session.commit()
-    return render_template('organizers.html', active_draft=row, drafts=[], review=[])
+    return render_workspace(active_draft=row, drafts=[], review=[])
 
 
 @organizers.route('/organizers', methods=['GET', 'POST'])
@@ -58,6 +72,10 @@ def edit(draft_id):
 def workspace():
     can_use()
     if request.method == 'POST':
+        User.query.filter_by(id=current_user.id).with_for_update().one()
+        if OrganizerDraft.query.filter_by(owner_id=current_user.id).filter(OrganizerDraft.status.in_(['draft','rejected','review','published'])).count() >= 30:
+            db.session.rollback()
+            abort(409, description='You have reached the 30-event workspace limit. Contact support.')
         data = request.form
         name, game, rules = (data.get(k, '').strip() for k in ('name','game','rules'))
         try:
@@ -67,6 +85,7 @@ def workspace():
             if not (3 <= len(name) <= 120 and 2 <= len(game) <= 100 and 20 <= len(rules) <= 10000 and 2 <= capacity <= 10000 and starts > datetime.utcnow()):
                 raise ValueError()
         except (ValueError, TypeError):
+            db.session.rollback()
             flash('Check the event name, game, rules, GP amounts, capacity and future start time (UTC).', 'error')
             return redirect(url_for('.workspace'))
         db.session.add(OrganizerDraft(owner_id=current_user.id, name=name, game=game, rules=rules,
@@ -76,15 +95,24 @@ def workspace():
         return redirect(url_for('.workspace'))
     drafts = OrganizerDraft.query.filter_by(owner_id=current_user.id).order_by(OrganizerDraft.id.desc()).limit(100).all()
     review = OrganizerDraft.query.options(joinedload(OrganizerDraft.owner)).filter_by(status='review').order_by(OrganizerDraft.id).limit(100).all() if current_user.is_admin else []
-    return render_template('organizers.html', drafts=drafts, review=review)
+    return render_workspace(drafts=drafts, review=review)
 
 @organizers.route('/organizers/<int:draft_id>/submit', methods=['POST'])
 @login_required
 def submit(draft_id):
     can_use()
     row = OrganizerDraft.query.filter_by(id=draft_id, owner_id=current_user.id).with_for_update().first_or_404()
-    if row.status not in {'draft', 'rejected'}: abort(409)
-    if row.starts_at <= datetime.utcnow(): abort(400, description='Create a draft with a future start time.')
+    if row.status not in {'draft', 'rejected'}:
+        db.session.rollback(); abort(409)
+    profile = db.session.get(OrganizerProfile, current_user.id)
+    if not current_user.email_verified or not profile or profile.status != 'approved':
+        db.session.rollback(); abort(403, description='A verified email and approved organiser contact are required.')
+    if request.form.get('agree') != 'yes':
+        db.session.rollback(); abort(400, description='Accept the organiser rules and fee before submitting.')
+    if row.starts_at <= datetime.utcnow():
+        db.session.rollback(); abort(400, description='Create a draft with a future start time.')
+    row.agreement_version = AGREEMENT_VERSION
+    row.accepted_at = datetime.utcnow()
     row.status = 'review'
     row.review_note = None
     db.session.commit()
@@ -97,26 +125,110 @@ def review(draft_id):
     can_use()
     if not current_user.is_admin: abort(403)
     row = OrganizerDraft.query.filter_by(id=draft_id).with_for_update().first_or_404()
-    if row.status != 'review': abort(409)
+    if row.status != 'review':
+        db.session.rollback(); abort(409)
     action = request.form.get('action')
     note = request.form.get('note', '').strip()
-    if len(note) > 500 or action not in {'approve','reject'}: abort(400)
+    if len(note) > 500 or action not in {'approve','reject'}:
+        db.session.rollback(); abort(400)
     if action == 'approve':
         if request.form.get('checked') != 'yes' or row.starts_at <= datetime.utcnow():
+            db.session.rollback()
             abort(400, description='Review the rules, prize funding and permissions before publication.')
+        owner = User.query.filter_by(id=row.owner_id).with_for_update().populate_existing().one()
+        profile = OrganizerProfile.query.filter_by(user_id=row.owner_id).with_for_update().populate_existing().first()
+        if not owner.email_verified or owner.suspended or not profile or profile.status != 'approved' or row.agreement_version != AGREEMENT_VERSION or not row.accepted_at:
+            db.session.rollback(); abort(409, description='Organiser eligibility and a current agreement are required.')
+        if (owner.wallet_balance or 0) < row.prize_pool:
+            db.session.rollback(); abort(409, description='Fund the full advertised prize pool before publication.')
         event = Tournament(name=row.name, game=row.game, description=row.rules, entry_fee=row.entry_fee,
             prize=row.prize_pool, max_participants=row.capacity, match_time=row.starts_at, status='open')
         db.session.add(event)
         db.session.flush()
+        fund(event, row, owner)
         row.tournament_id = event.id
         row.status = 'published'
     else:
-        if not note: abort(400, description='Add a reason for the organiser.')
+        if not note:
+            db.session.rollback(); abort(400, description='Add a reason for the organiser.')
         row.status = 'rejected'
     row.review_note = note or None
     db.session.commit()
     flash('Review saved.', 'success')
     return redirect(url_for('.workspace'))
+
+@organizers.route('/organizers/profile', methods=['POST'])
+@login_required
+def apply_profile():
+    can_use()
+    if not current_user.email_verified: abort(403, description='Verify your email first.')
+    contact = request.form.get('contact', '').strip()
+    if not 5 <= len(contact) <= 150: abort(400)
+    User.query.filter_by(id=current_user.id).with_for_update().one()
+    profile = db.session.get(OrganizerProfile, current_user.id)
+    if profile and profile.status == 'approved':
+        db.session.rollback(); abort(409, description='Contact support to change your approved contact.')
+    if not profile:
+        profile = OrganizerProfile(user_id=current_user.id)
+        db.session.add(profile)
+    profile.contact = contact
+    profile.status = 'pending'
+    db.session.commit()
+    flash('Contact submitted. GameArena will verify it before approving your organiser profile.', 'success')
+    return redirect(url_for('.workspace'))
+
+
+@organizers.route('/organizers/profiles/<int:user_id>/review', methods=['POST'])
+@login_required
+def profile_review(user_id):
+    can_use()
+    if not current_user.is_admin: abort(403)
+    row = OrganizerProfile.query.filter_by(user_id=user_id).with_for_update().first_or_404()
+    action = request.form.get('action')
+    if action not in {'approved', 'rejected'} or (action == 'approved' and request.form.get('verified') != 'yes'):
+        db.session.rollback(); abort(400, description='Confirm that you verified the organiser contact.')
+    row.status = action
+    row.review_note = request.form.get('note', '')[:500]
+    row.reviewed_by = current_user.id
+    row.reviewed_at = datetime.utcnow()
+    db.session.commit()
+    return redirect(url_for('.workspace'))
+
+
+@organizers.route('/organizers/<int:draft_id>/settle', methods=['GET', 'POST'])
+@login_required
+def settlement(draft_id):
+    can_use()
+    if not current_user.is_admin: abort(403)
+    row = db.session.get(OrganizerDraft, draft_id)
+    if not row or not row.tournament_id: abort(404)
+    finance = db.session.get(OrganizerFinance, row.tournament_id)
+    if not finance: abort(409, description='Legacy event: contact support for a funding review.')
+    if request.method == 'POST':
+        try:
+            if request.form.get('confirmed') != 'yes': raise ValueError('Confirm the result and financial review.')
+            awards = None
+            if request.form.get('action') == 'settle':
+                awards = {}
+                for line in request.form.get('awards', '').strip().splitlines():
+                    uid, amount = line.split(':')
+                    uid = int(uid.strip()); amount = gp_to_naira(amount.strip())
+                    if uid in awards: raise ValueError('Each player must appear once.')
+                    awards[uid] = amount
+            elif request.form.get('action') != 'cancel':
+                raise ValueError('Choose settlement or cancellation.')
+            close_event(row.tournament_id, current_user.id, awards, request.form.get('note', ''))
+            db.session.commit()
+        except (ValueError, TypeError) as error:
+            db.session.rollback()
+            flash(str(error) or 'Check the prize allocation.', 'error')
+            return redirect(url_for('.settlement', draft_id=draft_id))
+        flash('Financial close completed. Wallet records are available to each recipient.', 'success')
+        return redirect(url_for('.workspace'))
+    entries = UserTournament.query.options(joinedload(UserTournament.user)).filter(UserTournament.tournament_id == row.tournament_id, UserTournament.payment_status.in_(['paid','free'])).all()
+    revenue = sum(e.amount_paid or 0 for e in entries if e.payment_status == 'paid')
+    return render_template('organizer_settlement.html', draft=row, finance=finance, entries=entries, revenue=revenue, fee=revenue*finance.fee_bps//10000)
+
 
 @organizers.route('/organizers/<int:draft_id>/participants.csv')
 @login_required

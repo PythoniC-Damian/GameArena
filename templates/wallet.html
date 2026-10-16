@@ -3,12 +3,18 @@
 {% block content %}
 {% from "_icons.html" import icon %}
 <h1>{{ t('Wallet') }}</h1>
-<section class="ga-panel ga-section">
-<div class="ga-actions"><p class="ga-eyebrow">{{ t('Available balance') }}</p><button id="toggleBalance" type="button" class="ga-icon-button" aria-label="Hide balance" aria-pressed="false"><span data-eye-open>{{ icon("eye") }}</span><span data-eye-closed hidden>{{ icon("eye-off") }}</span></button></div><p class="ga-balance" id="walletBalance" data-money-naira="{{ wallet_balance }}" aria-live="polite">{{ wallet_balance|gp }}</p><p id="walletNairaEquivalent" class="ga-muted">{{ wallet_balance|naira }} equivalent</p>
+<section class="ga-panel ga-section ga-wallet-hub">
+<div class="ga-wallet-heading"><div><p class="ga-eyebrow">GAMEARENA GP</p><h2>{{ t('Your wallets') }}</h2></div><button id="toggleBalance" type="button" class="ga-icon-button" aria-label="Hide balance" aria-pressed="false"><span data-eye-open>{{ icon('eye') }}</span><span data-eye-closed hidden>{{ icon('eye-off') }}</span></button></div>
 {% include '_wallet_currency.html' %}
-<p class="ga-muted">{{ t('1 GP = ₦1. Top up, pay tournament entry fees, or withdraw to your bank. Withdrawals cost 1%, capped at ₦200, deducted from the amount requested.') }}</p>
-<div class="ga-credit-grid" data-balance-breakdown><div><span>{{ t('Purchased GP') }}</span><strong><span data-money-naira="{{ current_user.purchased_balance }}">{{ current_user.purchased_balance|gp }}</span></strong></div><div><span>{{ t('Winnings GP') }}</span><strong><span data-money-naira="{{ current_user.wallet_winnings_balance }}">{{ current_user.wallet_winnings_balance|gp }}</span></strong></div><div><span>{{ t('Bonus GP') }}</span><strong><span data-money-naira="{{ current_user.wallet_bonus_balance }}">{{ current_user.wallet_bonus_balance|gp }}</span></strong></div></div><p class="ga-muted">{{ t('Purchased GP and wallet winnings can be withdrawn. Bonus GP is for cosmetics only. Prizes paid directly to your bank are not counted again here.') }}</p>
-<div class="ga-actions"><button class="ga-button" onclick="openAddMoneyModal()">{{ t('Deposit') }}</button><button class="ga-button ga-button-secondary" onclick="openWithdrawModal()">{{ t('Withdraw') }}</button></div>
+<div class="ga-wallet-carousel" role="region" aria-label="{{ t('Your wallets') }}" aria-roledescription="carousel">
+<div class="ga-wallet-track" tabindex="0" aria-label="{{ t('Swipe to switch wallets') }}">
+{% for key, label, amount, detail in [('purchased','Purchased GP',current_user.purchased_balance,'Top up and enter tournaments.'),('winnings','Winnings GP',current_user.wallet_winnings_balance,'Your prizes and organiser earnings.'),('bonus','Bonus GP',current_user.wallet_bonus_balance,'For cosmetics only. Cannot be withdrawn.')] %}
+<article class="ga-wallet-card ga-wallet-{{ key }}" data-wallet-card="{{ key }}" role="group" aria-roledescription="slide" aria-label="{{ loop.index }} / 3 · {{ t(label) }}">
+<p class="ga-eyebrow">{{ t(label) }}</p><p class="ga-balance" {% if loop.first %}id="walletBalance"{% endif %} data-wallet-balance data-money-naira="{{ amount }}">{{ amount|gp }}</p><p class="ga-muted" data-wallet-equivalent hidden></p><p class="ga-muted">{{ t(detail) }}</p>
+<div class="ga-actions">{% if key == 'purchased' %}<button type="button" class="ga-button" onclick="openAddMoneyModal()">{{ t('Deposit') }}</button>{% endif %}{% if key != 'bonus' %}<button type="button" class="ga-button ga-button-secondary" onclick="openWithdrawModal('{{ key }}')">{{ t('Withdraw') }}</button>{% else %}<a class="ga-button" href="{{ url_for('market.shop') }}">{{ t('Arena Shop') }}</a>{% endif %}</div></article>
+{% endfor %}
+</div><div class="ga-wallet-navigation"><button type="button" data-wallet-step="-1" class="ga-icon-button" aria-label="{{ t('Previous wallet') }}">{{ icon('chevron-left') }}</button><div class="ga-wallet-dots">{% for label in ['Purchased GP','Winnings GP','Bonus GP'] %}<button type="button" data-wallet-index="{{ loop.index0 }}" aria-label="{{ t(label) }}" aria-current="{{ 'true' if loop.first else 'false' }}"></button>{% endfor %}</div><button type="button" data-wallet-step="1" class="ga-icon-button" aria-label="{{ t('Next wallet') }}">{{ icon('chevron-right') }}</button></div></div>
+<details class="ga-wallet-fees"><summary>{{ t('Rates & fees') }}</summary><p class="ga-muted">{{ t('1 GP = ₦1. Withdrawals cost 1%, capped at ₦200, deducted from the amount requested. Bank payments settle in NGN.') }}</p><p class="ga-muted" data-fx-detail></p><p class="ga-muted"><a data-fx-source href="https://github.com/fawazahmed0/exchange-api" target="_blank" rel="noopener noreferrer">Currency API</a> · {{ t('Display estimates do not change GP balances or bank settlement.') }}</p></details>
 </section>
 <section class="ga-panel ga-section"><h2>{{ t('Transaction history') }}</h2>
 <p class="ga-muted">{{ t('Your 5 most recent transactions.') }}</p>
@@ -52,6 +58,7 @@
         </div>
         <form data-url="{{ url_for('wallet_withdraw') }}" data-resolve-url="{{ url_for('wallet_resolve_account') }}" id="withdrawForm" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <div><label for="withdrawSource">{{ t('Withdraw from') }}</label><select id="withdrawSource"><option value="purchased">{{ t('Purchased GP') }}</option><option value="winnings">{{ t('Winnings GP') }}</option></select></div>
             <div>
                 <label for="withdrawAmount" class="block text-sm font-semibold text-cyan-300 mb-2">{{ t('Amount to withdraw (GP)') }}</label>
                 <input id="withdrawAmount" type="number" min="100" step="1" placeholder="Enter amount" class="w-full rounded-[20px] border border-white/10 bg-slate-950/80 px-4 py-4 text-white placeholder:text-slate-500 focus:border-cyan-500 focus:outline-none" required />

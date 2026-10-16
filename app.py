@@ -1421,8 +1421,7 @@ def tournaments_page():
 def wallet():
     joins = UserTournament.query.filter_by(user_id=current_user.id)
     all_joins = joins.options(joinedload(UserTournament.tournament)).order_by(UserTournament.joined_at.desc()).limit(20).all()
-    total_spent = db.session.query(db.func.coalesce(db.func.sum(UserTournament.amount_paid), 0)).filter(UserTournament.user_id == current_user.id, UserTournament.payment_status == 'paid').scalar()
-    pending_count = joins.filter_by(payment_status='pending').count()
+    total_spent, pending_count = joins.with_entities(db.func.coalesce(db.func.sum(case((UserTournament.payment_status == 'paid', UserTournament.amount_paid), else_=0)), 0), db.func.count(case((UserTournament.payment_status == 'pending', 1)))).one()
     wallet_transactions = WalletTransaction.query.filter_by(user_id=current_user.id).order_by(WalletTransaction.created_at.desc(), WalletTransaction.id.desc()).limit(5).all()
     wallet_balance = current_user.wallet_balance or 0
     return render_template("wallet.html", transactions=all_joins, total_spent=total_spent, pending_count=pending_count, wallet_transactions=wallet_transactions, wallet_balance=wallet_balance, paystack_public_key=PAYSTACK_PUBLIC_KEY)
@@ -1434,7 +1433,7 @@ def wallet_history():
     category = request.args.get('category', '')
     status = request.args.get('status', '')
     month = request.args.get('month', '')
-    if category not in ('', 'deposit', 'withdrawal', 'tournament_entry', 'cosmetic_purchase') or status not in ('', 'completed', 'pending', 'failed'):
+    if category not in ('', 'deposit', 'withdrawal', 'tournament_entry', 'cosmetic_purchase', 'prize_reserve', 'prize_credit', 'entry_refund', 'organizer_income', 'reserve_refund') or status not in ('', 'completed', 'pending', 'failed'):
         abort(400)
     owned = WalletTransaction.query.filter_by(user_id=current_user.id)
     month_values = db.session.query(db.func.date_trunc('month', WalletTransaction.created_at)).filter(
@@ -1487,7 +1486,7 @@ def wallet_history():
     totals = dict(totals)
     filters = {'category': category, 'status': status, 'month': month}
     response = app.make_response(render_template('wallet_history.html', wallet_transactions=pagination.items,
-        pagination=pagination, months=months, filters=filters, incoming=totals.get('deposit', 0), outgoing=totals.get('withdrawal', 0) + totals.get('tournament_entry', 0) + totals.get('cosmetic_purchase', 0)))
+        pagination=pagination, months=months, filters=filters, incoming=sum(totals.get(k,0) for k in ('deposit','prize_credit','entry_refund','organizer_income','reserve_refund')), outgoing=sum(totals.get(k,0) for k in ('withdrawal','tournament_entry','cosmetic_purchase','prize_reserve'))))
     response.headers['Cache-Control'] = 'private, no-store'
     return response
 
@@ -2771,7 +2770,11 @@ def start_tournament(tournament_id):
     if not current_user.is_admin:
         abort(403)
     
-    tournament = Tournament.query.get_or_404(tournament_id)
+    tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+    from gamearena.models import OrganizerFinance
+    finance = db.session.get(OrganizerFinance,tournament.id)
+    if finance and (finance.state != 'funded' or tournament.status in ('finished','cancelled')):
+        db.session.rollback(); abort(409)
     tournament.status = 'ongoing'
     db.session.commit()
     flash(f"Tournament {tournament.name} started.", "success")
@@ -2783,7 +2786,11 @@ def end_tournament(tournament_id):
     if not current_user.is_admin:
         abort(403)
     
-    tournament = Tournament.query.get_or_404(tournament_id)
+    tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+    from gamearena.models import OrganizerFinance
+    finance = db.session.get(OrganizerFinance,tournament.id)
+    if finance and (finance.state != 'funded' or tournament.status in ('finished','cancelled')):
+        db.session.rollback(); abort(409)
     tournament.status = 'finished'
     db.session.commit()
     flash(f"Tournament {tournament.name} finished.", "success")
@@ -2795,7 +2802,12 @@ def cancel_tournament(tournament_id):
     if not current_user.is_admin:
         abort(403)
     
-    tournament = Tournament.query.get_or_404(tournament_id)
+    tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+    from gamearena.models import OrganizerFinance, OrganizerDraft
+    if db.session.get(OrganizerFinance,tournament.id):
+        draft=OrganizerDraft.query.filter_by(tournament_id=tournament.id).one()
+        db.session.commit()
+        return redirect(url_for('organizers.settlement',draft_id=draft.id))
     tournament.status = 'cancelled'
     db.session.commit()
     flash(f"Tournament {tournament.name} cancelled.", "success")
@@ -2807,9 +2819,13 @@ def edit_tournament(tournament_id):
     if not current_user.is_admin:
         abort(403)
 
-    tournament = Tournament.query.get_or_404(tournament_id)
+    tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404() if request.method == 'POST' else Tournament.query.get_or_404(tournament_id)
     form = TournamentSetupForm(obj=tournament)
     if request.method == 'POST' and form.validate_on_submit():
+        from gamearena.models import OrganizerFinance
+        finance=db.session.get(OrganizerFinance,tournament.id)
+        if finance and (finance.state != 'funded' or int(form.entry_fee.data) != tournament.entry_fee or int(form.prize_pool.data) != tournament.prize or int(form.max_participants.data) != tournament.max_participants or form.status.data == 'cancelled' or (tournament.status == 'finished' and form.status.data != 'finished')):
+            db.session.rollback(); abort(409, description='Funded event prices and capacity are fixed. Use Organiser Studio for cancellation and settlement.')
         tournament.entry_fee = int(form.entry_fee.data)
         tournament.prize = int(form.prize_pool.data)
         tournament.max_participants = int(form.max_participants.data)
@@ -2824,6 +2840,7 @@ def edit_tournament(tournament_id):
             try:
                 tournament.match_time = datetime.strptime(form.match_time.data, '%Y-%m-%d %H:%M')
             except ValueError:
+                db.session.rollback()
                 flash('Match time must be in YYYY-MM-DD HH:MM format.', 'error')
                 return render_template('admin_tournament_edit.html', tournament=tournament, form=form)
         else:
@@ -2833,6 +2850,7 @@ def edit_tournament(tournament_id):
         flash(f"Tournament '{tournament.name}' updated successfully!", 'success')
         return redirect(url_for('admin'))
 
+    db.session.commit()
     if tournament.match_time:
         form.match_time.data = tournament.match_time.strftime('%Y-%m-%d %H:%M')
     form.prize_pool.data = tournament.prize
@@ -3489,7 +3507,8 @@ def pay_for_tournament(tournament_id):
         flash("Tournament is full!", "error")
         return redirect(url_for("home"))
 
-    return render_template("payment.html", tournament=tournament, paystack_public_key=PAYSTACK_PUBLIC_KEY)
+    from gamearena.models import OrganizerFinance
+    return render_template("payment.html", tournament=tournament, organizer_funded=db.session.get(OrganizerFinance,tournament.id) is not None, paystack_public_key=PAYSTACK_PUBLIC_KEY)
 
 
 def validated_checkout_url(payload, status_code):
@@ -3571,6 +3590,10 @@ def initialize_payment(tournament_id):
         
     try:
         tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+        from gamearena.models import OrganizerFinance
+        if db.session.get(OrganizerFinance, tournament_id):
+            db.session.rollback()
+            return jsonify({'status':'error','message':'Top up GP, then pay this organiser event from your wallet. Cancellations return GP to your wallet.'}), 409
         if tournament.status != 'open':
             return jsonify({'status': 'error', 'message': 'Registration is closed.'}), 409
         if tournament.entry_fee <= 0:
@@ -4167,6 +4190,9 @@ def request_wallet_withdrawal(req_data):
         amount_raw = str(gp_to_naira(req_data['amount_gp'])) if 'amount_gp' in req_data else str(req_data.get('amount', '')).strip()
     except ValueError as error:
         return jsonify({'status':'error','message':str(error)}), 400
+    source = str(req_data.get('wallet_source','combined'))
+    if source not in ('combined','purchased','winnings'):
+        return jsonify({'status':'error','message':'Choose a valid wallet.'}),400
     bank_name = str(req_data.get('bank_name', '')).strip()
     bank_code = str(req_data.get('bank_code', '')).strip()
     account_number = str(req_data.get('account_number', '')).strip()
@@ -4180,14 +4206,14 @@ def request_wallet_withdrawal(req_data):
 
     existing = WalletTransaction.query.filter_by(user_id=current_user.id, type='withdrawal', idempotency_key=idempotency_key).with_for_update().first()
     if existing:
-        if existing.amount != int(amount_raw) or existing.bank_code != bank_code or existing.account_number != account_number:
+        if existing.amount != int(amount_raw) or existing.bank_code != bank_code or existing.account_number != account_number or existing.wallet_source != source:
             db.session.commit()
             return jsonify({'status': 'error', 'message': 'An earlier withdrawal has this request ID. Check its receipt before starting another.', 'receipt_url': url_for('wallet_receipt', transaction_id=existing.id)}), 409
         db.session.commit()
         return jsonify(withdrawal_response(existing))
     fee_kobo = withdrawal_fee_kobo(int(amount_raw))
     if int(amount_raw) < 100:
-        return jsonify({'status':'error','message':'The minimum withdrawal is 10 GP (₦100).'}), 400
+        return jsonify({'status':'error','message':'The minimum withdrawal is 100 GP (₦100).'}), 400
     if req_data.get('fee_consent') is not True or req_data.get('fee_policy') != WITHDRAWAL_FEE_POLICY or str(req_data.get('fee_kobo')) != str(fee_kobo):
         return jsonify({'status':'error','message':'Review the withdrawal fee and bank payout, then confirm. Refresh your wallet if needed.'}), 400
     try:
@@ -4208,12 +4234,16 @@ def request_wallet_withdrawal(req_data):
         return jsonify({'status': 'error', 'message': 'Insufficient wallet balance.'}), 400
     import uuid
     withdrawal = WalletTransaction(
-        user_id=owner.id, type='withdrawal', amount=amount, status='pending', withdrawal_fee_kobo=fee_kobo,
+        user_id=owner.id, type='withdrawal', amount=amount, status='pending', withdrawal_fee_kobo=fee_kobo, wallet_source=source,
         transaction_ref=f'wd_{uuid.uuid4().hex}', idempotency_key=idempotency_key,
         bank_name=bank_name[:120], bank_code=bank_code, account_number=account_number, account_name=verified['account_name'],
     )
     from gamearena.economy import spend_cash
-    withdrawal.winnings_spent = spend_cash(owner, amount)
+    try:
+        withdrawal.winnings_spent = spend_cash(owner, amount, source)
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify({'status':'error','message':str(error)}),400
     db.session.add(withdrawal)
     try:
         db.session.commit()
@@ -4221,6 +4251,8 @@ def request_wallet_withdrawal(req_data):
         db.session.rollback()
         existing = WalletTransaction.query.filter_by(user_id=current_user.id, type='withdrawal', idempotency_key=idempotency_key).first()
         if existing:
+            if existing.amount != amount or existing.bank_code != bank_code or existing.account_number != account_number or existing.wallet_source != source:
+                return jsonify({'status':'error','message':'This request ID belongs to a different withdrawal. Check its receipt.', 'receipt_url':url_for('wallet_receipt',transaction_id=existing.id)}),409
             return jsonify(withdrawal_response(existing))
         app.logger.exception('Withdrawal reservation failed')
         return jsonify({'status': 'error', 'message': 'Unable to create withdrawal request.'}), 500
