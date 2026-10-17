@@ -10,6 +10,7 @@ BACKEND_TABLES = (
     'user', 'user_achievement', 'user_block', 'user_report', 'user_settings',
     'user_tournament', 'wallet_transaction', 'user_activity_day',
     'cosmetic_ownership', 'organizer_draft', 'organizer_profile', 'organizer_finance', 'tournament_artwork',
+    'tournament_competition', 'tournament_check_in', 'match_lobby', 'match_evidence',
 )
 
 

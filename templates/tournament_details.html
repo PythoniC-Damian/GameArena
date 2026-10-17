@@ -90,8 +90,9 @@
         </div>
     </section>
 
+    {% include '_competition_panel.html' %}
     <!-- Match schedule / brackets -->
-    {% if current_user.is_authenticated and current_user.is_admin and not current_user.suspended and not matches and tournament.status in ('live', 'ongoing') %}
+    {% if current_user.is_authenticated and current_user.is_admin and not current_user.suspended and not competition_config and not matches and tournament.status in ('live', 'ongoing') %}
     <form method="POST" action="{{ url_for('create_matches', tournament_id=tournament.id) }}" class="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <p class="text-sm text-slate-300">Create a single-elimination bracket from eligible participants. The field must contain a power of two; no player is dropped.</p>
@@ -129,6 +130,7 @@
                     </div>
                 </div>
                 {% if current_user.is_authenticated and (current_user.id in (match.player_one_user_id, match.player_two_user_id) or (current_user.is_admin and not current_user.suspended)) %}
+                {% if competition_config %}<a class="ga-button ga-section" href="{{ url_for('competition.play',match_id=match.id) }}">{{ t('Open match room') }}</a>{% else %}
                 {% set is_match_player = current_user.id in (match.player_one_user_id, match.player_two_user_id) %}
                 {% if match.room_code %}
                 <div class="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
@@ -214,6 +216,7 @@
                 {% endfor %}
                 {% endif %}
                 {% endif %}
+                {% endif %}
             </div>
             {% endfor %}
         </div>
@@ -291,6 +294,7 @@
 
 </script>
 
+<script defer src="{{ asset_url('js/competition.js') }}"></script>
 {% include '_pwa_register.html' %}
 </body>
 </html>

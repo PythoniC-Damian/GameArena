@@ -384,6 +384,10 @@ from gamearena.market import market
 app.register_blueprint(market)
 from gamearena.organizers import organizers
 app.register_blueprint(organizers)
+from gamearena.competition import competition
+app.register_blueprint(competition)
+from gamearena.competition import register_socket as register_competition_socket
+register_competition_socket(socketio)
 from gamearena.i18n import i18n, translate
 app.register_blueprint(i18n)
 app.jinja_env.globals['t'] = translate
@@ -395,6 +399,7 @@ from gamearena.master_billing import billing as master_billing, handle_event as 
 app.register_blueprint(master_billing)
 
 from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
+from gamearena.models import TournamentCompetition, TournamentCheckIn, MatchLobby, MatchEvidence
 from gamearena.activity import init_activity, notify_activity_changed
 init_activity(app)
 
@@ -1152,7 +1157,10 @@ def award_achievements_for_user(user_id):
 
 
 def create_tournament_matches(tournament):
-    if not tournament or tournament.status == 'finished':
+    if not tournament:
+        return []
+    tournament=Tournament.query.filter_by(id=tournament.id).with_for_update().populate_existing().first()
+    if not tournament or tournament.status in {'finished','cancelled'}:
         return []
 
     existing_matches = TournamentMatch.query.filter_by(tournament_id=tournament.id).all()
@@ -1169,6 +1177,21 @@ def create_tournament_matches(tournament):
     if len(participants) < 2 or len(participants) & (len(participants) - 1):
         return []
 
+    config=db.session.get(TournamentCompetition,tournament.id)
+    checkins={}
+    if config:
+        if config.phase!='check_in' or tournament.status!='ongoing' or len(participants)>128:
+            return []
+        if User.query.filter(User.id.in_(participants),User.suspended.is_(True)).first():
+            return []
+        if UserTournament.query.filter_by(tournament_id=tournament.id,payment_status='pending').filter(UserTournament.transaction_ref.isnot(None)).first():
+            return []
+        checkins={row.user_id:row for row in TournamentCheckIn.query.filter_by(tournament_id=tournament.id).all()}
+        if any(uid not in checkins for uid in participants):
+            return []
+        if not config.checkin_closes_at or (datetime.utcnow()<config.checkin_closes_at and len(participants)<tournament.max_participants):
+            return []
+        config.phase='live';config.started_at=datetime.utcnow()
     random.shuffle(participants)
     matches = []
     for index in range(0, len(participants), 2):
@@ -1183,9 +1206,18 @@ def create_tournament_matches(tournament):
         )
         db.session.add(match)
         matches.append(match)
+        if config:
+            match.player_one_profile_id=checkins[pair[0]].game_id
+            match.player_two_profile_id=checkins[pair[1]].game_id
+            db.session.flush()
+            db.session.add(MatchLobby(match_id=match.id))
 
     tournament.status = 'live'
     db.session.commit()
+    if config:
+        from gamearena.competition import notify
+        for match in matches:
+            notify([match.player_one_user_id,match.player_two_user_id],f'Your round 1 match in {tournament.name} is ready.',tournament.id,match.id)
     return matches
 
 
@@ -1193,14 +1225,14 @@ def advance_tournament_bracket(match):
     if not match or not match.round_number:
         return False
 
-    tournament = Tournament.query.filter_by(id=match.tournament_id).with_for_update().first()
+    tournament = Tournament.query.filter_by(id=match.tournament_id).with_for_update().populate_existing().first()
     if not tournament:
         return False
-    if tournament.status == 'finished':
+    if tournament.status in {'finished','cancelled'}:
         return False
     round_matches = TournamentMatch.query.filter_by(
         tournament_id=tournament.id, round_number=match.round_number,
-    ).order_by(TournamentMatch.match_order.asc()).all()
+    ).order_by(TournamentMatch.match_order.asc()).populate_existing().all()
     if not round_matches or any(
         round_match.status != 'confirmed' or round_match.winner_user_id is None
         for round_match in round_matches
@@ -1212,7 +1244,10 @@ def advance_tournament_bracket(match):
     if len(winners) == 1:
         champion = db.session.get(User, winners[0])
         tournament.status = 'finished'
+        config=db.session.get(TournamentCompetition,tournament.id)
+        if config:config.phase='finished'
         db.session.commit()
+        competition_changed(tournament.id)
         if champion:
             award_achievements_for_user(champion.id)
             create_and_emit_notification(
@@ -1228,15 +1263,19 @@ def advance_tournament_bracket(match):
         return False
 
     for index in range(0, len(winners), 2):
-        db.session.add(TournamentMatch(
+        next_match=TournamentMatch(
             tournament_id=tournament.id,
             player_one_user_id=winners[index],
             player_two_user_id=winners[index + 1],
-            status='scheduled',
-            round_number=next_round,
-            match_order=index // 2 + 1,
-        ))
+            status='scheduled',round_number=next_round,match_order=index // 2 + 1)
+        db.session.add(next_match)
+        if db.session.get(TournamentCompetition,tournament.id):
+            one=db.session.get(TournamentCheckIn,(tournament.id,winners[index]))
+            two=db.session.get(TournamentCheckIn,(tournament.id,winners[index+1]))
+            next_match.player_one_profile_id=one.game_id;next_match.player_two_profile_id=two.game_id
+            db.session.flush();db.session.add(MatchLobby(match_id=next_match.id))
     db.session.commit()
+    competition_changed(tournament.id)
     for winner_id in winners:
         create_and_emit_notification(
             winner_id, f'You advanced to round {next_round} of {tournament.name}.',
@@ -1258,6 +1297,7 @@ def submit_match_result(match, user, room_code, room_password, player_profile_id
     match.submitted_by_user_id = user.id
     match.status = 'pending_confirmation'
     db.session.commit()
+    competition_changed(match.tournament_id)
     return match
 
 
@@ -2152,11 +2192,13 @@ def tournament_details(tournament_id):
             TournamentMatch.created_at.asc(),
         ).all()
 
+    from gamearena.competition import context as competition_context
     return render_template(
         "tournament_details.html",
         tournament=tournament,
         joined_participant=joined_participant,
-        can_matchmake=can_matchmake,
+        can_matchmake=can_matchmake and db.session.get(TournamentCompetition,tournament.id) is None,
+        **competition_context(tournament),
         matches=matches,
         can_view_match_rooms=can_view_match_rooms,
         pending_payment=pending_payment,
@@ -2783,6 +2825,8 @@ def start_tournament(tournament_id):
     finance = db.session.get(OrganizerFinance,tournament.id)
     if finance and (finance.state != 'funded' or tournament.status in ('finished','cancelled')):
         db.session.rollback(); abort(409)
+    if db.session.get(TournamentCompetition,tournament.id) or tournament.status in {'cancelled','finished'}:
+        db.session.rollback();abort(409,description='Use competition controls; closed events cannot be restarted.')
     tournament.status = 'ongoing'
     db.session.commit()
     flash(f"Tournament {tournament.name} started.", "success")
@@ -2799,6 +2843,9 @@ def end_tournament(tournament_id):
     finance = db.session.get(OrganizerFinance,tournament.id)
     if finance and (finance.state != 'funded' or tournament.status in ('finished','cancelled')):
         db.session.rollback(); abort(409)
+    config=db.session.get(TournamentCompetition,tournament.id)
+    if config and config.phase!='finished':
+        db.session.rollback();abort(409,description='Complete the competition bracket before finishing this event.')
     tournament.status = 'finished'
     db.session.commit()
     flash(f"Tournament {tournament.name} finished.", "success")
@@ -2834,6 +2881,11 @@ def edit_tournament(tournament_id):
         finance=db.session.get(OrganizerFinance,tournament.id)
         if finance and (finance.state != 'funded' or int(form.entry_fee.data) != tournament.entry_fee or int(form.prize_pool.data) != tournament.prize or int(form.max_participants.data) != tournament.max_participants or form.status.data == 'cancelled' or (tournament.status == 'finished' and form.status.data != 'finished')):
             db.session.rollback(); abort(409, description='Funded event prices and capacity are fixed. Use Organiser Studio for cancellation and settlement.')
+        config=db.session.get(TournamentCompetition,tournament.id)
+        if config:
+            expected={'registration':'open','check_in':'ongoing','live':'live','finished':'finished'}[config.phase]
+            if form.status.data!=expected or int(form.max_participants.data)!=tournament.max_participants:
+                db.session.rollback();abort(409,description='Use competition controls to manage rounds. Published bracket capacity is fixed.')
         tournament.entry_fee = int(form.entry_fee.data)
         tournament.prize = int(form.prize_pool.data)
         tournament.max_participants = int(form.max_participants.data)
@@ -3023,6 +3075,8 @@ def create_matches(tournament_id):
         flash('Only admins can create match pairings.', 'error')
         return redirect(url_for('tournament_details', tournament_id=tournament_id))
 
+    if db.session.get(TournamentCompetition,tournament.id):
+        return redirect(url_for('tournament_details',tournament_id=tournament.id))
     matches = create_tournament_matches(tournament)
     if not matches:
         participant_count = active_participant_count(tournament)
@@ -3086,6 +3140,10 @@ def matchmake_player_pair(tournament_id):
     """
     tournament = Tournament.query.get_or_404(tournament_id)
 
+    tournament=Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().one()
+    if tournament.status not in {'live','ongoing'} or db.session.get(TournamentCompetition,tournament_id):
+        db.session.rollback();abort(409,description='Follow the tournament check-in and assigned bracket matches.')
+
     if TournamentMatch.query.filter(
         TournamentMatch.tournament_id == tournament_id,
         TournamentMatch.round_number.isnot(None),
@@ -3143,173 +3201,211 @@ def matchmake_player_pair(tournament_id):
 
 
 
+def competition_changed(event_id):
+    from gamearena.competition import announce_change
+    announce_change(event_id)
+
+
+def match_return_url(match):
+    return url_for('competition.play',match_id=match.id) if db.session.get(TournamentCompetition,match.tournament_id) else url_for('tournament_details',tournament_id=match.tournament_id)
+
+
 @app.route('/match/<int:match_id>/submit-result', methods=['POST'])
 @login_required
 def submit_match_result_route(match_id):
-    match = TournamentMatch.query.get_or_404(match_id)
+    from gamearena.competition import lock_match,limit
+    limit()
+    match = lock_match(match_id)
     tournament = match.tournament
 
     if not can_access_match(current_user.id, match):
         flash('Only the assigned players or an admin can view this match.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if current_user.id not in {match.player_one_user_id, match.player_two_user_id}:
         flash('Only an assigned player can submit a match result.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if match.status not in {'scheduled', 'ongoing'}:
         flash('This match is not accepting result submissions right now.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
 
-    room_code = request.form.get('room_code', '').strip()
-    room_password = request.form.get('room_password', '').strip()
-    player_profile_id = request.form.get('player_profile_id', '').strip()
-    opponent_profile_id = request.form.get('opponent_profile_id', '').strip()
-    winner_user_id = request.form.get('winner_user_id', '').strip()
-    proof_note = request.form.get('proof_note', '').strip()
+    if db.session.get(TournamentCompetition,tournament.id):
+        from gamearena.competition import prepare_result
+        try:
+            result=prepare_result(match)
+            if len(result['proof_note'])>MAX_MATCH_PROOF_LENGTH:raise ValueError('Result notes are too long.')
+            submit_match_result(match=match,user=current_user,**result)
+        except ValueError as error:
+            db.session.rollback();flash(str(error),'error')
+            return redirect(url_for('competition.play',match_id=match.id))
+    else:
+        room_code = request.form.get('room_code', '').strip()
+        room_password = request.form.get('room_password', '').strip()
+        player_profile_id = request.form.get('player_profile_id', '').strip()
+        opponent_profile_id = request.form.get('opponent_profile_id', '').strip()
+        winner_user_id = request.form.get('winner_user_id', '').strip()
+        proof_note = request.form.get('proof_note', '').strip()
 
-    if len(room_code) > 100 or len(room_password) > 100 or len(player_profile_id) > 150 or len(opponent_profile_id) > 150 or len(proof_note) > MAX_MATCH_PROOF_LENGTH:
-        flash('One or more match fields are too long.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        if len(room_code) > 100 or len(room_password) > 100 or len(player_profile_id) > 150 or len(opponent_profile_id) > 150 or len(proof_note) > MAX_MATCH_PROOF_LENGTH:
+            flash('One or more match fields are too long.', 'error')
+            return redirect(match_return_url(match))
 
-    if not room_code or not player_profile_id or not opponent_profile_id or not winner_user_id:
-        flash('Please fill in the room details, profile IDs and winner before submitting.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        if not room_code or not player_profile_id or not opponent_profile_id or not winner_user_id:
+            flash('Please fill in the room details, profile IDs and winner before submitting.', 'error')
+            return redirect(match_return_url(match))
 
-    try:
-        winner_id = int(winner_user_id)
-    except (TypeError, ValueError):
-        flash('Invalid winner selected for this match.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        try:
+            winner_id = int(winner_user_id)
+        except (TypeError, ValueError):
+            flash('Invalid winner selected for this match.', 'error')
+            return redirect(match_return_url(match))
 
-    # IMPORTANT ANTI-LIE VALIDATION:
-    #Note Winner must be one of the two assigned players for this match.
-    if winner_id not in {match.player_one_user_id, match.player_two_user_id}:
-        flash('Invalid winner selected for this match.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        # IMPORTANT ANTI-LIE VALIDATION:
+        #Note Winner must be one of the two assigned players for this match.
+        if winner_id not in {match.player_one_user_id, match.player_two_user_id}:
+            flash('Invalid winner selected for this match.', 'error')
+            return redirect(match_return_url(match))
 
-    # Mtach Submission Submit for confirmation
-    submit_match_result(
-        match=match,
-        user=current_user,
-        room_code=room_code,
-        room_password=room_password,
-        player_profile_id=player_profile_id,
-        opponent_profile_id=opponent_profile_id,
-        winner_user_id=winner_id,
-        proof_note=proof_note,
-    )
+        # Mtach Submission Submit for confirmation
+        submit_match_result(
+            match=match,
+            user=current_user,
+            room_code=room_code,
+            room_password=room_password,
+            player_profile_id=player_profile_id,
+            opponent_profile_id=opponent_profile_id,
+            winner_user_id=winner_id,
+            proof_note=proof_note,
+        )
     opponent_id = match.player_two_user_id if current_user.id == match.player_one_user_id else match.player_one_user_id
     create_and_emit_notification(
         opponent_id, f'{current_user.username} submitted a result for your match.',
-        'match', f'/tournament/{tournament.id}',
+        'match', match_return_url(match),
     )
     flash('Match result submitted and waiting for confirmation.', 'success')
-    return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    return redirect(match_return_url(match))
 
 
 
 @app.route('/match/<int:match_id>/confirm-result', methods=['POST'])
 @login_required
 def confirm_match_result(match_id):
-    match = TournamentMatch.query.get_or_404(match_id)
+    from gamearena.competition import lock_match,limit
+    limit()
+    match = lock_match(match_id)
     tournament = match.tournament
 
     if not can_access_match(current_user.id, match):
         flash('Only the assigned players or an admin can view this match.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if current_user.id not in {match.player_one_user_id, match.player_two_user_id}:
         flash('Only an assigned player can confirm a match result.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if match.status != 'pending_confirmation':
         flash('There is no submitted result waiting for confirmation.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if current_user.id == match.submitted_by_user_id:
         flash('The other player must confirm the submitted result.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if is_admin_user():
         flash('Admins can review disputed results only.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
 
     match.status = 'confirmed'
     db.session.commit()
+    competition_changed(match.tournament_id)
     for player_id in {match.player_one_user_id, match.player_two_user_id}:
         award_achievements_for_user(player_id)
     create_and_emit_notification(
         match.submitted_by_user_id,
         f'{current_user.username} confirmed your match result.',
-        'match', f'/tournament/{tournament.id}',
+        'match', match_return_url(match),
     )
     advance_tournament_bracket(match)
     flash('Match result confirmed.', 'success')
-    return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    return redirect(match_return_url(match))
 
 
 @app.route('/match/<int:match_id>/chat', methods=['POST'])
 @login_required
 def send_match_chat_message(match_id):
-    match = TournamentMatch.query.get_or_404(match_id)
+    from gamearena.competition import lock_match
+    match = lock_match(match_id)
+    retry=consume_rate_limit('match_chat:'+str(current_user.id),30,60)
+    if retry is not None:return rate_limit_response(retry)
     tournament = match.tournament
 
     if not can_access_match(current_user.id, match):
         flash('Only the assigned players or an admin can chat in this match.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
 
     message = request.form.get('message', '').strip()
     if len(message) > MAX_CHAT_MESSAGE_LENGTH:
         flash('Message is too long.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if message:
         chat_message = TournamentMatchChatMessage(match_id=match.id, user_id=current_user.id, message=message)
         db.session.add(chat_message)
         db.session.commit()
+        competition_changed(match.tournament_id)
         flash('Message sent.', 'success')
     else:
         flash('Message cannot be empty.', 'error')
-    return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    return redirect(match_return_url(match))
 
 
 @app.route('/match/<int:match_id>/dispute', methods=['POST'])
 @login_required
 def dispute_match_result(match_id):
-    match = TournamentMatch.query.get_or_404(match_id)
+    from gamearena.competition import lock_match,limit
+    limit()
+    match = lock_match(match_id)
     tournament = match.tournament
 
     if not can_access_match(current_user.id, match):
         flash('Only the assigned players or an admin can view this match.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if current_user.id not in {match.player_one_user_id, match.player_two_user_id}:
         flash('Only an assigned player can dispute a match result.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if match.status != 'pending_confirmation':
         flash('Only a submitted result can be disputed.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
     if current_user.id == match.submitted_by_user_id:
         flash('The other player must raise a dispute.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
 
     reason = request.form.get('reason', '').strip()
     if len(reason) > MAX_MATCH_PROOF_LENGTH:
         flash('Dispute reason is too long.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=tournament.id))
+        return redirect(match_return_url(match))
+    if db.session.get(TournamentCompetition,tournament.id) and request.files.get('evidence') and request.files['evidence'].filename:
+        from gamearena.competition import store_evidence
+        try:store_evidence(match,request.files['evidence'])
+        except ValueError as error:
+            db.session.rollback();flash(str(error),'error');return redirect(match_return_url(match))
     if reason:
         dispute = TournamentMatchDispute(match_id=match.id, user_id=current_user.id, reason=reason)
         db.session.add(dispute)
         match.status = 'disputed'
         db.session.commit()
+        competition_changed(match.tournament_id)
         create_and_emit_notification(
             match.submitted_by_user_id,
             f'{current_user.username} disputed your match result.',
-            'match', f'/tournament/{tournament.id}',
+            'match', match_return_url(match),
         )
         flash('Dispute submitted for review.', 'success')
     else:
         flash('Please describe the issue before submitting a dispute.', 'error')
-    return redirect(url_for('tournament_details', tournament_id=tournament.id))
+    return redirect(match_return_url(match))
 
 
 @app.route('/admin/matches/<int:match_id>/review-dispute', methods=['POST'])
 @login_required
 def review_match_dispute(match_id):
-    match = TournamentMatch.query.get_or_404(match_id)
+    from gamearena.competition import lock_match,limit
+    limit()
+    match = lock_match(match_id)
     if not is_admin_user():
         abort(403)
 
@@ -3319,8 +3415,22 @@ def review_match_dispute(match_id):
     decision = (request.form.get('decision') or '').strip().lower()
     if match.status != 'disputed' or not dispute or decision not in {'confirm', 'reopen'}:
         flash('This dispute is not available for review.', 'error')
-        return redirect(url_for('tournament_details', tournament_id=match.tournament_id))
+        return redirect(match_return_url(match))
 
+    managed=db.session.get(TournamentCompetition,match.tournament_id)
+    if managed:
+        if current_user.id in {match.player_one_user_id,match.player_two_user_id}:abort(403,description='A different staff member must review your match.')
+        note=request.form.get('review_note','').strip()
+        if not 20<=len(note)<=1000 or request.form.get('review_ack')!='yes':abort(400,description='Record the evidence review and acknowledge the published rules.')
+        lobby=db.session.get(MatchLobby,match.id)
+        lobby.review_note=note;lobby.reviewed_by=current_user.id;lobby.reviewed_at=datetime.utcnow()
+        if decision=='confirm':
+            try:winner=int(request.form.get('winner_user_id',''))
+            except ValueError:abort(400,description='Select the winner after reviewing the evidence.')
+            if winner not in {match.player_one_user_id,match.player_two_user_id}:abort(400)
+            if winner!=match.winner_user_id:lobby.player_one_score=None;lobby.player_two_score=None
+            match.winner_user_id=winner
+        TournamentMatchDispute.query.filter_by(match_id=match.id,status='pending').update({'status':'resolved'})
     dispute.status = 'resolved'
     if decision == 'confirm':
         match.status = 'confirmed'
@@ -3332,13 +3442,23 @@ def review_match_dispute(match_id):
         match.proof_note = None
         match.player_one_profile_id = None
         match.player_two_profile_id = None
+        if managed:
+            match.player_one_profile_id=db.session.get(TournamentCheckIn,(match.tournament_id,match.player_one_user_id)).game_id
+            match.player_two_profile_id=db.session.get(TournamentCheckIn,(match.tournament_id,match.player_two_user_id)).game_id
+            lobby.player_one_score=None;lobby.player_two_score=None
+            lobby.player_one_ready_at=None;lobby.player_two_ready_at=None;lobby.published_at=None
+            match.room_code=None;match.room_password=None;match.status='scheduled'
         flash('Match reopened for a new result submission.', 'success')
     db.session.commit()
+    competition_changed(match.tournament_id)
+    if managed:
+        from gamearena.competition import notify
+        notify([match.player_one_user_id,match.player_two_user_id],'Staff reviewed your match. Open the match room to see the decision.',match.tournament_id,match.id)
     if decision == 'confirm':
         for player_id in {match.player_one_user_id, match.player_two_user_id}:
             award_achievements_for_user(player_id)
         advance_tournament_bracket(match)
-    return redirect(url_for('tournament_details', tournament_id=match.tournament_id))
+    return redirect(match_return_url(match))
 
 
 # PAYMENT ROUTES

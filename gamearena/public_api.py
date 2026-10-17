@@ -41,6 +41,8 @@ def serialize_tournament(tournament, include_description=True):
         'max_participants': tournament.max_participants,
         'participant_count': participant_count,
         'status': tournament.status,
+        'format': 'single_elimination_1v1' if tournament.competition else 'custom',
+        'competition_phase': tournament.competition.phase if tournament.competition else None,
         'match_time': tournament.match_time.isoformat() if tournament.match_time else None,
         'created_at': tournament.created_at.isoformat() if tournament.created_at else None,
         'image_url': url_for('organizers.artwork', image_id=tournament.artwork[0].id) if tournament.artwork else tournament_image_url(tournament.game),

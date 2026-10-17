@@ -128,6 +128,7 @@ class Tournament(db.Model):
     first_place = db.Column(db.String(150))
     second_place = db.Column(db.String(150))
     third_place = db.Column(db.String(150))
+    competition = db.relationship('TournamentCompetition', uselist=False, lazy='selectin')
     artwork = db.relationship('TournamentArtwork', foreign_keys='TournamentArtwork.tournament_id', lazy='selectin', order_by='TournamentArtwork.position')
     participants = db.relationship('UserTournament', back_populates='tournament')
     leaderboard = db.relationship('TournamentStat', back_populates='tournament', cascade='all, delete-orphan', order_by='TournamentStat.rank')
@@ -570,3 +571,45 @@ class TournamentArtwork(db.Model):
         db.UniqueConstraint('tournament_id', 'position', name='uq_tournament_artwork_event_position'),
         db.CheckConstraint('position BETWEEN 1 AND 3', name='ck_tournament_artwork_position'),
     )
+
+
+class TournamentCompetition(db.Model):
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), primary_key=True)
+    phase = db.Column(db.String(20), nullable=False, default='registration')
+    game_rules = db.Column(db.Text, nullable=False)
+    no_show_policy = db.Column(db.String(1000), nullable=False)
+    checkin_closes_at = db.Column(db.DateTime)
+    started_at = db.Column(db.DateTime)
+    __table_args__ = (db.CheckConstraint("phase IN ('registration','check_in','live','finished')", name='ck_competition_phase'),)
+
+
+class TournamentCheckIn(db.Model):
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    game_id = db.Column(db.String(150), nullable=False)
+    normalized_game_id = db.Column(db.String(150), nullable=False)
+    checked_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    rules_version = db.Column(db.String(30), nullable=False, default='1v1-v1')
+    __table_args__ = (db.UniqueConstraint('tournament_id','normalized_game_id',name='uq_checkin_game_account'),)
+    user = db.relationship('User')
+
+
+class MatchLobby(db.Model):
+    match_id = db.Column(db.Integer, db.ForeignKey('tournament_match.id'), primary_key=True)
+    published_at = db.Column(db.DateTime)
+    player_one_ready_at = db.Column(db.DateTime)
+    player_two_ready_at = db.Column(db.DateTime)
+    player_one_score = db.Column(db.Integer)
+    player_two_score = db.Column(db.Integer)
+    reviewed_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    reviewed_at = db.Column(db.DateTime)
+    review_note = db.Column(db.String(1000))
+
+
+class MatchEvidence(db.Model):
+    id = db.Column(db.String(32), primary_key=True)
+    match_id = db.Column(db.Integer, db.ForeignKey('tournament_match.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    image = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    user = db.relationship('User')
