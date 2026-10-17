@@ -4011,6 +4011,20 @@ def withdrawal_failure_message(reason):
     return 'Paystack could not complete this withdrawal. Please contact support with the transaction reference.'
 
 
+def account_verification_failure(reason):
+    """Classify lookup failures without returning provider text or account details."""
+    message = str(reason or '').lower()
+    if any(term in message for term in ('starter', 'registered business')):
+        return 'business_verification_required', 'Bank account-name verification requires Paystack business approval. Please contact GameArena support.'
+    if any(term in message for term in ('invalid key', 'unauthorized', 'not configured', 'authentication')):
+        return 'verification_configuration', 'Bank account-name verification is not configured correctly. Please contact GameArena support.'
+    if any(term in message for term in ('not enabled', 'not allowed', 'disabled', 'permission', 'access denied', 'not permitted')):
+        return 'verification_access_restricted', 'Paystack has not enabled bank account-name verification for GameArena. Please contact support.'
+    if any(term in message for term in ('account', 'bank', 'recipient')):
+        return 'account_not_verified', 'The account name could not be verified. Check the selected bank and 10-digit account number, then retry.'
+    return 'verification_failed', 'The bank account name could not be verified. Please retry or contact GameArena support.'
+
+
 def wallet_account_signer():
     return URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='wallet-account-verification-v1')
 
@@ -4044,9 +4058,12 @@ def wallet_resolve_account():
         response.headers['Cache-Control'] = 'private, no-store'
         return response
     except ValueError as error:
-        return jsonify({'message': withdrawal_failure_message(str(error))}), 422
+        code, message = account_verification_failure(error)
+        app.logger.warning('Bank account verification rejected code=%s', code)
+        return jsonify({'code': code, 'message': message}), 422
     except Exception:
-        return jsonify({'message': 'Account verification is temporarily unavailable. Please try again.'}), 503
+        app.logger.warning('Bank account verification unavailable')
+        return jsonify({'code': 'verification_unavailable', 'message': 'Account verification is temporarily unavailable. Please try again.'}), 503
 
 
 def withdrawal_response(withdrawal):

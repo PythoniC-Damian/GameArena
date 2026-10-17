@@ -192,3 +192,37 @@ def test_receipt_public_id_is_stable_and_provider_reference_is_preserved(monkeyp
         assert public_id in response.text and 'wd_real_provider_reference' in response.text
         assert 'data-share-value="******0000"' in response.text and 'Share Receipt' in response.text
         assert 'data-receipt-status="Pending"' in response.text
+
+
+@pytest.mark.parametrize('reason,code,phrase', [
+    ('Identity verification is not enabled for starter businesses', 'business_verification_required', 'business approval'),
+    ('Invalid key', 'verification_configuration', 'not configured correctly'),
+    ('Permission denied', 'verification_access_restricted', 'account-name verification'),
+    ('Could not resolve account', 'account_not_verified', 'Check the selected bank'),
+    ('Request rejected', 'verification_failed', 'could not be verified'),
+])
+def test_resolution_rejection_explains_lookup_without_leaking_details(monkeypatch, caplog, reason, code, phrase):
+    with app.app_context():
+        owner, browser, headers = setup(monkeypatch)
+        # Upstream errors can contain sensitive values: never echo or log them.
+        private_marker = 'PRIVATE_PROVIDER_DETAIL_123'
+        monkeypatch.setattr(application, 'paystack_transfer_request', Mock(side_effect=ValueError(reason + ' ' + private_marker)))
+        response = browser.post('/wallet/resolve-account', json={'bank_code':'999','account_number':'0000000000'}, headers=headers)
+        assert response.status_code == 422
+        assert response.json['code'] == code and phrase in response.json['message']
+        assert 'payout' not in response.json['message'].lower()
+        assert 'verification_token' not in response.json and 'account_name' not in response.json
+        assert private_marker not in response.text and private_marker not in caplog.text
+        db.session.refresh(owner)
+        assert owner.wallet_balance == 1000 and WalletTransaction.query.count() == 0
+
+
+def test_resolution_timeout_cannot_issue_verified_name(monkeypatch):
+    with app.app_context():
+        owner, browser, headers = setup(monkeypatch)
+        monkeypatch.setattr(application, 'paystack_transfer_request', Mock(side_effect=TimeoutError('provider timeout')))
+        response = browser.post('/wallet/resolve-account', json={'bank_code':'999','account_number':'0000000000'}, headers=headers)
+        assert response.status_code == 503 and response.json['code'] == 'verification_unavailable'
+        assert 'verification_token' not in response.json and 'account_name' not in response.json
+        db.session.refresh(owner)
+        assert owner.wallet_balance == 1000 and WalletTransaction.query.count() == 0
