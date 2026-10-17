@@ -6,8 +6,9 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
 from gamearena.extensions import db
-from gamearena.models import OrganizerDraft, Tournament, UserTournament, OrganizerProfile, OrganizerFinance, User
+from gamearena.models import OrganizerDraft, Tournament, UserTournament, OrganizerProfile, OrganizerFinance, User, TournamentArtwork
 from gamearena.organizer_finance import AGREEMENT_VERSION, fund, close_event
+from gamearena.tournament_artwork import read_artwork, replace_artwork
 from gamearena.gp import gp_to_naira
 
 organizers = Blueprint('organizers', __name__)
@@ -53,11 +54,13 @@ def edit(draft_id):
     if request.method == 'POST':
         try:
             values = event_fields(request.form)
-        except (ValueError, TypeError):
+            images = read_artwork(request.files.getlist('images'), len(row.artwork))
+        except (ValueError, TypeError) as error:
             db.session.rollback()
-            flash('Check the event name, game, rules, GP amounts, capacity and future start time (UTC).', 'error')
-            return redirect(url_for('.edit', draft_id=draft_id))
+            flash(str(error) or 'Check the event name, game, rules, GP amounts, capacity and future start time (UTC).', 'error')
+            return render_workspace(active_draft=row, drafts=[], review=[], form_values=request.form), 400
         for key,value in values.items(): setattr(row,key,value)
+        replace_artwork(row, images)
         row.status='draft'
         db.session.commit()
         flash('Event draft saved. Submit it when ready for review.', 'success')
@@ -76,20 +79,16 @@ def workspace():
         if OrganizerDraft.query.filter_by(owner_id=current_user.id).filter(OrganizerDraft.status.in_(['draft','rejected','review','published'])).count() >= 30:
             db.session.rollback()
             abort(409, description='You have reached the 30-event workspace limit. Contact support.')
-        data = request.form
-        name, game, rules = (data.get(k, '').strip() for k in ('name','game','rules'))
         try:
-            fee, prize = money(data.get('entry_gp', '')), money(data.get('prize_gp', ''))
-            capacity = int(data.get('capacity', ''))
-            starts = datetime.strptime(data.get('starts_at', ''), '%Y-%m-%dT%H:%M')
-            if not (3 <= len(name) <= 120 and 2 <= len(game) <= 100 and 20 <= len(rules) <= 10000 and 2 <= capacity <= 10000 and starts > datetime.utcnow()):
-                raise ValueError()
-        except (ValueError, TypeError):
+            values = event_fields(request.form)
+            images = read_artwork(request.files.getlist('images'))
+        except (ValueError, TypeError) as error:
             db.session.rollback()
-            flash('Check the event name, game, rules, GP amounts, capacity and future start time (UTC).', 'error')
-            return redirect(url_for('.workspace'))
-        db.session.add(OrganizerDraft(owner_id=current_user.id, name=name, game=game, rules=rules,
-            entry_fee=fee, prize_pool=prize, capacity=capacity, starts_at=starts))
+            flash(str(error) or 'Check the event name, game, rules, GP amounts, capacity and future start time (UTC).', 'error')
+            return render_workspace(drafts=[], review=[], form_values=request.form), 400
+        draft = OrganizerDraft(owner_id=current_user.id, **values)
+        db.session.add(draft)
+        replace_artwork(draft, images)
         db.session.commit()
         flash('Event draft saved. Submit it when ready for review.', 'success')
         return redirect(url_for('.workspace'))
@@ -111,6 +110,8 @@ def submit(draft_id):
         db.session.rollback(); abort(400, description='Accept the organiser rules and fee before submitting.')
     if row.starts_at <= datetime.utcnow():
         db.session.rollback(); abort(400, description='Create a draft with a future start time.')
+    if len(row.artwork) != 3:
+        db.session.rollback(); abort(400, description='Upload exactly 3 tournament images before submitting.')
     row.agreement_version = AGREEMENT_VERSION
     row.accepted_at = datetime.utcnow()
     row.status = 'review'
@@ -135,6 +136,8 @@ def review(draft_id):
         if request.form.get('checked') != 'yes' or row.starts_at <= datetime.utcnow():
             db.session.rollback()
             abort(400, description='Review the rules, prize funding and permissions before publication.')
+        if len(row.artwork) != 3:
+            db.session.rollback(); abort(400, description='Review requires exactly 3 tournament images.')
         owner = User.query.filter_by(id=row.owner_id).with_for_update().populate_existing().one()
         profile = OrganizerProfile.query.filter_by(user_id=row.owner_id).with_for_update().populate_existing().first()
         if not owner.email_verified or owner.suspended or not profile or profile.status != 'approved' or row.agreement_version != AGREEMENT_VERSION or not row.accepted_at:
@@ -147,6 +150,8 @@ def review(draft_id):
         db.session.flush()
         fund(event, row, owner)
         row.tournament_id = event.id
+        for image in row.artwork:
+            image.tournament_id = event.id
         row.status = 'published'
     else:
         if not note:
@@ -247,3 +252,23 @@ def participants(draft_id):
         writer.writerow([name, entry.payment_status, gp_label(entry.amount_paid), entry.joined_at.isoformat()])
     return Response('\ufeff'+output.getvalue(), mimetype='text/csv', headers={
         'Content-Disposition':'attachment; filename="gamearena-participants.csv"', 'Cache-Control':'private, no-store'})
+
+
+@organizers.route('/media/tournament-artwork/<string:image_id>.webp')
+def artwork(image_id):
+    if len(image_id) != 32 or any(c not in '0123456789abcdef' for c in image_id):
+        abort(404)
+    image = db.session.get(TournamentArtwork, image_id)
+    if not image:
+        abort(404)
+    draft = db.session.get(OrganizerDraft, image.draft_id)
+    public = draft and draft.status == 'published' and draft.tournament_id == image.tournament_id and image.tournament_id is not None
+    if not public and not (draft and current_user.is_authenticated and not current_user.suspended and (current_user.id == draft.owner_id or current_user.is_admin)):
+        abort(404)
+    response = Response(image.image, mimetype='image/webp')
+    response.headers['Cache-Control'] = 'public, max-age=31536000, immutable' if public else 'private, no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    if public:
+        response.set_etag(image.id)
+        response.make_conditional(request)
+    return response

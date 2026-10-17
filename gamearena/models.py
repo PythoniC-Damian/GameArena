@@ -128,6 +128,7 @@ class Tournament(db.Model):
     first_place = db.Column(db.String(150))
     second_place = db.Column(db.String(150))
     third_place = db.Column(db.String(150))
+    artwork = db.relationship('TournamentArtwork', foreign_keys='TournamentArtwork.tournament_id', lazy='selectin', order_by='TournamentArtwork.position')
     participants = db.relationship('UserTournament', back_populates='tournament')
     leaderboard = db.relationship('TournamentStat', back_populates='tournament', cascade='all, delete-orphan', order_by='TournamentStat.rank')
 
@@ -526,6 +527,7 @@ class OrganizerDraft(db.Model):
     accepted_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     tournament = db.relationship('Tournament')
+    artwork = db.relationship('TournamentArtwork', foreign_keys='TournamentArtwork.draft_id', lazy='selectin', order_by='TournamentArtwork.position', cascade='all, delete-orphan')
     owner = db.relationship('User')
 
 
@@ -554,3 +556,17 @@ class OrganizerFinance(db.Model):
     settled_at = db.Column(db.DateTime)
     settled_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     settlement_note = db.Column(db.String(500))
+
+
+class TournamentArtwork(db.Model):
+    """Validated, bounded WebP images; binary data loads only on media requests."""
+    id = db.Column(db.String(32), primary_key=True)
+    draft_id = db.Column(db.Integer, db.ForeignKey('organizer_draft.id'), nullable=False)
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=True, index=True)
+    position = db.Column(db.Integer, nullable=False)
+    image = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    __table_args__ = (
+        db.UniqueConstraint('draft_id', 'position', name='uq_tournament_artwork_draft_position'),
+        db.UniqueConstraint('tournament_id', 'position', name='uq_tournament_artwork_event_position'),
+        db.CheckConstraint('position BETWEEN 1 AND 3', name='ck_tournament_artwork_position'),
+    )

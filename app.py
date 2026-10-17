@@ -699,6 +699,7 @@ def utility_processor():
     return dict(
         tournament_image=tournament_image,
         game_image_carousel=game_image_carousel,
+        tournament_artwork=lambda event: [url_for('organizers.artwork', image_id=image.id) for image in event.artwork] or game_image_carousel(event.game),
         carousel_images=carousel_images() if request.endpoint == 'home' else [],
         featured_tournaments=featured_tournaments,
         active_participant_count=active_participant_count,

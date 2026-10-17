@@ -26,7 +26,7 @@
       dots.forEach((dot, i) => {
         const target = firstDot + i;
         dot.dataset.slide = target;
-        dot.setAttribute('aria-label', `Show hero image ${target + 1}`);
+        dot.setAttribute('aria-label', `Show image ${target + 1}`);
         dot.setAttribute('aria-current', String(target === index));
       });
       const title = root.querySelector('[data-carousel-title]');

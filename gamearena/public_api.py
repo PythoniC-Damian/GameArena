@@ -43,7 +43,8 @@ def serialize_tournament(tournament, include_description=True):
         'status': tournament.status,
         'match_time': tournament.match_time.isoformat() if tournament.match_time else None,
         'created_at': tournament.created_at.isoformat() if tournament.created_at else None,
-        'image_url': tournament_image_url(tournament.game),
+        'image_url': url_for('organizers.artwork', image_id=tournament.artwork[0].id) if tournament.artwork else tournament_image_url(tournament.game),
+        'image_urls': [url_for('organizers.artwork', image_id=image.id) for image in tournament.artwork],
     }
     if include_description:
         payload['description'] = tournament.description

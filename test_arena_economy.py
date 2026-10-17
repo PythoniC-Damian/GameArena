@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import pytest
+from test_tournament_artwork import artwork_uploads
 from app import app, db, User, WalletTransaction
 from gamearena.models import CosmeticOwnership, OrganizerDraft, UserSettings, Tournament, OrganizerProfile
 from gamearena.economy import spend_cash, refund_cash
@@ -63,7 +64,7 @@ def test_organizer_draft_requires_owner_and_admin_review():
         db.session.add(OrganizerProfile(user_id=owner.id,contact='verified@example.test',status='approved'));db.session.commit()
         browser=client(owner)
         data=dict(name='Arena test cup',game='Free Fire',rules='First to the published score wins. No cheating.',entry_gp='100',prize_gp='1000',capacity='16',starts_at=(datetime.utcnow()+timedelta(days=3)).strftime('%Y-%m-%dT%H:%M'))
-        assert post(browser,'/organizers',data,page='/organizers').status_code==302
+        assert post(browser,'/organizers',dict(data,images=artwork_uploads()),page='/organizers').status_code==302
         row=OrganizerDraft.query.one();assert row.status=='draft' and Tournament.query.count()==0
         stranger=client(other)
         assert stranger.get(f'/organizers/{row.id}/edit').status_code==404

@@ -24,3 +24,10 @@
 .ga-wallet-dots{gap:0}.ga-wallet-dots button,.ga-wallet-dots button[aria-current=true]{display:grid;place-items:center;width:44px;min-width:44px;height:44px;min-height:44px;background:transparent;border-radius:8px}.ga-wallet-dots button::before{content:'';width:8px;height:8px;background:#64748b;border-radius:50%}.ga-wallet-dots button[aria-current=true]::before{width:24px;background:#16cba4;border-radius:6px}
 
 @media(max-width:767px),(hover:none) and (pointer:coarse){.ga-wallet-navigation [data-wallet-step]{display:none}}
+
+.ga-artwork-fields{min-width:0;border:1px solid var(--ga-border,#334155);border-radius:16px;padding:16px;margin:4px 0 16px}
+.ga-artwork-inputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.ga-artwork-inputs label{min-width:0}.ga-artwork-inputs input{width:100%;min-width:0;font-size:12px}
+.ga-artwork-inputs img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:12px;margin-top:8px}
+.ga-artwork-inputs img[hidden]{display:none}.ga-organizer-artwork{max-width:560px;margin:12px 0;border-radius:16px;overflow:hidden}
+@media(max-width:600px){.ga-artwork-inputs{grid-template-columns:1fr}}

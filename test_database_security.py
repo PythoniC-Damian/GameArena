@@ -52,12 +52,16 @@ def test_backend_security_denies_clients_preserves_owner_and_defaults():
             transaction.rollback()
 
 
-def test_organizer_migration_only_resecures_new_tables():
+@pytest.mark.parametrize('module,tables', [
+    ('20261016_organizer_finance', ('organizer_profile','organizer_finance')),
+    ('20261017_tournament_artwork', ('tournament_artwork',)),
+])
+def test_organizer_migration_only_resecures_new_tables(module, tables):
     import importlib
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
     from sqlalchemy import event
-    revision=importlib.import_module('migrations.versions.20261016_organizer_finance')
+    revision=importlib.import_module('migrations.versions.' + module)
     with app.app_context(), db.engine.connect() as connection:
         transaction=connection.begin();statements=[]
         def collect(conn,cursor,statement,parameters,context,executemany): statements.append(statement)
@@ -66,9 +70,9 @@ def test_organizer_migration_only_resecures_new_tables():
             with Operations.context(MigrationContext.configure(connection)):
                 revision.upgrade()
             rls=[sql for sql in statements if sql.startswith('ALTER TABLE public.') and 'ENABLE ROW LEVEL SECURITY' in sql]
-            assert len(rls)==2
-            assert all('organizer_profile' in sql or 'organizer_finance' in sql for sql in rls)
-            for table in ('organizer_profile','organizer_finance'):
+            assert len(rls)==len(tables)
+            assert all(any(table in sql for table in tables) for sql in rls)
+            for table in tables:
                 assert connection.execute(text('SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass(:name)'),{'name':'public.'+table}).scalar()
         finally:
             event.remove(connection,'before_cursor_execute',collect)

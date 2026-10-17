@@ -29,7 +29,7 @@ import './styles.css';
       dots.forEach((dot, i) => {
         const target = firstDot + i;
         dot.dataset.slide = String(target);
-        dot.setAttribute('aria-label', `Show hero image ${target + 1}`);
+        dot.setAttribute('aria-label', `Show image ${target + 1}`);
         dot.setAttribute('aria-current', String(target === index));
       });
       const title = root.querySelector<HTMLElement>('[data-carousel-title]');

@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import pytest
+from test_tournament_artwork import artwork_uploads
 from app import app, db, User, WalletTransaction
 from gamearena.models import OrganizerDraft, OrganizerFinance, OrganizerProfile, Tournament, UserTournament
 from gamearena.organizer_finance import fund, close_event, AGREEMENT_VERSION
@@ -98,7 +99,7 @@ def test_publication_requires_eligibility_agreement_and_cash_reserve():
         def post(c,path,data):
             return c.post(path,data=dict(data,csrf_token=token(c.get('/organizers'))))
         data=dict(name='Approval cup',game='COD Mobile',rules='Scores, refund policy and dispute process are published.',entry_gp='100',prize_gp='1000',capacity='16',starts_at=(datetime.utcnow()+timedelta(days=3)).strftime('%Y-%m-%dT%H:%M'))
-        assert post(browser,'/organizers',data).status_code==302
+        assert post(browser,'/organizers',dict(data,images=artwork_uploads())).status_code==302
         row=OrganizerDraft.query.one()
         assert post(browser,f'/organizers/{row.id}/submit',{'agree':'yes'}).status_code==403
         assert post(browser,'/organizers/profile',{'contact':'verified@example.test'}).status_code==302
