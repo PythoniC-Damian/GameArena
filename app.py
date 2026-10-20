@@ -1156,6 +1156,13 @@ def award_achievements_for_user(user_id):
     db.session.commit()
 
 
+def choose_room_host(pair):
+    """Persist the random host as player one when a managed match is created."""
+    if len(pair) != 2 or pair[0] == pair[1]:
+        raise ValueError('A room host must be selected from two distinct opponents.')
+    return pair[::-1] if secrets.randbelow(2) else pair[:]
+
+
 def create_tournament_matches(tournament):
     if not tournament:
         return []
@@ -1196,6 +1203,8 @@ def create_tournament_matches(tournament):
     matches = []
     for index in range(0, len(participants), 2):
         pair = participants[index:index + 2]
+        if config:
+            pair = choose_room_host(pair)
         match = TournamentMatch(
             tournament_id=tournament.id,
             player_one_user_id=pair[0],
@@ -1262,16 +1271,20 @@ def advance_tournament_bracket(match):
     if existing_next_round:
         return False
 
+    config=db.session.get(TournamentCompetition,tournament.id)
     for index in range(0, len(winners), 2):
+        pair=winners[index:index + 2]
+        if config:
+            pair=choose_room_host(pair)
         next_match=TournamentMatch(
             tournament_id=tournament.id,
-            player_one_user_id=winners[index],
-            player_two_user_id=winners[index + 1],
+            player_one_user_id=pair[0],
+            player_two_user_id=pair[1],
             status='scheduled',round_number=next_round,match_order=index // 2 + 1)
         db.session.add(next_match)
-        if db.session.get(TournamentCompetition,tournament.id):
-            one=db.session.get(TournamentCheckIn,(tournament.id,winners[index]))
-            two=db.session.get(TournamentCheckIn,(tournament.id,winners[index+1]))
+        if config:
+            one=db.session.get(TournamentCheckIn,(tournament.id,pair[0]))
+            two=db.session.get(TournamentCheckIn,(tournament.id,pair[1]))
             next_match.player_one_profile_id=one.game_id;next_match.player_two_profile_id=two.game_id
             db.session.flush();db.session.add(MatchLobby(match_id=next_match.id))
     db.session.commit()
