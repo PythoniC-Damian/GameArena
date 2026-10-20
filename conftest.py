@@ -23,6 +23,12 @@ if NORMAL_DATABASE_URL and TEST_DATABASE_URL == NORMAL_DATABASE_URL:
 os.environ['GAMEARENA_TESTING'] = '1'
 os.environ['DATABASE_URL'] = TEST_DATABASE_URL
 os.environ['GAMEARENA_SCHEMA_BOOTSTRAP'] = '1'
+for setting in ('SECURITY_ENFORCE_ADMIN_MFA','SECURITY_REQUIRE_STEP_UP','ORIGIN_PROTECTION_ENABLED'):
+    os.environ[setting] = 'false'
+for setting in ('ORIGIN_SHARED_SECRET','SECURITY_ENCRYPTION_KEY'):
+    os.environ[setting] = ''
+os.environ['SECURITY_ALERT_EMAIL'] = ''
+os.environ['WITHDRAWALS_ENABLED'] = 'true'
 for private_setting in ('ADMIN_EMAIL','ADMIN_PASSWORD','PAYSTACK_SECRET_KEY','PAYSTACK_PUBLIC_KEY','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','VAPID_PUBLIC_KEY','VAPID_PRIVATE_KEY','VAPID_SUBJECT','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET'):
     os.environ[private_setting] = ''
 for email_setting in (
@@ -44,6 +50,12 @@ from flask import g
 def fresh_test_session_user():
     g.pop('_login_user', None)
     g.pop('csrf_token', None)
+
+
+# Permission/MFA guards must see this request's client, even in legacy tests
+# that retain an outer application context while switching browser sessions.
+_request_hooks = test_app.before_request_funcs[None]
+_request_hooks.insert(0, _request_hooks.pop())
 
 
 @pytest.fixture(autouse=True)

@@ -1,0 +1,44 @@
+{
+  "state": "format_published_registration_open",
+  "tournament_id": 6,
+  "public_url": "https://gamearena01.com/tournament/6",
+  "live_game_label": "eFootball Mobile",
+  "winner_only_prize_split_saved": true,
+  "name": "eFootball Mobile",
+  "pilot_label": "GameArena eFootball Pilot Cup",
+  "match_duration_minutes": 10,
+  "duration_confirmed_by_owner": true,
+  "participants_last_verified": 0,
+  "game": "eFootball",
+  "capacity": 4,
+  "format": "single_elimination_1v1",
+  "starts_at": "2026-10-20T17:00:00Z",
+  "display_time_zone": "Africa/Lagos",
+  "display_start": "Tuesday, 20 October 2026, 18:00 WAT",
+  "entry_fee_gp": 200,
+  "gp_naira_rate": 1,
+  "prize_pool_gp": 1000,
+  "placement_prizes_gp": {
+    "first": 1000,
+    "second": 0,
+    "third": 0
+  },
+  "payout_method": "organizer_direct_bank_transfer",
+  "payout_notice": "The organiser pays the confirmed winner NGN 1,000 directly by bank transfer. This prize is not credited again as withdrawable GP. Paystack Transfers are not assumed to be available.",
+  "entry_revenue_at_capacity_ngn": 800,
+  "organizer_contribution_before_charges_ngn": 200,
+  "known_player_usernames": [
+    "Smallion001",
+    "Raph_exe1",
+    "MILLER"
+  ],
+  "fourth_player": "Organiser (account to be identified during setup)",
+  "registration": "Each player, including the organiser, must join and pay through the normal platform flow. Do not create paid entries or debit accounts from this file.",
+  "publication_requirements": [
+    "Configure the actual event and its 1v1 competition rules before accepting entries.",
+    "Publish registration and check-in deadlines, match settings, no-show and replay rules, and cancellation/refund terms.",
+    "Complete the launch checklist and disclose the direct bank prize payout.",
+    "Keep the organiser out of adjudicating their own match or dispute.",
+    "Record a real bank payment reference only after the winner has actually been paid; never fabricate payout proof."
+  ]
+}

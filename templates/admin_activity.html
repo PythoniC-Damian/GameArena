@@ -4,4 +4,4 @@
 <p data-activity-status role="status" class="ga-muted">Connecting to live updates...</p>
 <div data-activity-dashboard data-live-url="{{ url_for('activity.live_report') }}">{% include '_activity_report.html' %}</div>
 {% endblock %}
-{% block scripts %}<script defer src="{{ asset_url('js/activity.js') }}"></script>{% endblock %}
+{% block scripts %}<script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/activity.js') }}"></script>{% endblock %}

@@ -54,6 +54,24 @@ def event(name='Test Arena', fee=0, status='open', capacity=4):
     return result
 
 
+def ready_event(row, reviewer):
+    """Explicit launch fixture for tests exercising entry/payment after review."""
+    from gamearena.models import TournamentLaunchPlan
+    from gamearena.tournament_launch import signature
+    row.match_time = datetime.utcnow() + timedelta(days=2)
+    row.first_place, row.second_place, row.third_place = str(row.prize), '0', '0'
+    plan = TournamentLaunchPlan(tournament_id=row.id, reviewed_by=reviewer.id,
+        registration_closes_at=datetime.utcnow()+timedelta(days=1),
+        eligibility='Mobile players in the published region.',
+        rules='Published mode and scoring. Independent staff review disputed results.',
+        cancellation_policy='Cancel and refund entry GP if minimum participation is not reached.',
+        funding_note='Test fixture: organiser covers the announced prize.')
+    row.launch_plan = plan
+    plan.snapshot = signature(row,plan)
+    db.session.add(plan);db.session.commit()
+    return row
+
+
 def test_guest_header_is_consistent_and_private_controls_are_absent():
     with app.app_context():
         tournament = event()
@@ -90,7 +108,7 @@ def test_notifications_read_unread_are_owner_scoped_and_do_not_auto_read():
 def test_free_join_requires_post_and_rechecks_capacity():
     with app.app_context():
         first, second = player('first'), player('second')
-        tournament = event(capacity=1)
+        tournament = ready_event(event(capacity=1), first)
         a, b = client(first), client(second)
         confirm = a.get(f'/join-tournament/{tournament.id}')
         assert confirm.status_code == 200
@@ -105,7 +123,7 @@ def test_free_join_requires_post_and_rechecks_capacity():
 
 def test_pending_entries_can_resume_and_closed_entries_cannot_join():
     with app.app_context():
-        user = player('entrant'); tournament = event(fee=1000)
+        user = player('entrant'); tournament = ready_event(event(fee=1000), user)
         db.session.add(UserTournament(user_id=user.id, tournament_id=tournament.id, payment_status='pending', amount_paid=1000)); db.session.commit()
         viewer = client(user)
         assert viewer.get(f'/join-tournament/{tournament.id}').location.endswith(f'/pay/{tournament.id}')

@@ -28,6 +28,8 @@ Manage tournaments and system settings
 {% include '_flash.html' %}
 
 <section class="ga-card ga-section"><a class="ga-button" href="{{ url_for('competition.reviews') }}">{{ t('Competition review queue') }}</a></section>
+<section class="ga-card ga-section"><a class="ga-button" href="{{ url_for('launch.funnel') }}">{{ t('Tournament funnel') }}</a></section>
+<section class="ga-card ga-section"><a class="ga-button" href="{{ url_for('security.events') }}">{{ t('Security events') }}</a> <a class="ga-button ga-button-secondary" href="{{ url_for('security.overview') }}">{{ t('Account security') }}</a></section>
 <!-- ADMIN ACTIONS -->
 <section class="px-10 pb-6">
 <div class="bg-slate-900 rounded-lg p-6 shadow-lg">

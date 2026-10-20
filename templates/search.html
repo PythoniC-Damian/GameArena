@@ -21,6 +21,6 @@
 </main>
 {% include '_mobile_nav.html' %}
 {% include '_pwa_register.html' %}
-<script defer src="{{ asset_url('js/search.js') }}"></script>
+<script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/search.js') }}"></script>
 </body>
 </html>

@@ -327,7 +327,9 @@ def test_bracket_advances_only_after_complete_confirmed_round_and_is_idempotent(
 def test_settings_and_report_pages_require_login_and_admin():
     anonymous = app.test_client()
     assert anonymous.get('/settings').status_code == 302
-    assert anonymous.get('/support').status_code == 302
+    support = anonymous.get('/support')
+    assert support.status_code == 200 and 'mailto:' in support.text
+    assert 'name="reason"' not in support.text
     with app.app_context():
         regular_user = make_user('report_access_player')
         regular_client = client_for(regular_user)

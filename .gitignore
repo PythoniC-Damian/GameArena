@@ -21,3 +21,8 @@ static/build/
 playwright-report/
 test-results/
 .pnpm-store/
+backups/
+.private-backup/
+*.gabk
+*.dump
+*.clixml

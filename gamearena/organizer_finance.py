@@ -42,6 +42,14 @@ def close_event(tournament_id, actor_id, awards=None, note=''):
             raise ValueError('Resolve match disputes before settlement.')
         if any(uid not in eligible or type(amount) is not int or amount <= 0 for uid, amount in awards.items()) or sum(awards.values()) != finance.prize_reserved:
             raise ValueError('Prizes must total the funded pool and belong to registered players.')
+        if event.launch_plan and event.competition:
+            from gamearena.tournament_launch import prize_amount
+            placements = TournamentStat.query.filter_by(tournament_id=event.id).all()
+            amounts = {1:prize_amount(event.first_place), 2:prize_amount(event.second_place)}
+            expected = {stat.user_id:amounts[stat.rank] for stat in placements
+                if stat.rank in amounts and amounts[stat.rank]}
+            if awards != expected:
+                raise ValueError('Prizes must match the confirmed 1v1 placements and published GP allocation.')
     owners = {u.id:u for u in User.query.filter(User.id.in_(sorted(eligible | {finance.owner_id}))).order_by(User.id).with_for_update().populate_existing().all()}
     revenue = sum(e.amount_paid or 0 for e in paid)
     if awards is None:

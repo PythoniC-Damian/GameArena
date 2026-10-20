@@ -62,6 +62,30 @@ class User(db.Model, UserMixin):
         return check_password_hash(self.password, password)
 
 
+class AccountSecurity(db.Model):
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    totp_secret = db.Column(db.Text)
+    pending_secret = db.Column(db.Text)
+    pending_at = db.Column(db.DateTime)
+    enabled_at = db.Column(db.DateTime)
+    recovery_hashes = db.Column(db.JSON, nullable=False, default=list)
+    last_counter = db.Column(db.BigInteger, nullable=False, default=-1)
+    version = db.Column(db.Integer, nullable=False, default=0)
+
+
+class SecurityAuditEvent(db.Model):
+    id = db.Column(db.BigInteger, primary_key=True)
+    occurred_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    # Retain audit identity after account deletion, without cross-transaction FK locks.
+    actor_id = db.Column(db.Integer, nullable=True)
+    event = db.Column(db.String(64), nullable=False)
+    endpoint = db.Column(db.String(120), nullable=False)
+    method = db.Column(db.String(8), nullable=False)
+    status = db.Column(db.Integer, nullable=False)
+    request_id = db.Column(db.String(64), nullable=False)
+    __table_args__ = (db.Index('ix_security_audit_occurred', 'occurred_at', 'id'),)
+
+
 class UserSettings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
@@ -129,6 +153,7 @@ class Tournament(db.Model):
     second_place = db.Column(db.String(150))
     third_place = db.Column(db.String(150))
     competition = db.relationship('TournamentCompetition', uselist=False, lazy='selectin')
+    launch_plan = db.relationship('TournamentLaunchPlan', uselist=False, lazy='selectin')
     artwork = db.relationship('TournamentArtwork', foreign_keys='TournamentArtwork.tournament_id', lazy='selectin', order_by='TournamentArtwork.position')
     participants = db.relationship('UserTournament', back_populates='tournament')
     leaderboard = db.relationship('TournamentStat', back_populates='tournament', cascade='all, delete-orphan', order_by='TournamentStat.rank')
@@ -140,6 +165,26 @@ class Tournament(db.Model):
     @property
     def prize_pool(self):
         return self.prize
+
+
+class TournamentLaunchPlan(db.Model):
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), primary_key=True)
+    registration_closes_at = db.Column(db.DateTime, nullable=False)
+    eligibility = db.Column(db.String(1000), nullable=False)
+    rules = db.Column(db.Text, nullable=False)
+    cancellation_policy = db.Column(db.String(2000), nullable=False)
+    funding_note = db.Column(db.String(1000), nullable=False)
+    reviewed_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reviewed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    snapshot = db.Column(db.String(64), nullable=False)
+
+
+class TournamentVisit(db.Model):
+    """First signed-in view and join intent; no guest/device tracking."""
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    viewed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    join_requested = db.Column(db.Boolean, nullable=False, default=False)
 
 
 class TournamentStat(db.Model):

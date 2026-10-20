@@ -11,7 +11,7 @@
 {% for key, label, amount, detail in [('purchased','Purchased GP',current_user.purchased_balance,'Top up and enter tournaments.'),('winnings','Winnings GP',current_user.wallet_winnings_balance,'Your prizes and organiser earnings.'),('bonus','Bonus GP',current_user.wallet_bonus_balance,'For cosmetics only. Cannot be withdrawn.')] %}
 <article class="ga-wallet-card ga-wallet-{{ key }}" data-wallet-card="{{ key }}" role="group" aria-roledescription="slide" aria-label="{{ loop.index }} / 3 · {{ t(label) }}">
 <p class="ga-eyebrow">{{ t(label) }}</p><p class="ga-balance" {% if loop.first %}id="walletBalance"{% endif %} data-wallet-balance data-money-naira="{{ amount }}">{{ amount|gp }}</p><p class="ga-muted" data-wallet-equivalent hidden></p><p class="ga-muted">{{ t(detail) }}</p>
-<div class="ga-actions">{% if key == 'purchased' %}<button type="button" class="ga-button" onclick="openAddMoneyModal()">{{ t('Deposit') }}</button>{% endif %}{% if key != 'bonus' %}<button type="button" class="ga-button ga-button-secondary" onclick="openWithdrawModal('{{ key }}')">{{ t('Withdraw') }}</button>{% else %}<a class="ga-button" href="{{ url_for('market.shop') }}">{{ t('Arena Shop') }}</a>{% endif %}</div></article>
+<div class="ga-actions">{% if key == 'purchased' %}<button type="button" class="ga-button" data-wallet-action="deposit">{{ t('Deposit') }}</button>{% endif %}{% if key != 'bonus' %}<button type="button" class="ga-button ga-button-secondary" data-wallet-action="withdraw" data-wallet-source="{{ key }}">{{ t('Withdraw') }}</button>{% else %}<a class="ga-button" href="{{ url_for('market.shop') }}">{{ t('Arena Shop') }}</a>{% endif %}</div></article>
 {% endfor %}
 </div><div class="ga-wallet-navigation"><button type="button" data-wallet-step="-1" class="ga-icon-button" aria-label="{{ t('Previous wallet') }}">{{ icon('chevron-left') }}</button><div class="ga-wallet-dots">{% for label in ['Purchased GP','Winnings GP','Bonus GP'] %}<button type="button" data-wallet-index="{{ loop.index0 }}" aria-label="{{ t(label) }}" aria-current="{{ 'true' if loop.first else 'false' }}"></button>{% endfor %}</div><button type="button" data-wallet-step="1" class="ga-icon-button" aria-label="{{ t('Next wallet') }}">{{ icon('chevron-right') }}</button></div></div>
 <details class="ga-wallet-fees"><summary>{{ t('Rates & fees') }}</summary><p class="ga-muted">{{ t('1 GP = ₦1. Withdrawals cost 1%, capped at ₦200, deducted from the amount requested. Bank payments settle in NGN.') }}</p><p class="ga-muted" data-fx-detail></p><p class="ga-muted"><a data-fx-source href="https://github.com/fawazahmed0/exchange-api" target="_blank" rel="noopener noreferrer">Currency API</a> · {{ t('Display estimates do not change GP balances or bank settlement.') }}</p></details>
@@ -33,7 +33,7 @@
                 <h2 id="depositTitle" class="text-xl font-bold text-white">{{ t('Deposit') }}</h2>
                 <p class="mt-2 text-sm text-slate-400">{{ t('Top up GP using Paystack. ₦1,000 gives you 1,000 GP. Withdrawals cost 1%, capped at ₦200.') }}</p>
             </div>
-            <button aria-label="Close deposit" onclick="closeAddMoneyModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            <button aria-label="Close deposit" data-wallet-action="close-deposit" class="text-slate-400 hover:text-white text-2xl">&times;</button>
         </div>
         <form data-url="{{ url_for('wallet_initialize_deposit') }}" id="addMoneyForm" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
@@ -54,7 +54,7 @@
                 <h2 id="withdrawTitle" class="text-xl font-bold text-white">{{ t('Withdraw') }}</h2>
                 <p class="mt-2 text-sm text-slate-400">{{ t('Send money to your bank account. Your account name is verified securely before transfer.') }}</p>
             </div>
-            <button aria-label="Close withdrawal" onclick="closeWithdrawModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+            <button aria-label="Close withdrawal" data-wallet-action="close-withdraw" class="text-slate-400 hover:text-white text-2xl">&times;</button>
         </div>
         <form data-url="{{ url_for('wallet_withdraw') }}" data-resolve-url="{{ url_for('wallet_resolve_account') }}" id="withdrawForm" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
@@ -80,6 +80,6 @@
 </div>
 
 
-<script src="{{ asset_url('js/wallet-currency.js') }}" defer></script>
-<script src="{{ asset_url('js/wallet.js') }}" defer></script>
+<script nonce="{{ csp_nonce }}" src="{{ asset_url('js/wallet-currency.js') }}" defer></script>
+<script nonce="{{ csp_nonce }}" src="{{ asset_url('js/wallet.js') }}" defer></script>
 {% endblock %}

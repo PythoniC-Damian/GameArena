@@ -114,7 +114,7 @@
     <p>{{ t('© 2026 GameArena. Compete. Win. Earn.') }}</p>
 </footer>
 
-<script defer src="{{ asset_url('js/chat.js') }}"></script>
+<script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/chat.js') }}"></script>
 
 {% include '_pwa_register.html' %}
 <dialog id="messageActions" class="ga-message-actions"><h2>Message actions</h2><button type="button" data-action-reply>Reply</button><button type="button" data-delete-message>Delete for everyone</button><button type="button" data-delete-confirm hidden>Confirm deletion for everyone</button><p data-action-status role="status"></p><button type="button" data-action-cancel>{{ t('Cancel') }}</button></dialog>

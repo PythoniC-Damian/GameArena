@@ -443,9 +443,11 @@ class NotificationFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 429)
 
     def test_payment_rate_limits_apply_to_initialization_and_verification(self):
+        from test_interface_contracts import ready_event
         tournament = Tournament(name='Rate Cup', game='PUBG', entry_fee=1000, max_participants=10)
         db.session.add(tournament)
         db.session.commit()
+        ready_event(tournament,self.user)
         with self.client.session_transaction() as session:
             session['_user_id'] = str(self.user.id)
             session['_fresh'] = True
@@ -503,6 +505,7 @@ class NotificationFlowTests(unittest.TestCase):
         self.assertTrue(user.email_verified)
 
     def test_initialize_payment_reuses_pending_join_record(self):
+        from test_interface_contracts import ready_event
         tournament = Tournament(
             name='Free Fire Cup',
             game='Free Fire',
@@ -522,6 +525,7 @@ class NotificationFlowTests(unittest.TestCase):
         )
         db.session.add(pending_join)
         db.session.commit()
+        ready_event(tournament,self.user)
 
         with self.client.session_transaction() as session:
             session['_user_id'] = str(self.user.id)

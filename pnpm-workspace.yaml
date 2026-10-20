@@ -1,2 +1,5 @@
 allowBuilds:
   esbuild: true
+overrides:
+  # Security fix for GHSA-rj75-hqrm-r3gf in Tailwind's selector parser.
+  postcss-selector-parser: 7.1.6

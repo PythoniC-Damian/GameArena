@@ -88,7 +88,7 @@
                     </div>
 {{ form.submit(class="w-full rounded-3xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400") }}
                 </form>
-                <script>
+                <script nonce="{{ csp_nonce }}">
                     (function () {
                         var form = document.querySelector('form[method="POST"]');
                         if (form) {

@@ -195,6 +195,8 @@ def test_disputes_and_existing_prize_payout_block_settlement():
 def test_admin_cancel_redirects_to_financial_close_and_entries_use_gp():
     with app.app_context():
         host,entrant,other,draft,event=setup_event();host.is_admin=True;db.session.commit()
+        from test_interface_contracts import ready_event
+        ready_event(event,host)
         browser=client(host);headers={'X-CSRFToken':token(browser.get('/wallet'))}
         response=browser.post(f'/admin/tournaments/cancel/{event.id}',headers=headers)
         assert response.status_code==302 and response.location.endswith(f'/organizers/{draft.id}/settle')

@@ -1,0 +1,14 @@
+<section class="ga-card ga-section">
+<h2 class="ga-section-title">{{ t('Before you join') }}</h2>
+{% if tournament.status=='open' and not registration_ready(tournament) %}<p role="status">{{ t('This event is in preparation. Registration opens after its schedule, rules and prizes are confirmed.') }}</p>{% endif %}
+<p>{{ t('Fixed GP value') }}: 1 GP = {{ gp_naira_rate|naira }} · {{ t('Entry fee') }}: {{ tournament.entry_fee|gp }} ({{ tournament.entry_fee|naira }}) · {{ t('Prize pool') }}: {{ tournament.prize|gp }} ({{ tournament.prize|naira }})</p>
+{% if tournament.launch_plan %}
+<dl class="ga-section"><dt class="mt-4 font-semibold">{{ t('Start time (UTC)') }}</dt><dd>{{ tournament.match_time.strftime('%d %b %Y %H:%M') if tournament.match_time else t('Not published') }}</dd><dt class="mt-4 font-semibold">{{ t('Registration closes (UTC)') }}</dt><dd>{{ tournament.launch_plan.registration_closes_at.strftime('%d %b %Y %H:%M') }}</dd><dt class="mt-4 font-semibold">{{ t('Devices, game version, region and eligibility') }}</dt><dd class="whitespace-pre-wrap break-words">{{ tournament.launch_plan.eligibility }}</dd></dl>
+<h3 class="mt-5 font-semibold">{{ t('Format, rounds, settings, match duration and result disputes') }}</h3><p class="whitespace-pre-wrap break-words">{{ tournament.launch_plan.rules }}</p>
+<h3 class="mt-5 font-semibold">{{ t('Cancellation, refunds and minimum participation') }}</h3><p class="whitespace-pre-wrap break-words">{{ tournament.launch_plan.cancellation_policy }}</p>
+<h3 class="mt-5 font-semibold">{{ t('How the announced prize will be funded') }}</h3><p class="whitespace-pre-wrap break-words">{{ tournament.launch_plan.funding_note }}</p>
+<p class="ga-muted">{{ t('The funding statement is the organiser’s commitment, not a completed payout. Confirmed results and prize payments are separate steps.') }}</p>
+{% endif %}
+<a href="{{ url_for('support') }}">{{ t('Questions? Contact support') }}</a>
+{% if competition_manager %}<div class="ga-section"><a class="ga-button" href="{{ url_for('launch.review',tournament_id=tournament.id) }}">{{ t('Launch checklist') }}</a></div>{% endif %}
+</section>

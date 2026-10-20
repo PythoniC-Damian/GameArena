@@ -4,7 +4,7 @@ import pytest
 import app as application
 from app import app, db
 from sqlalchemy import event as sql_event
-from test_interface_contracts import player, client, token, event
+from test_interface_contracts import ready_event, player, client, token, event
 
 
 def test_withdrawal_throttle_runs_before_provider_and_persists(monkeypatch):
@@ -51,7 +51,7 @@ def test_oversized_body_is_rejected_before_financial_processing(monkeypatch):
 
 def test_reading_free_join_confirmation_does_not_lock_event():
     with app.app_context():
-        browser=client(player('read_only_join'));cup=event(fee=0);statements=[]
+        owner=player('read_only_join');browser=client(owner);cup=ready_event(event(fee=0),owner);statements=[]
         def collect(conn,cursor,statement,parameters,context,executemany):statements.append(statement)
         sql_event.listen(db.engine,'before_cursor_execute',collect)
         try:

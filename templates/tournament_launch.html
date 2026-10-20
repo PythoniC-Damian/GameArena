@@ -1,0 +1,22 @@
+{% extends '_base.html' %}
+{% block title %}Launch checklist | GameArena{% endblock %}
+{% block content %}
+<header class="ga-page-heading"><div><p class="ga-eyebrow">{{ t('Launch checklist') }}</p><h1 class="ga-title">{{ tournament.name }}</h1><p class="ga-description">{{ t('Confirm the event before accepting entries. Start with a 4- or 8-player pilot.') }}</p></div></header>
+<section class="ga-card ga-section"><h2 class="ga-section-title">{{ t('Schedule, capacity and prizes') }}</h2><p>{{ tournament.max_participants }} {{ t('Players') }} · {{ tournament.entry_fee|gp }} {{ t('Entry fee') }} · {{ tournament.prize|gp }} {{ t('Prize pool') }}</p><p>{{ t('Start time (UTC)') }}: {{ tournament.match_time.strftime('%d %b %Y %H:%M') if tournament.match_time else t('Not published') }}</p>
+<p>{{ t('Maximum entry revenue') }}: {{ entry_ceiling|gp }} · {{ t('Prize funding gap before expenses') }}: {{ funding_gap|gp }}</p>
+<p class="ga-muted">{{ t('Entry revenue is a full-capacity estimate, not profit or money already received. Cover prizes even if fewer players join.') }}</p>
+{% if funded %}<p>{{ t('Prize pool reserved in the organiser ledger.') }}</p>{% else %}<p>{{ t('No organiser prize reserve is recorded. A funding commitment is not proof of a completed payout.') }}</p>{% endif %}
+{% if current_user.is_admin %}<a class="ga-button ga-button-secondary" href="{{ url_for('edit_tournament',tournament_id=tournament.id) }}">{{ t('Edit schedule and prizes') }}</a>{% endif %}<a class="ga-button ga-button-secondary" href="{{ url_for('tournament_details',tournament_id=tournament.id) }}">{{ t('Review event and competition format') }}</a>
+{% for issue in preparation_issues(tournament) %}<p class="ga-muted">{{ issue }}</p>{% endfor %}</section>
+{% for error in errors %}<p role="alert">{{ error }}</p>{% endfor %}
+<form method="POST" class="ga-card ga-studio-form ga-section"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>{{ t('Registration closes (UTC)') }}<input type="datetime-local" name="registration_closes_at" required value="{{ request.form.get('registration_closes_at', plan.registration_closes_at.strftime('%Y-%m-%dT%H:%M') if plan else '') }}"></label>
+<label>{{ t('Devices, game version, region and eligibility') }}<textarea name="eligibility" rows="3" minlength="10" maxlength="1000" required>{{ request.form.get('eligibility',plan.eligibility if plan else '') }}</textarea></label>
+<label>{{ t('Format, rounds, settings, match duration and result disputes') }}<textarea name="rules" rows="6" minlength="40" maxlength="10000" required>{{ request.form.get('rules',plan.rules if plan else '') }}</textarea></label>
+<p class="ga-muted">{{ t('For 1v1, publish the bracket format on the event page first. Those match rules also remain visible to players.') }}</p>
+<label>{{ t('Cancellation, refunds and minimum participation') }}<textarea name="cancellation_policy" rows="4" minlength="20" maxlength="2000" required>{{ request.form.get('cancellation_policy',plan.cancellation_policy if plan else '') }}</textarea></label>
+<label>{{ t('How the announced prize will be funded') }}<textarea name="funding_note" rows="3" minlength="10" maxlength="1000" required>{{ request.form.get('funding_note',plan.funding_note if plan else '') }}</textarea></label>
+<p class="ga-muted">{{ t('These terms are public. Do not include bank details, private room codes or payment secrets.') }}</p>
+<label class="ga-agreement-label"><input type="checkbox" name="launch_ack" value="yes" required><span>{{ t('I confirm the schedule, rules and prizes are accurate and commit to the published prize and refund terms.') }}</span></label>
+<button class="ga-button">{{ t('Confirm launch terms') }}</button><p class="ga-muted">{{ t('Terms cannot be replaced after entries or pending payments exist. Editing event amounts, schedule or competition rules requires another launch review.') }}</p></form>
+{% endblock %}

@@ -3,7 +3,7 @@ from unittest.mock import Mock
 import pytest
 import app as application
 from app import app, db, UserTournament
-from test_interface_contracts import player, client, token, event
+from test_interface_contracts import player, client, token, event, ready_event
 
 @pytest.mark.parametrize('payload,status,expected',[
  ({'status':True,'data':{'authorization_url':'https://checkout.paystack.com/test-checkout'}},200,200),
@@ -15,7 +15,7 @@ def test_checkout_only_creates_pending_entry_for_valid_provider_link(monkeypatch
     response=SimpleNamespace(status_code=status,json=lambda:payload)
     monkeypatch.setattr(application.requests,'post',Mock(return_value=response))
     with app.app_context():
-        owner=player('checkout_owner');tournament=event(fee=3500);viewer=client(owner)
+        owner=player('checkout_owner');tournament=ready_event(event(fee=3500),owner);viewer=client(owner)
         csrf=token(viewer.get('/profile'))
         result=viewer.post(f'/initialize-payment/{tournament.id}',data={'csrf_token':csrf},headers={'Accept':'application/json'})
         assert result.status_code==expected
@@ -31,7 +31,7 @@ def test_checkout_only_creates_pending_entry_for_valid_provider_link(monkeypatch
 def test_failed_retry_preserves_existing_payment_reference(monkeypatch):
     monkeypatch.setattr(application.requests,'post',Mock(return_value=SimpleNamespace(status_code=200,json=lambda:{'status':True,'data':{}})))
     with app.app_context():
-        owner=player('checkout_retry');tournament=event(fee=2500);viewer=client(owner)
+        owner=player('checkout_retry');tournament=ready_event(event(fee=2500),owner);viewer=client(owner)
         db.session.add(UserTournament(user_id=owner.id,tournament_id=tournament.id,payment_status='pending',amount_paid=2500,transaction_ref='previous-reference'));db.session.commit()
         csrf=token(viewer.get('/profile'))
         result=viewer.post(f'/initialize-payment/{tournament.id}',data={'csrf_token':csrf},headers={'Accept':'application/json'})

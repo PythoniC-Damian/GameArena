@@ -28,6 +28,8 @@ def tournament_image_url(game_name):
 
 
 def serialize_tournament(tournament, include_description=True):
+    from gamearena.tournament_launch import registration_ready, public_status
+    from gamearena.gp import NAIRA_PER_GP
     participant_count = sum(
         1 for membership in tournament.participants
         if membership.payment_status in {'paid', 'free'}
@@ -41,9 +43,14 @@ def serialize_tournament(tournament, include_description=True):
         'max_participants': tournament.max_participants,
         'participant_count': participant_count,
         'status': tournament.status,
+        'display_status': public_status(tournament),
+        'registration_ready': registration_ready(tournament),
+        'gp_naira_rate': NAIRA_PER_GP,
+        'registration_closes_at': tournament.launch_plan.registration_closes_at.isoformat()+'Z' if tournament.launch_plan else None,
         'format': 'single_elimination_1v1' if tournament.competition else 'custom',
         'competition_phase': tournament.competition.phase if tournament.competition else None,
         'match_time': tournament.match_time.isoformat() if tournament.match_time else None,
+        'time_zone': 'UTC',
         'created_at': tournament.created_at.isoformat() if tournament.created_at else None,
         'image_url': url_for('organizers.artwork', image_id=tournament.artwork[0].id) if tournament.artwork else tournament_image_url(tournament.game),
         'image_urls': [url_for('organizers.artwork', image_id=image.id) for image in tournament.artwork],

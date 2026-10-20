@@ -17,7 +17,7 @@ from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from sqlalchemy.pool import NullPool
-from sqlalchemy import or_, case, event as sqlalchemy_event
+from sqlalchemy import or_, and_, case, event as sqlalchemy_event
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -95,10 +95,10 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self' https://checkout.paystack.com",
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.socket.io https://js.paystack.co",
+    "script-src 'self' 'nonce-{nonce}' https://js.paystack.co",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://images.unsplash.com https://lh3.googleusercontent.com",
-    "connect-src 'self' https://api.paystack.co https://accounts.google.com https://oauth2.googleapis.com wss:",
+    "connect-src 'self' https://api.paystack.co https://accounts.google.com https://oauth2.googleapis.com {socket_origin}",
     "frame-src https://checkout.paystack.com",
     "font-src 'self' data:",
 ])
@@ -149,7 +149,8 @@ def add_response_security_headers(response):
     response.headers.setdefault('X-Content-Type-Options', 'nosniff')
     response.headers.setdefault('X-Frame-Options', 'DENY')
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
-    response.headers.setdefault('Content-Security-Policy', CONTENT_SECURITY_POLICY)
+    socket_origin = ('wss://' if is_production or request.is_secure else 'ws://') + request.host
+    response.headers.setdefault('Content-Security-Policy', CONTENT_SECURITY_POLICY.replace('{nonce}',getattr(g,'csp_nonce','')).replace('{socket_origin}',socket_origin))
     response.headers.setdefault(
         'Permissions-Policy',
         'camera=(), microphone=(), geolocation=(), payment=(self "https://checkout.paystack.com")',
@@ -316,6 +317,8 @@ socket_event_windows = defaultdict(deque)
 
 
 def socket_event_allowed(event_name):
+    from gamearena.account_security import socket_identity_allowed
+    if not socket_identity_allowed(): return False
     """Return whether the current Socket.IO connection may emit an event."""
     limit, window_seconds = SOCKET_EVENT_LIMITS.get(event_name, (20, 60))
     shared = shared_socket_allowed(current_user.get_id(), event_name, limit, window_seconds)
@@ -495,6 +498,9 @@ csrf = CSRFProtect(app)
 @app.errorhandler(managed_auth.AuthError)
 def managed_auth_failure(error):
     db.session.rollback()
+    if request.path == '/login':
+        from gamearena.account_security import note, metric
+        note('auth.login_failed'); metric('authentication_failures', 5)
     flash(str(error), 'error')
     pages = {'/login': ('login.html', LoginForm), '/register': ('register.html', RegistrationForm),
         '/verify-email': ('verify_email.html', EmailVerificationForm),
@@ -599,6 +605,8 @@ def application_navigation():
 
 app.add_template_filter(gp_label, 'gp')
 app.add_template_filter(kobo_label, 'kobo')
+from gamearena.tournament_launch import launch, registration_ready, track_visit, PREPARING
+app.register_blueprint(launch)
 
 
 @app.template_filter('naira')
@@ -789,6 +797,12 @@ def send_password_reset_code(user):
 
 
 def client_rate_limit_key():
+    if app.config.get('ORIGIN_PROTECTION_ENABLED'):
+        # OriginGate already authenticated the proxy; never trust this header
+        # on an unprotected, directly reachable Render address.
+        import ipaddress
+        try: return str(ipaddress.ip_address(request.headers.get('CF-Connecting-IP','')))
+        except ValueError: pass
     return request.remote_addr or 'unknown-client'
 
 
@@ -1156,6 +1170,13 @@ def award_achievements_for_user(user_id):
     db.session.commit()
 
 
+def choose_room_host(pair):
+    """Persist the random host as player one when a managed match is created."""
+    if len(pair) != 2 or pair[0] == pair[1]:
+        raise ValueError('A room host must be selected from two distinct opponents.')
+    return pair[::-1] if secrets.randbelow(2) else pair[:]
+
+
 def create_tournament_matches(tournament):
     if not tournament:
         return []
@@ -1196,6 +1217,8 @@ def create_tournament_matches(tournament):
     matches = []
     for index in range(0, len(participants), 2):
         pair = participants[index:index + 2]
+        if config:
+            pair = choose_room_host(pair)
         match = TournamentMatch(
             tournament_id=tournament.id,
             player_one_user_id=pair[0],
@@ -1246,6 +1269,8 @@ def advance_tournament_bracket(match):
         tournament.status = 'finished'
         config=db.session.get(TournamentCompetition,tournament.id)
         if config:config.phase='finished'
+        from gamearena.competition import sync_standings
+        sync_standings(tournament)
         db.session.commit()
         competition_changed(tournament.id)
         if champion:
@@ -1262,16 +1287,20 @@ def advance_tournament_bracket(match):
     if existing_next_round:
         return False
 
+    config=db.session.get(TournamentCompetition,tournament.id)
     for index in range(0, len(winners), 2):
+        pair=winners[index:index + 2]
+        if config:
+            pair=choose_room_host(pair)
         next_match=TournamentMatch(
             tournament_id=tournament.id,
-            player_one_user_id=winners[index],
-            player_two_user_id=winners[index + 1],
+            player_one_user_id=pair[0],
+            player_two_user_id=pair[1],
             status='scheduled',round_number=next_round,match_order=index // 2 + 1)
         db.session.add(next_match)
-        if db.session.get(TournamentCompetition,tournament.id):
-            one=db.session.get(TournamentCheckIn,(tournament.id,winners[index]))
-            two=db.session.get(TournamentCheckIn,(tournament.id,winners[index+1]))
+        if config:
+            one=db.session.get(TournamentCheckIn,(tournament.id,pair[0]))
+            two=db.session.get(TournamentCheckIn,(tournament.id,pair[1]))
             next_match.player_one_profile_id=one.game_id;next_match.player_two_profile_id=two.game_id
             db.session.flush();db.session.add(MatchLobby(match_id=next_match.id))
     db.session.commit()
@@ -1316,7 +1345,7 @@ def load_user(user_id):
             return None
         return user
     except Exception as exc:
-        app.logger.warning(f"Unable to load user {user_id}: {exc}")
+        app.logger.warning('Unable to load authenticated session error_type=%s',type(exc).__name__)
         return None
 
 
@@ -1988,9 +2017,14 @@ def report_chat_message(message_id):
 
 
 @app.route('/support', methods=['GET', 'POST'])
-@login_required
 def support():
     if request.method == 'POST':
+        if not current_user.is_authenticated:
+            abort(401)
+        if current_user.suspended:
+            abort(403)
+        if consume_rate_limit('support:'+str(current_user.id), 5, 300) is not None:
+            abort(429)
         reason = (request.form.get('reason') or '').strip()
         if not reason or len(reason) > 2000:
             flash('Describe the issue in 2,000 characters or fewer.', 'error')
@@ -2001,7 +2035,7 @@ def support():
             db.session.commit()
             flash('Your message was sent to the support team.', 'success')
             return redirect(url_for('support'))
-    return render_template('support.html')
+    return render_template('support.html', contact_email=os.environ.get('GAMEARENA_SUPPORT_EMAIL', 'jegzdami@gmail.com'))
 
 
 @app.route('/admin/reports')
@@ -2156,6 +2190,7 @@ def read_direct_messages(user_id):
 @app.route("/tournament/<int:tournament_id>")
 def tournament_details(tournament_id):
     tournament = Tournament.query.get_or_404(tournament_id)
+    track_visit(tournament_id)
     joined_participant = False
     can_matchmake = False
     can_view_match_rooms = is_admin_user()
@@ -2309,6 +2344,8 @@ def login():
             next_page = safe_next_url(request.args.get('next'))
             return redirect(next_page or url_for("dashboard"))
 
+        from gamearena.account_security import note, metric
+        note('auth.login_failed');metric('authentication_failures',5)
         flash("Invalid email or password", "error")
 
     return render_template("login.html", form=form)
@@ -2877,6 +2914,11 @@ def edit_tournament(tournament_id):
     tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404() if request.method == 'POST' else Tournament.query.get_or_404(tournament_id)
     form = TournamentSetupForm(obj=tournament)
     if request.method == 'POST' and form.validate_on_submit():
+        if tournament.launch_plan and UserTournament.query.filter(
+            UserTournament.tournament_id==tournament.id,
+            or_(UserTournament.payment_status.in_(('paid','free')),
+                and_(UserTournament.payment_status=='pending',UserTournament.transaction_ref.isnot(None)))).first():
+            abort(409, description='Accepted event terms are fixed. Contact entrants and use the cancellation/refund process instead of replacing their terms.')
         from gamearena.models import OrganizerFinance
         finance=db.session.get(OrganizerFinance,tournament.id)
         if finance and (finance.state != 'funded' or int(form.entry_fee.data) != tournament.entry_fee or int(form.prize_pool.data) != tournament.prize or int(form.max_participants.data) != tournament.max_participants or form.status.data == 'cancelled' or (tournament.status == 'finished' and form.status.data != 'finished')):
@@ -2925,6 +2967,9 @@ def admin_tournament_leaderboard(tournament_id):
         abort(403)
 
     tournament = Tournament.query.get_or_404(tournament_id)
+    if tournament.competition:
+        if request.method == 'POST': abort(409, description='Managed 1v1 standings come from confirmed match results.')
+        return redirect(url_for('leaderboard', tournament=tournament.id))
     form = LeaderboardEntryForm()
     choices = []
     seen = set()
@@ -2958,6 +3003,8 @@ def delete_leaderboard_entry(tournament_id, stat_id):
         abort(403)
 
     stat = TournamentStat.query.get_or_404(stat_id)
+    if stat.tournament_id != tournament_id: abort(404)
+    if stat.tournament.competition: abort(409, description='Managed standings come from confirmed matches.')
     db.session.delete(stat)
     db.session.commit()
     flash('Leaderboard entry removed.', 'success')
@@ -3014,6 +3061,11 @@ def create_tournament():
 def join_tournament(tournament_id):
     # Serialize the capacity check with other joins and payment confirmations.
     tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404() if request.method == 'POST' else Tournament.query.get_or_404(tournament_id)
+    if request.method == 'GET': track_visit(tournament_id, intent=True)
+    if not registration_ready(tournament):
+        db.session.rollback()
+        flash(PREPARING if tournament.status=='open' else 'Registration is closed.', 'warning')
+        return redirect(url_for('tournament_details', tournament_id=tournament_id))
     if tournament.status != 'open':
         flash('Registration is closed for this tournament.', 'warning')
         db.session.rollback()
@@ -3311,6 +3363,8 @@ def confirm_match_result(match_id):
         return redirect(match_return_url(match))
 
     match.status = 'confirmed'
+    from gamearena.competition import sync_standings
+    sync_standings(tournament)
     db.session.commit()
     competition_changed(match.tournament_id)
     for player_id in {match.player_one_user_id, match.player_two_user_id}:
@@ -3449,6 +3503,9 @@ def review_match_dispute(match_id):
             lobby.player_one_ready_at=None;lobby.player_two_ready_at=None;lobby.published_at=None
             match.room_code=None;match.room_password=None;match.status='scheduled'
         flash('Match reopened for a new result submission.', 'success')
+    if managed:
+        from gamearena.competition import sync_standings
+        sync_standings(match.tournament)
     db.session.commit()
     competition_changed(match.tournament_id)
     if managed:
@@ -3622,6 +3679,10 @@ def apply_wallet_deposit(wallet_transaction, transaction):
 @login_required
 def pay_for_tournament(tournament_id):
     tournament = Tournament.query.get_or_404(tournament_id)
+    track_visit(tournament_id, intent=True)
+    if not registration_ready(tournament):
+        flash(PREPARING, 'warning')
+        return redirect(url_for('tournament_details', tournament_id=tournament_id))
     if tournament.status != 'open':
         flash('Registration is closed for this tournament.', 'warning')
         return redirect(url_for('tournament_details', tournament_id=tournament_id))
@@ -3677,6 +3738,9 @@ def pay_tournament_gp(tournament_id):
     if joined and joined.payment_status in ('paid', 'free'):
         db.session.commit()
         return jsonify({'status':'success','redirect_url':url_for('tournament_details', tournament_id=tournament_id),'already_paid':True})
+    if not registration_ready(tournament):
+        db.session.rollback()
+        return jsonify({'status':'error','message':PREPARING}), 409
     if tournament.status != 'open' or UserTournament.query.filter(UserTournament.tournament_id == tournament.id, UserTournament.payment_status.in_(('paid','free'))).count() >= tournament.max_participants:
         db.session.rollback()
         return jsonify({'status':'error','message':'Registration is closed or this tournament is full.'}), 409
@@ -3725,6 +3789,20 @@ def initialize_payment(tournament_id):
         
     try:
         tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+        # Reconcile money already charged even if launch terms changed or entries closed.
+        pending = UserTournament.query.filter_by(user_id=current_user.id,
+            tournament_id=tournament_id, payment_status='pending').first()
+        if pending:
+            previous = verify_paystack_reference(pending.transaction_ref)
+            if previous and previous.get('status') == 'success':
+                verified, result = apply_tournament_payment(pending, previous)
+                if verified:
+                    return jsonify({'status':'success','already_paid':True,'redirect_url':url_for('dashboard')})
+                db.session.rollback()
+                return jsonify({'status':'error','message':result}),409
+        if not registration_ready(tournament):
+            db.session.rollback()
+            return jsonify({'status':'error','message':PREPARING}), 409
         from gamearena.models import OrganizerFinance
         if db.session.get(OrganizerFinance, tournament_id):
             db.session.rollback()
@@ -3747,15 +3825,6 @@ def initialize_payment(tournament_id):
             return jsonify({'status': 'error', 'message': 'Already joined this tournament'})
 
         if existing_join and existing_join.payment_status == 'pending':
-            # Reconcile a completed checkout before offering another payment.
-            previous_transaction = verify_paystack_reference(existing_join.transaction_ref)
-            if previous_transaction and previous_transaction.get('status') == 'success':
-                verified, result = apply_tournament_payment(existing_join, previous_transaction)
-                if verified:
-                    return jsonify({'status': 'success', 'already_paid': True,
-                                    'redirect_url': url_for('dashboard')})
-                db.session.rollback()
-                return jsonify({'status': 'error', 'message': result}), 409
             # Reuse the pending registration and create a fresh Paystack reference.
             import uuid
             transaction_ref = str(uuid.uuid4())
@@ -4417,6 +4486,8 @@ def request_wallet_withdrawal(req_data):
 @app.route("/wallet/withdraw", methods=['POST'])
 @login_required
 def wallet_withdraw():
+    if not app.config['WITHDRAWALS_ENABLED']:
+        return jsonify({'status':'error','message':'Withdrawals are temporarily paused. No funds were debited.'}),503
     req_data = request.get_json(silent=True)
     if not isinstance(req_data, dict) or not req_data:
         return jsonify({'status': 'error', 'message': 'Invalid request data'}), 400
@@ -4437,6 +4508,9 @@ def logout():
     logout_user()
     return redirect(url_for("home"))
 
+
+from gamearena.account_security import init_security
+init_security(app)
 
 # CREATE TEST DATA & ADMIN USER
 with app.app_context():
@@ -4487,7 +4561,8 @@ with app.app_context():
 def on_connect():
     # Do not retain unauthenticated or suspended connections. Every existing
     # mutation event already authorizes its own resource access as well.
-    if not current_user.is_authenticated or current_user.suspended:
+    from gamearena.account_security import socket_identity_allowed
+    if not socket_identity_allowed():
         return False
     join_room(f'user:{current_user.id}')
     if current_user.is_admin:

@@ -104,6 +104,12 @@
   window.openWithdrawModal = (source='purchased') => { document.getElementById('withdrawSource').value=source; open('withdrawModal'); };
   document.getElementById('withdrawSource').addEventListener('change',()=>{document.getElementById('confirmWithdrawalFee').checked=false;});
   window.closeAddMoneyModal = window.closeWithdrawModal = close;
+  document.querySelectorAll('[data-wallet-action]').forEach(button=>button.addEventListener('click',()=>{
+    const action=button.dataset.walletAction;
+    if(action==='deposit')window.openAddMoneyModal();
+    else if(action==='withdraw')window.openWithdrawModal(button.dataset.walletSource);
+    else close();
+  }));
   document.addEventListener('keydown', event => {
     if (!activeDialog) return;
     if (event.key === 'Escape') { event.preventDefault(); close(); }
@@ -146,6 +152,9 @@
         if (withdrawal && data.withdrawal_status === 'failed') sessionStorage.removeItem('gamearena-withdrawal-idempotency-key');
         if (!response.ok || data.status !== 'success') {
           status.textContent = data.message || 'Unable to complete this request.';
+          if(data.security_url?.startsWith('/security/')){
+            const link=document.createElement('a');link.href=data.security_url;link.textContent=window.gaT(' Confirm sign-in');status.append(link);
+          }
           if (withdrawal && data.receipt_url?.startsWith('/wallet/transactions/')) {
             const link = document.createElement('a'); link.href = data.receipt_url; link.textContent = ' View receipt'; status.append(link);
           }

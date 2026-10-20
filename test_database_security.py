@@ -56,6 +56,8 @@ def test_backend_security_denies_clients_preserves_owner_and_defaults():
     ('20261016_organizer_finance', ('organizer_profile','organizer_finance')),
     ('20261017_tournament_artwork', ('tournament_artwork',)),
     ('20261017_competition_flow', ('tournament_competition','tournament_check_in','match_lobby','match_evidence')),
+    ('20261018_tournament_launch', ('tournament_launch_plan','tournament_visit')),
+    ('20261019_account_security', ('account_security','security_audit_event')),
 ])
 def test_organizer_migration_only_resecures_new_tables(module, tables):
     import importlib

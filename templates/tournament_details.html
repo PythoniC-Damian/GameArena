@@ -35,7 +35,7 @@
                     <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t('Tournament') }}</p>
                     <h1 class="mt-3 text-4xl font-bold text-white">{{ tournament.name }}</h1>
                     <p class="mt-2 text-slate-400">{{ tournament.game }}</p>
-                    <span class="mt-4 inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] {% if tournament.status == 'open' %}bg-emerald-500 text-slate-950{% elif tournament.status in ('ongoing', 'live', 'pending_confirmation') %}bg-amber-500 text-slate-950{% elif tournament.status == 'finished' %}bg-sky-500 text-slate-950{% else %}bg-slate-700 text-white{% endif %}">{{ tournament.status|capitalize }}</span>
+                    <span class="mt-4 inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] {% if tournament.status == 'open' %}bg-emerald-500 text-slate-950{% elif tournament.status in ('ongoing', 'live', 'pending_confirmation') %}bg-amber-500 text-slate-950{% elif tournament.status == 'finished' %}bg-sky-500 text-slate-950{% else %}bg-slate-700 text-white{% endif %}">{{ t(event_public_status(tournament)) }}</span>
                 </div>
             </div>
             <div class="grid gap-4 sm:grid-cols-3">
@@ -69,18 +69,18 @@
                 </form>
                 {% endif %}
             {% elif current_user.is_authenticated %}
-                {% if tournament.status == 'open' %}
+                {% if registration_ready(tournament) %}
                     {% if active_participant_count(tournament) >= tournament.max_participants %}
                     <span class="rounded-full bg-red-500 px-6 py-4 text-sm font-semibold text-white">{{ t('Full') }}</span>
                     {% else %}
                     <a href="{{ url_for('pay_for_tournament' if pending_payment else 'join_tournament', tournament_id=tournament.id) }}" class="rounded-full bg-emerald-500 px-6 py-4 text-sm font-semibold text-slate-950 hover:bg-emerald-400">{{ 'Resume payment' if pending_payment else 'Join tournament' }}</a>
                     {% endif %}
                 {% else %}
-                <span class="rounded-full bg-slate-800 px-6 py-4 text-sm text-slate-300">{{ t('Tournament is not open for registration') }}</span>
+                <span class="rounded-full bg-slate-800 px-6 py-4 text-sm text-slate-300">{{ t(event_public_status(tournament)) }}</span>
                 {% endif %}
             {% else %}
-                {% if tournament.status != 'open' %}
-                <span class="ga-status">{{ t('Registration closed') }}</span>
+                {% if not registration_ready(tournament) %}
+                <span class="ga-status">{{ t(event_public_status(tournament) if tournament.status=='open' else 'Registration closed') }}</span>
                 {% elif active_participant_count(tournament) >= tournament.max_participants %}
                 <span class="ga-status">{{ t('Full') }}</span>
                 {% else %}
@@ -90,6 +90,7 @@
         </div>
     </section>
 
+    {% include '_launch_information.html' %}
     {% include '_competition_panel.html' %}
     <!-- Match schedule / brackets -->
     {% if current_user.is_authenticated and current_user.is_admin and not current_user.suspended and not competition_config and not matches and tournament.status in ('live', 'ongoing') %}
@@ -260,15 +261,15 @@
                 <div class="mt-5 space-y-3">
                     <div class="flex items-center justify-between rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-4">
                         <span class="font-semibold text-emerald-200">{{ t('1st Place') }}</span>
-                        <span class="font-semibold text-white">{{ tournament.first_place|gp if tournament.first_place and tournament.first_place.isdigit() else (tournament.first_place or 'Not published') }}</span>
+                        <span class="font-semibold text-white">{{ published_prize(tournament.first_place) }}</span>
                     </div>
                     <div class="flex items-center justify-between rounded-[28px] border border-slate-800 bg-slate-950/80 p-4">
                         <span class="text-slate-300">{{ t('2nd Place') }}</span>
-                        <span class="font-semibold text-white">{{ tournament.second_place|gp if tournament.second_place and tournament.second_place.isdigit() else (tournament.second_place or 'Not published') }}</span>
+                        <span class="font-semibold text-white">{{ published_prize(tournament.second_place) }}</span>
                     </div>
                     <div class="flex items-center justify-between rounded-[28px] border border-slate-800 bg-slate-950/80 p-4">
                         <span class="text-slate-300">{{ t('3rd Place') }}</span>
-                        <span class="font-semibold text-white">{{ tournament.third_place|gp if tournament.third_place and tournament.third_place.isdigit() else (tournament.third_place or 'Not published') }}</span>
+                        <span class="font-semibold text-white">{{ published_prize(tournament.third_place) }}</span>
                     </div>
                 </div>
             </section>
@@ -276,8 +277,8 @@
                 <h2 class="text-xl font-semibold text-white">{{ t('Tournament info') }}</h2>
                 <div class="mt-5 space-y-3 text-sm text-slate-300">
                     <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Entries') }}</span><span class="font-semibold text-white">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</span></div>
-                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Match time') }}</span><span class="font-semibold text-white">{{ tournament.match_time.strftime('%b %d, %Y · %H:%M') if tournament.match_time else 'To be announced' }} (organizer time)</span></div>
-                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Status') }}</span><span class="font-semibold text-emerald-300 capitalize">{{ tournament.status }}</span></div>
+                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Match time') }}</span><span class="font-semibold text-white">{{ tournament.match_time.strftime('%b %d, %Y · %H:%M') if tournament.match_time else 'To be announced' }} UTC</span></div>
+                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Status') }}</span><span class="font-semibold text-emerald-300 capitalize">{{ t(event_public_status(tournament)) }}</span></div>
                 </div>
             </section>
         </aside>
@@ -290,11 +291,11 @@
 
 {% include '_mobile_nav.html' %}
 
-<script>
+<script nonce="{{ csp_nonce }}">
 
 </script>
 
-<script defer src="{{ asset_url('js/competition.js') }}"></script>
+<script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/competition.js') }}"></script>
 {% include '_pwa_register.html' %}
 </body>
 </html>

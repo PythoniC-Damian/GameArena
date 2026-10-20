@@ -25,7 +25,7 @@ def log_completed_request(response):
         if not request.path.startswith('/static/'):
             logger = current_app.logger.warning if elapsed >= current_app.config.get('SLOW_REQUEST_MS', 1000) else current_app.logger.info
             logger('request_completed request_id=%s method=%s path=%s status=%s duration_ms=%.2f db_ms=%.2f db_queries=%s',
-                   g.request_id, request.method, request.path, response.status_code,
+                   g.request_id, request.method, request.url_rule.rule if request.url_rule else '[unmatched]', response.status_code,
                    elapsed, database, getattr(g, 'db_queries', 0))
     response.headers.setdefault('X-Request-ID', getattr(g, 'request_id', secrets.token_hex(8)))
     return response

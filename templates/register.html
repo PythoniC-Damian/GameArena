@@ -87,7 +87,7 @@
 <div class="ga-signup-agreement"><label class="ga-agreement-label">{{ form.accept_terms(required=true, **{'data-required-agreement': ''}) }}<span>{{ t('I agree to the') }} <a href="{{ url_for('legal.terms') }}" target="_blank" rel="noopener">{{ t('Terms of Use') }}</a> {{ t('and acknowledge the') }} <a href="{{ url_for('legal.privacy') }}" target="_blank" rel="noopener">{{ t('Privacy Policy') }}</a>.</span></label>{% if form.accept_terms.errors %}<p class="ga-agreement-error" role="alert">{{ form.accept_terms.errors[0] }}</p>{% endif %}</div>
 {{ form.submit(disabled=not form.accept_terms.data, class="w-full rounded-3xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400") }}
                 </form>
-                <script>
+                <script nonce="{{ csp_nonce }}">
                     (function () {
                         var form = document.querySelector('form[data-auth-form]');
                         if (form) {

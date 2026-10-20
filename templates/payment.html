@@ -17,4 +17,4 @@
 <a class="ga-button ga-button-secondary" href="{{ url_for('tournament_details', tournament_id=tournament.id) }}">{{ t('Back to tournament') }}</a>
 </section>
 {% endblock %}
-{% block scripts %}<script src="{{ asset_url('js/payment.js') }}" defer></script><script src="{{ asset_url('js/gp-entry.js') }}" defer></script>{% endblock %}
+{% block scripts %}<script nonce="{{ csp_nonce }}" src="{{ asset_url('js/payment.js') }}" defer></script><script nonce="{{ csp_nonce }}" src="{{ asset_url('js/gp-entry.js') }}" defer></script>{% endblock %}

@@ -7,7 +7,7 @@ import app as application
 from app import app,db,User,UserTournament,WalletTransaction
 from gamearena.gp import gp_to_naira,gp_label,withdrawal_fee_kobo
 from test_wallet_updates import setup,payload,provider
-from test_interface_contracts import player,client,token,event
+from test_interface_contracts import player,client,token,event,ready_event
 
 @pytest.mark.parametrize('naira,gp',[(1000,'1000'),(2500,'2500'),(150000,'150000'),(1001,'1001')])
 def test_fixed_rate_is_exact(naira,gp):
@@ -61,7 +61,7 @@ def test_failed_fee_is_refunded_and_webhook_requires_net_amount(monkeypatch):
 
 def test_gp_entry_debits_once_and_blocks_external_pending_checkout(monkeypatch):
     with app.app_context():
-        owner,browser,headers=setup(monkeypatch);tournament=event(fee=500)
+        owner,browser,headers=setup(monkeypatch);tournament=ready_event(event(fee=500),owner)
         monkeypatch.setattr(application,'award_achievements_for_user',lambda *a:None)
         url=f'/tournaments/{tournament.id}/pay-gp'
         assert browser.post(url,json={'amount_gp':'49'},headers=headers).status_code==409
@@ -79,7 +79,7 @@ def test_gp_entry_debits_once_and_blocks_external_pending_checkout(monkeypatch):
 
 def test_gp_capacity_and_duplicate_entry_requests_are_atomic(monkeypatch):
     with app.app_context():
-        owner,browser,headers=setup(monkeypatch);tournament=event(fee=100,capacity=1)
+        owner,browser,headers=setup(monkeypatch);tournament=ready_event(event(fee=100,capacity=1),owner)
         monkeypatch.setattr(application,'award_achievements_for_user',lambda *a:None)
         clients=[client(owner),client(owner)]
         csrf=[token(c.get('/wallet')) for c in clients]
@@ -116,7 +116,7 @@ def test_gp_topup_credits_only_after_verified_payment(monkeypatch):
 def test_last_gp_entry_slot_is_not_oversold(monkeypatch):
     with app.app_context():
         owner,browser,headers=setup(monkeypatch);other=player('last_slot_opponent');other.wallet_balance=1000;db.session.commit()
-        tournament=event(fee=100,capacity=1);owner_ids=[owner.id,other.id]
+        tournament=ready_event(event(fee=100,capacity=1),owner);owner_ids=[owner.id,other.id]
         monkeypatch.setattr(application,'award_achievements_for_user',lambda *args:None)
         clients=[client(owner),client(other)];csrf=[token(c.get('/wallet')) for c in clients]
         url=f'/tournaments/{tournament.id}/pay-gp'

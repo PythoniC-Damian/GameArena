@@ -12,10 +12,43 @@ from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
 from gamearena.extensions import db
 from gamearena.models import (Tournament, TournamentMatch, UserTournament, OrganizerDraft, User,
-    TournamentCompetition, TournamentCheckIn, MatchLobby, MatchEvidence, TournamentMatchDispute, TournamentMatchChatMessage, OrganizerProfile)
+    TournamentCompetition, TournamentCheckIn, MatchLobby, MatchEvidence, TournamentMatchDispute, TournamentMatchChatMessage, OrganizerProfile, TournamentStat)
 
 competition = Blueprint('competition', __name__)
 ACTIVE = {'scheduled','ongoing','pending_confirmation','disputed'}
+
+
+def sync_standings(event):
+    """Recompute from confirmed managed matches, under the caller's event lock.
+
+    No score is invented and no financial fields are changed. Equal elimination
+    rounds share placement; a semifinal loser is never arbitrarily made fourth.
+    The caller commits this with its match/phase change.
+    """
+    if not db.session.get(TournamentCompetition, event.id): return
+    db.session.flush()
+    matches = TournamentMatch.query.filter_by(tournament_id=event.id).order_by(TournamentMatch.round_number).all()
+    participants = {uid for m in matches for uid in (m.player_one_user_id,m.player_two_user_id)}
+    stats = {s.user_id:s for s in TournamentStat.query.filter_by(tournament_id=event.id).all()}
+    wins = dict.fromkeys(participants, 0)
+    losses = {}
+    confirmed = [m for m in matches if m.status=='confirmed' and m.winner_user_id in (m.player_one_user_id,m.player_two_user_id)]
+    for match in confirmed:
+        wins[match.winner_user_id] += 1
+        loser = match.player_two_user_id if match.winner_user_id==match.player_one_user_id else match.player_one_user_id
+        losses[loser] = match.round_number
+    final_round = max((m.round_number or 0 for m in matches), default=0)
+    finished = event.status=='finished' and len([m for m in confirmed if m.round_number==final_round])==1
+    champion = next((m.winner_user_id for m in confirmed if m.round_number==final_round),None) if finished else None
+    for uid in participants:
+        stat = stats.get(uid)
+        if not stat:
+            stat = TournamentStat(user_id=uid,tournament_id=event.id)
+            db.session.add(stat)
+        stat.wins = wins[uid]
+        stat.points = wins[uid]  # one point per confirmed win; never OCR-derived kills
+        stat.kills = 0
+        stat.rank = (1 if uid==champion else 2**(final_round-losses[uid])+1) if finished and (uid==champion or uid in losses) else 0
 
 
 def supports_bracket(game):
@@ -132,6 +165,20 @@ def open_checkin(tournament_id):
     config.phase='check_in';config.checkin_closes_at=deadline;event.status='ongoing'
     ids=[row.user_id for row in eligible(event.id)]
     db.session.commit();notify(ids,'Check-in is open for '+event.name+'. Confirm your in-game ID and readiness.',event.id)
+    return redirect(url_for('tournament_details',tournament_id=event.id))
+
+
+@competition.route('/tournament/<int:tournament_id>/competition/reopen-registration',methods=['POST'])
+@login_required
+def reopen_registration(tournament_id):
+    limit();event=event_lock(tournament_id)
+    if not can_manage(event):abort(403)
+    config=db.session.get(TournamentCompetition,event.id)
+    if not config or config.phase not in {'registration','check_in'} or event.status not in {'open','ongoing'}:abort(409)
+    if TournamentMatch.query.filter_by(tournament_id=event.id).first():
+        abort(409,description='Registration cannot be reopened after competition matches have been created.')
+    config.phase='registration';event.status='open'
+    db.session.commit()
     return redirect(url_for('tournament_details',tournament_id=event.id))
 
 
@@ -301,6 +348,8 @@ def announce_change(event_id):
 def register_socket(socketio):
     @socketio.on('watch_competition')
     def watch_competition(data):
+        from gamearena.account_security import socket_identity_allowed
+        if not socket_identity_allowed(): return {'status':'denied'}
         if not current_user.is_authenticated or current_user.suspended or not isinstance(data,dict):return {'status':'denied'}
         from app import consume_rate_limit
         if consume_rate_limit('competition_watch:'+str(current_user.id),20,60) is not None:return {'status':'limited'}

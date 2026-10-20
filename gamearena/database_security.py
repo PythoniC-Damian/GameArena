@@ -11,6 +11,8 @@ BACKEND_TABLES = (
     'user_tournament', 'wallet_transaction', 'user_activity_day',
     'cosmetic_ownership', 'organizer_draft', 'organizer_profile', 'organizer_finance', 'tournament_artwork',
     'tournament_competition', 'tournament_check_in', 'match_lobby', 'match_evidence',
+    'tournament_launch_plan', 'tournament_visit',
+    'account_security', 'security_audit_event',
 )
 
 

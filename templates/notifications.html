@@ -6,7 +6,7 @@
 <div class="ga-stack" id="notificationList">{% for notification in notifications %}<article class="ga-card" data-unread="{{ 'true' if notification.read_at is none else 'false' }}"><div class="flex flex-wrap items-start justify-between gap-4"><div class="min-w-0"><span class="ga-status">{{ notification.category|capitalize }}</span><p class="font-semibold mt-3">{{ notification.message }}</p><p class="ga-muted text-xs mt-2">{{ notification.created_at.strftime('%d %b %Y · %H:%M') if notification.created_at else 'Just now' }}</p>{% if notification.target_url %}<a href="{{ notification.target_url }}" class="ga-button ga-button-secondary mt-4">Open related page</a>{% endif %}</div><form method="POST" action="{{ url_for('mark_notification_read' if notification.read_at is none else 'mark_notification_unread', notification_id=notification.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ url_for('notifications') }}"><button class="ga-button ga-button-secondary">{{ 'Mark read' if notification.read_at is none else 'Mark unread' }}</button></form></div></article>{% else %}<div class="ga-empty"><h2 class="ga-section-title">No notifications yet</h2><p>Your updates will appear here as you play.</p></div>{% endfor %}</div>
 <p id="unreadEmpty" class="ga-empty mt-5" hidden>No unread notifications in this list.</p>
 {% endblock %}
-{% block scripts %}<script>
+{% block scripts %}<script nonce="{{ csp_nonce }}">
 const filterAllBtn = document.getElementById('filterAllBtn');
 const filterUnreadBtn = document.getElementById('filterUnreadBtn');
 function filterNotifications(unreadOnly) {
