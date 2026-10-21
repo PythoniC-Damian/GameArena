@@ -40,35 +40,6 @@ def test_rfc_totp_vectors_and_replay_window():
     assert security.totp(secret,37037036)=='081804'
 
 
-def test_admin_enrollment_encrypted_recovery_single_use_and_gate(monkeypatch):
-    monkeypatch.setitem(app.config,'SECURITY_ENFORCE_ADMIN_MFA',True)
-    with app.app_context():
-        user,browser=account('mfa_owner',True)
-        assert '/security/enroll' in browser.get('/admin').location
-        assert '/security/enroll' in browser.get('/admin/security-events').location
-        secret,codes=enroll(browser,user)
-        row=db.session.get(AccountSecurity,user.id)
-        assert row.totp_secret!=secret and secret not in row.totp_secret
-        assert all(code not in str(row.recovery_hashes) for code in codes)
-        assert browser.get('/admin').status_code==200
-        with browser.session_transaction() as session:session.pop('security_mfa_at',None)
-        assert '/security/challenge' in browser.get('/admin').location
-        assert post(browser,'/security/challenge',{'code':codes[0]}).status_code==302
-        assert len(db.session.get(AccountSecurity,user.id).recovery_hashes)==9
-        with browser.session_transaction() as session:session.pop('security_mfa_at',None)
-        response=post(browser,'/security/challenge',{'code':codes[0]})
-        assert response.status_code==200 and 'already used' in response.text
-        assert '/security/challenge' in browser.get('/admin').location
-
-
-def test_totp_replay_and_wrong_account_recovery_rejected():
-    with app.app_context():
-        user,browser=account('factor_owner',True);secret,codes=enroll(browser,user)
-        other,outsider=account('factor_other',True);enroll(outsider,other)
-        response=post(browser,'/security/challenge',{'code':security.totp(secret,db.session.get(AccountSecurity,user.id).last_counter)})
-        assert 'already used' in response.text
-        response=post(outsider,'/security/challenge',{'code':codes[0]})
-        assert 'invalid' in response.text
 
 
 def test_sensitive_withdrawal_needs_fresh_password_without_debit(monkeypatch):
@@ -85,31 +56,6 @@ def test_sensitive_withdrawal_needs_fresh_password_without_debit(monkeypatch):
         with browser.session_transaction() as session:assert session['security_primary_uid']==user.id
 
 
-def test_player_with_existing_factor_can_use_http_socket_and_password_confirmation():
-    with app.app_context():
-        user,browser=account('player_mfa',True);enroll(browser,user)
-        user.is_admin=False;db.session.commit()
-        with browser.session_transaction() as session:session.pop('security_mfa_at',None)
-        assert browser.get('/wallet').status_code==200
-        connection=socketio.test_client(app,flask_test_client=browser)
-        assert connection.is_connected()
-        connection.disconnect()
-        for path in ('/security/enroll','/security/challenge'):
-            assert browser.get(path).status_code==403
-        assert post(browser,'/security/recovery-codes').status_code==403
-        assert 'Set up authenticator' not in browser.get('/security').text
-        assert 'Authenticator or recovery code' not in browser.get('/security/reauthenticate').text
-        assert post(browser,'/security/reauthenticate',{'password':'Correct test-only password!'}).status_code==302
-
-
-def test_mfa_setup_requires_recent_primary_and_cannot_disable_admin_policy(monkeypatch):
-    monkeypatch.setitem(app.config,'SECURITY_ENFORCE_ADMIN_MFA',True)
-    with app.app_context():
-        user,browser=account('setup_recent',True)
-        with browser.session_transaction() as session:session.pop('security_primary_at',None)
-        assert '/security/reauthenticate' in browser.get('/security/enroll').location
-        assert db.session.get(AccountSecurity,user.id) is None
-        assert browser.post('/security/enroll',data={'code':'000000'}).status_code==400
 
 
 def test_origin_gate_covers_http_socket_and_webhook_without_disabling_health(monkeypatch):
@@ -171,12 +117,6 @@ def test_emergency_withdrawal_pause_does_not_call_provider_or_debit(monkeypatch)
         assert not call.called
 
 
-def test_socket_admin_cannot_connect_without_mfa(monkeypatch):
-    monkeypatch.setitem(app.config,'SECURITY_ENFORCE_ADMIN_MFA',True)
-    with app.app_context():user,browser=account('socket_mfa_admin',True)
-    connection=socketio.test_client(app,flask_test_client=browser)
-    assert not connection.is_connected()
-
 
 def test_real_primary_login_stamps_session_and_discards_prior_factor():
     with app.app_context():
@@ -188,25 +128,6 @@ def test_real_primary_login_stamps_session_and_discards_prior_factor():
             assert session['security_primary_uid']==user.id and 'security_mfa_at' not in session
 
 
-def test_recovery_replacement_revokes_other_factor_sessions():
-    with app.app_context():
-        user,browser=account('replace_codes',True);secret,codes=enroll(browser,user)
-        row=db.session.get(AccountSecurity,user.id);version=row.version
-        response=post(browser,'/security/recovery-codes')
-        assert response.status_code==200
-        db.session.refresh(row);assert row.version==version+1 and len(row.recovery_hashes)==10
-        assert security.recovery_hash(codes[0]) not in row.recovery_hashes
-        assert 'shown once' in response.text
-
-
-def test_missing_factor_key_fails_closed_without_disabling_protection(monkeypatch):
-    from cryptography.fernet import Fernet
-    with app.app_context():
-        user,browser=account('wrong_mfa_key',True);_,codes=enroll(browser,user)
-        monkeypatch.setitem(app.config,'SECURITY_ENCRYPTION_KEY',Fernet.generate_key())
-        response=post(browser,'/security/challenge',{'code':codes[0]})
-        assert response.status_code==503
-        assert db.session.get(AccountSecurity,user.id).enabled_at
 
 
 def test_managed_reauthentication_requires_matching_identity_and_closes_session(monkeypatch):
@@ -244,7 +165,7 @@ def test_owner_recovery_tool_checks_identity_and_revokes_sessions(monkeypatch):
     import os,sys
     from scripts import security_admin
     with app.app_context():
-        user,browser=account('owner_cli',True);_,codes=enroll(browser,user)
+        user,browser=account('owner_cli',True);db.session.add(AccountSecurity(user_id=user.id,enabled_at=datetime.utcnow()));db.session.commit()
         original=user.auth_session_version
         monkeypatch.setenv('GAMEARENA_SECURITY_DATABASE_URL',os.environ['GAMEARENA_TEST_DATABASE_URL'])
         monkeypatch.setattr(sys,'argv',['security_admin.py','reset-mfa','--user-id',str(user.id),'--confirm-username','wrong'])
@@ -256,3 +177,22 @@ def test_owner_recovery_tool_checks_identity_and_revokes_sessions(monkeypatch):
         row=db.session.get(AccountSecurity,user.id)
         assert not row.enabled_at and not row.totp_secret and not row.recovery_hashes
         assert '/login' in browser.get('/wallet').location
+
+
+@pytest.mark.parametrize('admin',[False,True])
+def test_old_factor_never_blocks_sign_in_http_or_sockets(monkeypatch,admin):
+    monkeypatch.setitem(app.config,'SECURITY_ENFORCE_ADMIN_MFA',True)
+    with app.app_context():
+        user,browser=account('no_factor_'+str(admin),admin)
+        db.session.add(AccountSecurity(user_id=user.id,enabled_at=datetime.utcnow(),totp_secret='unreadable-old-factor'))
+        db.session.commit()
+        assert browser.get('/wallet').status_code==200
+        if admin: assert browser.get('/admin').status_code==200
+        connection=socketio.test_client(app,flask_test_client=browser)
+        assert connection.is_connected()
+        connection.disconnect()
+        for path in ('/security/enroll','/security/challenge'):
+            assert browser.get(path).location.endswith('/security')
+        page=browser.get('/security/reauthenticate')
+        assert 'name="code"' not in page.text
+        assert post(browser,'/security/reauthenticate',{'password':'Correct test-only password!'}).status_code==302

@@ -200,11 +200,7 @@ class OriginGate:
 
 
 def socket_identity_allowed():
-    if not current_user.is_authenticated or current_user.suspended: return False
-    row=db.session.get(AccountSecurity,current_user.id)
-    if current_user.is_admin and (row and row.enabled_at or current_app.config['SECURITY_ENFORCE_ADMIN_MFA']):
-        return mfa_verified(row)
-    return True
+    return bool(current_user.is_authenticated and not current_user.suspended)
 
 
 def account_guard():
@@ -213,16 +209,10 @@ def account_guard():
     if not current_user.is_authenticated or current_user.suspended: return
     g.security_actor_id=current_user.id;g.security_actor_admin=current_user.is_admin
     if request.endpoint and (request.endpoint.startswith('security.') and request.endpoint!='security.events' or request.endpoint in {'static','logout','health','login','login_google','google_callback','auth_callback','auth_google_callback'}): return
-    row = db.session.get(AccountSecurity,current_user.id) if current_user.is_admin else None
-    if current_user.is_admin and current_app.config['SECURITY_ENFORCE_ADMIN_MFA']:
-        if not row or not row.enabled_at:
-            return deny_for_security('security.enroll','mfa_enrollment_required','Set up authenticator protection before using your administrator account.')
-    if current_user.is_admin and row and row.enabled_at and not mfa_verified(row):
-        return deny_for_security('security.challenge','mfa_required','Verify your authenticator or a recovery code to continue.')
     sensitive = request.method in {'POST','PUT','PATCH','DELETE'} and (
         request.endpoint=='wallet_withdraw' or current_user.is_admin or request.endpoint=='organizers.settlement')
     if sensitive and current_app.config['SECURITY_REQUIRE_STEP_UP']:
-        if not fresh_primary() or current_user.is_admin and row and row.enabled_at and not mfa_verified(row,FRESH_SECONDS):
+        if not fresh_primary():
             return deny_for_security('security.reauthenticate','reauthentication_required','Confirm your sign-in again before this sensitive action. No action was submitted.')
 
 
@@ -260,64 +250,24 @@ def audit_response(response):
 @security.route('/security')
 @login_required
 def overview():
-    row = db.session.get(AccountSecurity,current_user.id)
-    return render_template('account_security.html',row=row if current_user.is_admin else None,mode='overview')
+    return render_template('account_security.html',row=None,mode='overview')
 
 
 @security.route('/security/enroll',methods=['GET','POST'])
 @login_required
 def enroll():
-    if not current_user.is_admin: abort(403)
-    if not fresh_primary(): return redirect(url_for('.reauthenticate',next=url_for('.enroll')))
-    row = locked_security(create=True)
-    if row.enabled_at: return redirect(url_for('.overview'))
-    if not row.pending_secret or not row.pending_at or row.pending_at < datetime.utcnow()-timedelta(minutes=10):
-        secret = base64.b32encode(secrets.token_bytes(20)).decode().rstrip('=')
-        row.pending_secret = cipher().encrypt(secret.encode()).decode()
-        row.pending_at = datetime.utcnow()
-        db.session.commit()
-    secret = decrypt_factor(row.pending_secret)
-    if request.method=='POST':
-        limited(); row = locked_security()
-        if not row.pending_secret or not row.pending_at or row.pending_at < datetime.utcnow()-timedelta(minutes=10):
-            db.session.rollback();return redirect(url_for('.enroll'))
-        secret = decrypt_factor(row.pending_secret)
-        counter = matching_counter(secret,request.form.get('code','').strip())
-        if counter is None:
-            db.session.rollback();note('mfa.failure');metric('mfa_failures',3)
-            flash('That authenticator code is invalid or expired.','error')
-        else:
-            codes = [secrets.token_hex(16) for _ in range(10)]
-            row.totp_secret = row.pending_secret; row.pending_secret=None;row.pending_at=None
-            row.enabled_at=datetime.utcnow();row.last_counter=counter;row.version+=1
-            row.recovery_hashes=[recovery_hash(code) for code in codes]
-            db.session.commit();mark_mfa(row);note('mfa.enabled')
-            return render_template('account_security.html',row=row,mode='recovery',codes=codes)
-    note('mfa.enrollment_viewed')
-    # No external QR generator receives this secret; only the signed-in owner sees it.
-    return render_template('account_security.html',row=row,mode='enroll',secret=secret)
+    return redirect(url_for('.overview'))
 
 
 @security.route('/security/challenge',methods=['GET','POST'])
 @login_required
 def challenge():
-    if not current_user.is_admin: abort(403)
-    row = db.session.get(AccountSecurity,current_user.id)
-    if not row or not row.enabled_at: return redirect(url_for('.enroll'))
-    if request.method=='POST':
-        limited();row=locked_security()
-        if consume_factor(row,request.form.get('code','')):
-            db.session.commit();mark_mfa(row);note('mfa.verified')
-            return redirect(safe_next())
-        db.session.rollback();note('mfa.failure');metric('mfa_failures',3)
-        flash('That authenticator or recovery code is invalid, expired or already used.','error')
-    return render_template('account_security.html',row=row,mode='challenge')
+    return redirect(url_for('.overview'))
 
 
 @security.route('/security/reauthenticate',methods=['GET','POST'])
 @login_required
 def reauthenticate():
-    row = db.session.get(AccountSecurity,current_user.id)
     if request.method=='POST':
         limited()
         from gamearena.services import auth as managed_auth
@@ -335,17 +285,13 @@ def reauthenticate():
             else:
                 valid = current_user.check_password(password)
         if valid:
-            row = locked_security()
-            if current_user.is_admin and row and row.enabled_at and not consume_factor(row,request.form.get('code','')): valid=False
-        if valid:
             db.session.commit()
             session['security_primary_at']=time.time();session['security_primary_uid']=current_user.id
-            if row and row.enabled_at: mark_mfa(row)
             note('auth.reauthenticated')
             return redirect(safe_next())
         db.session.rollback();note('auth.reauthentication_failed');metric('authentication_failures',5)
-        flash('Sign-in confirmation failed. Check your password and authenticator code.','error')
-    return render_template('account_security.html',row=row if current_user.is_admin else None,mode='reauthenticate')
+        flash('Sign-in confirmation failed. Check your password.','error')
+    return render_template('account_security.html',row=None,mode='reauthenticate')
 
 
 @security.route('/security/sign-in-again',methods=['POST'])
@@ -358,15 +304,7 @@ def sign_in_again():
 @security.route('/security/recovery-codes',methods=['POST'])
 @login_required
 def recovery_codes():
-    if not current_user.is_admin: abort(403)
-    row=db.session.get(AccountSecurity,current_user.id)
-    if not fresh_primary() or not mfa_verified(row,FRESH_SECONDS):
-        return redirect(url_for('.reauthenticate',next=url_for('.overview')))
-    limited();row=locked_security()
-    codes=[secrets.token_hex(16) for _ in range(10)]
-    row.recovery_hashes=[recovery_hash(code) for code in codes]
-    row.version+=1;db.session.commit();mark_mfa(row);note('mfa.recovery_regenerated')
-    return render_template('account_security.html',row=row,mode='recovery',codes=codes)
+    return redirect(url_for('.overview'))
 
 
 @security.route('/admin/security-events')
@@ -383,7 +321,7 @@ def init_security(app):
         value=os.environ.get(name)
         return default if value is None else value.lower() in ('1','true','yes')
     app.config.update(
-        SECURITY_ENFORCE_ADMIN_MFA=enabled('SECURITY_ENFORCE_ADMIN_MFA',not app.testing),
+        SECURITY_ENFORCE_ADMIN_MFA=False,
         SECURITY_REQUIRE_STEP_UP=enabled('SECURITY_REQUIRE_STEP_UP',not app.testing),
         SECURITY_ENCRYPTION_KEY=os.environ.get('SECURITY_ENCRYPTION_KEY',''),
         ORIGIN_PROTECTION_ENABLED=enabled('ORIGIN_PROTECTION_ENABLED',False),

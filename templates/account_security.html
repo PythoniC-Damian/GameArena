@@ -1,27 +1,16 @@
 {% extends '_base.html' %}
 {% block title %}Account security | GameArena{% endblock %}
 {% block content %}
-<header class="ga-page-heading"><div><p class="ga-eyebrow">GameArena</p><h1 class="ga-title">{{ t('Account security') }}</h1><p class="ga-description">{{ t('Protect sign-in and confirm sensitive actions. Never share passwords, authenticator secrets or recovery codes.') }}</p></div></header>
+<header class="ga-page-heading"><h1 class="ga-title">{{ t('Account security') }}</h1></header>
 <section class="ga-card ga-studio-form">
 {% if mode=='overview' %}
-{% if current_user.is_admin %}
-<h2 class="ga-section-title">{{ t('Authenticator protection') }}</h2><p>{{ t('Enabled') if row and row.enabled_at else t('Not enabled') }}</p>
-{% if row and row.enabled_at %}<p>{{ t('Recovery codes are single use. Generating replacements invalidates all previous codes.') }}</p><form method="POST" action="{{ url_for('security.recovery_codes') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ga-button">{{ t('Generate replacement recovery codes') }}</button></form>{% else %}<a class="ga-button" href="{{ url_for('security.enroll') }}">{{ t('Set up authenticator') }}</a>{% endif %}
-{% else %}<p>{{ t('Authenticator verification is reserved for administrator accounts.') }}</p>{% endif %}
-<a class="ga-button ga-button-secondary" href="{{ url_for('security.reauthenticate') }}">{{ t('Confirm sign-in') }}</a>
-{% elif mode=='enroll' %}
-<h2 class="ga-section-title">{{ t('Add GameArena to your authenticator') }}</h2><p>{{ t('In your authenticator app, add a time-based account named GameArena and enter this setup key. Keep it private. Then enter the six-digit code to finish.') }}</p>
-<code class="break-words select-all">{{ secret }}</code><p class="ga-muted">{{ t('This setup expires after ten minutes. GameArena does not send the setup key to an external QR service.') }}</p>
-<form method="POST" class="ga-studio-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>{{ t('Authenticator code') }}<input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label><button class="ga-button">{{ t('Enable authenticator protection') }}</button></form>
-{% elif mode=='recovery' %}
-<h2 class="ga-section-title">{{ t('Save your recovery codes privately') }}</h2><p>{{ t('These codes are shown once. Store them somewhere secure outside this account. Each code can be used only once.') }}</p><div class="ga-stack">{% for code in codes %}<code class="select-all">{{ code }}</code>{% endfor %}</div><a class="ga-button" href="{{ url_for('security.overview') }}">{{ t('I saved my recovery codes') }}</a>
+<p>{{ t('Use your normal sign-in to access GameArena. Sensitive actions may ask you to confirm your password.') }}</p>
+<a class="ga-button" href="{{ url_for('security.reauthenticate') }}">{{ t('Confirm sign-in') }}</a>
 {% else %}
-<h2 class="ga-section-title">{{ t('Confirm sign-in') if mode=='reauthenticate' else t('Verify your authenticator') }}</h2>
-<form method="POST" class="ga-studio-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-{% if mode=='reauthenticate' %}<label>{{ t('Current password') }}<input type="password" name="password" maxlength="1024" autocomplete="current-password" required></label>{% endif %}
-{% if mode=='challenge' or row and row.enabled_at %}<label>{{ t('Authenticator or recovery code') }}<input name="code" maxlength="32" autocomplete="one-time-code" required></label>{% endif %}
-<button class="ga-button">{{ t('Verify and continue') }}</button></form>
-{% if mode=='reauthenticate' %}<p class="ga-muted">{{ t('Use Google to sign in? Sign in again through your usual provider, then verify your authenticator if enabled.') }}</p><form method="POST" action="{{ url_for('security.sign_in_again',next=request.args.get('next','/dashboard')) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ga-button ga-button-secondary">{{ t('Sign in again with my provider') }}</button></form>{% endif %}
+<h2>{{ t('Confirm sign-in') }}</h2>
+<form method="POST" class="ga-studio-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>{{ t('Current password') }}<input type="password" name="password" maxlength="1024" autocomplete="current-password" required></label><button class="ga-button">{{ t('Verify and continue') }}</button></form>
+<p class="ga-muted">{{ t('Use Google to sign in? Sign in again through your usual provider.') }}</p>
+<form method="POST" action="{{ url_for('security.sign_in_again',next=request.args.get('next','/dashboard')) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ga-button ga-button-secondary">{{ t('Sign in again with my provider') }}</button></form>
 {% endif %}
 </section>
 {% endblock %}
