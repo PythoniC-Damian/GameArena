@@ -162,6 +162,8 @@ def add_response_security_headers(response):
 
     if request.endpoint in {'avatar_file', 'database_avatar'}:
         response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    elif request.endpoint == 'service_worker':
+        response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
     elif request.endpoint == 'static':
         # The worker and manifest must be revalidated so PWA updates reach
         # clients promptly. Other static files are safe for a bounded shared

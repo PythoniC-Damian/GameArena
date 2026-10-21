@@ -69,6 +69,8 @@ def notify_activity_changed():
 
 
 def record_player_visit(response):
+    if request.endpoint in {'static', 'health', 'service_worker'}:
+        return response
     # Automatic polling/static requests must not keep absent players active.
     if response.status_code >= 400 or request.method not in ('GET', 'POST'):
         return response

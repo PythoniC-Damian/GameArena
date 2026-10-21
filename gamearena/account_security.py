@@ -208,10 +208,12 @@ def socket_identity_allowed():
 
 
 def account_guard():
+    # Public assets and health checks must not load the signed-in user or database.
+    if request.endpoint in {'static', 'health', 'service_worker'}: return
     if not current_user.is_authenticated or current_user.suspended: return
     g.security_actor_id=current_user.id;g.security_actor_admin=current_user.is_admin
     if request.endpoint and (request.endpoint.startswith('security.') and request.endpoint!='security.events' or request.endpoint in {'static','logout','health','login','login_google','google_callback','auth_callback','auth_google_callback'}): return
-    row = db.session.get(AccountSecurity,current_user.id)
+    row = db.session.get(AccountSecurity,current_user.id) if current_user.is_admin else None
     if current_user.is_admin and current_app.config['SECURITY_ENFORCE_ADMIN_MFA']:
         if not row or not row.enabled_at:
             return deny_for_security('security.enroll','mfa_enrollment_required','Set up authenticator protection before using your administrator account.')
@@ -225,6 +227,7 @@ def account_guard():
 
 
 def audit_response(response):
+    if request.endpoint in {'static', 'health', 'service_worker'}: return response
     endpoint = request.endpoint or 'unmatched'
     if endpoint not in {'static','health','service_worker'}:
         metric('traffic',current_app.config['SECURITY_TRAFFIC_THRESHOLD'])
