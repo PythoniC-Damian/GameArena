@@ -2907,6 +2907,32 @@ def cancel_tournament(tournament_id):
     flash(f"Tournament {tournament.name} cancelled.", "success")
     return redirect(url_for("admin"))
 
+@app.route('/admin/tournaments/<int:tournament_id>/delete', methods=['POST'])
+@login_required
+def delete_tournament(tournament_id):
+    if not current_user.is_admin:
+        abort(403)
+    tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404()
+    if request.form.get('confirm_name', '').strip() != tournament.name:
+        db.session.rollback()
+        flash('Type the exact tournament name to confirm deletion. Nothing was deleted.', 'error')
+        return redirect(url_for('admin'))
+    from gamearena.models import OrganizerFinance, OrganizerDraft, TournamentArtwork, TournamentLaunchPlan, TournamentVisit
+    protected = (UserTournament, TournamentMatch, TournamentStat, TournamentCheckIn,
+                 TournamentChatMessage, OrganizerFinance, OrganizerDraft, TournamentArtwork)
+    if any(model.query.filter_by(tournament_id=tournament.id).first() for model in protected):
+        db.session.rollback()
+        flash('This tournament has entries, competition history or organiser records. It cannot be permanently deleted. Cancel it instead to preserve those records.', 'error')
+        return redirect(url_for('admin'))
+    name = tournament.name
+    for model in (SavedTournament, TournamentVisit, TournamentLaunchPlan, TournamentCompetition):
+        model.query.filter_by(tournament_id=tournament.id).delete(synchronize_session=False)
+    Tournament.query.filter_by(id=tournament.id).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f'Tournament "{name}" deleted.', 'success')
+    return redirect(url_for('admin'))
+
+
 @app.route('/admin/tournaments/<int:tournament_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_tournament(tournament_id):
@@ -2932,8 +2958,8 @@ def edit_tournament(tournament_id):
             has_matches = TournamentMatch.query.filter_by(tournament_id=tournament.id).first() is not None
             requested_capacity = int(form.max_participants.data)
             problem = None
-            if tournament.status in {'finished', 'cancelled'} and form.status.data != tournament.status:
-                problem = 'Completed or cancelled events cannot be reopened. Create a new event instead.'
+            if tournament.status in {'finished', 'cancelled'} and form.status.data != tournament.status and UserTournament.query.filter_by(tournament_id=tournament.id).first():
+                problem = 'This closed event has entry or payment history. Create a new event to keep those records intact.'
             elif has_matches and (form.status.data != tournament.status or requested_capacity != tournament.max_participants):
                 problem = 'Matches already exist. Status and capacity cannot be reset from Setup after the bracket has been drawn.'
             elif not has_matches:

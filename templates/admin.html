@@ -139,6 +139,7 @@
 
         {% if tournament.room_id %}<details class="ga-admin-room"><summary>{{ t('Room details') }}</summary><p>{{ t('Room ID') }}: {{ tournament.room_id }}</p><p>{{ t('Password') }}: {{ tournament.room_password or '—' }}</p></details>{% endif %}
 
+        <details class="ga-admin-room"><summary>{{ t('Delete tournament') }}</summary><p>{{ t('Permanently remove an unused tournament. Events with entries, payments or competition history cannot be deleted.') }}</p><form class="ga-studio-form" method="POST" action="{{ url_for('delete_tournament',tournament_id=tournament.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>{{ t('Type the tournament name to confirm') }}: {{ tournament.name }}<input name="confirm_name" maxlength="200" autocomplete="off" required></label><button class="ga-button ga-button-secondary" type="submit">{{ t('Permanently delete tournament') }}</button></form></details>
         <p class="ga-muted ga-admin-id">{{ t('Tournament') }} #{{ tournament.id }}</p>
 
     </article>

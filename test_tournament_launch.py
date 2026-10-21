@@ -1,5 +1,6 @@
 """Registration safety, honest public copy and derived 1v1 standings."""
 from datetime import datetime, timedelta
+import pytest
 import app as application
 from app import app, db
 from gamearena.models import (Tournament, TournamentLaunchPlan, TournamentVisit, TournamentStat,
@@ -274,3 +275,30 @@ def test_setup_cannot_reopen_drawn_or_finished_bracket(monkeypatch):
         data['status']='open'
         assert post(browser,path,data).status_code==409
         db.session.refresh(row);assert row.status=='finished'
+
+
+@pytest.mark.parametrize('old_status',['finished','cancelled'])
+def test_setup_reopens_empty_postponed_pilot(monkeypatch,old_status):
+    with app.app_context():
+        admin,users,row=fixture(monkeypatch)
+        row.status=old_status;row.competition.phase='finished';db.session.commit()
+        planned=(datetime.utcnow()+timedelta(hours=2)).strftime('%Y-%m-%d %H:%M')
+        data=dict(entry_fee='200',prize_pool='1000',max_participants='4',status='open',match_time=planned,first_place='1000',second_place='0',third_place='0')
+        assert post(client(admin),f'/admin/tournaments/{row.id}/edit',data).status_code==302
+        db.session.refresh(row)
+        assert row.status=='open' and row.competition.phase=='registration'
+        assert row.match_time.strftime('%Y-%m-%d %H:%M')==planned and registration_ready(row)
+        assert 'Join tournament' in client(users[0]).get(f'/tournament/{row.id}').text
+
+
+@pytest.mark.parametrize('history',['paid','refunded'])
+def test_setup_keeps_closed_event_entry_history_intact(monkeypatch,history):
+    with app.app_context():
+        admin,users,row=fixture(monkeypatch)
+        row.status='cancelled'
+        db.session.add(UserTournament(tournament_id=row.id,user_id=users[0].id,payment_status=history));db.session.commit()
+        data=dict(entry_fee='0',prize_pool='0',max_participants='4',status='open',match_time='')
+        response=post(client(admin),f'/admin/tournaments/{row.id}/edit',data)
+        assert response.status_code==409 and 'entry or payment history' in response.text
+        db.session.refresh(row);assert row.status=='cancelled'
+        assert UserTournament.query.filter_by(tournament_id=row.id,payment_status=history).count()==1
