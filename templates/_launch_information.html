@@ -10,5 +10,5 @@
 <p class="ga-muted">{{ t('The funding statement is the organiser’s commitment, not a completed payout. Confirmed results and prize payments are separate steps.') }}</p>
 {% endif %}
 <a href="{{ url_for('support') }}">{{ t('Questions? Contact support') }}</a>
-{% if competition_manager %}<div class="ga-section"><p>{{ t('The launch checklist is optional for events without published launch terms.') }}</p>{% if competition_config %}<a class="ga-button ga-button-secondary" href="#organiser-round-controls">{{ t('Organiser round controls') }}</a>{% endif %}<a class="ga-button" href="{{ url_for('launch.review',tournament_id=tournament.id) }}">{{ t('Launch checklist') }}</a></div>{% endif %}
+{% if competition_manager %}<div class="ga-section"><p>{{ t('The launch checklist is optional for events without published launch terms.') }}</p>{% if current_user.is_admin %}<a class="ga-button ga-button-secondary" href="{{ url_for('edit_tournament',tournament_id=tournament.id) }}">{{ t('Tournament setup') }}</a>{% endif %}<details><summary>{{ t('Optional event terms') }}</summary><a class="ga-button ga-button-secondary" href="{{ url_for('launch.review',tournament_id=tournament.id) }}">{{ t('Launch checklist') }}</a></details></div>{% endif %}
 </section>

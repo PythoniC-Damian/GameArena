@@ -234,20 +234,43 @@ def test_early_checkin_shows_reopen_action_and_does_not_publish_terms(monkeypatc
         assert 'name="eligibility"' in browser.get(f'/tournament/{row.id}/launch').text
 
 
-def test_managed_setup_preserves_status_capacity_and_renders_recovery_link(monkeypatch):
+def test_setup_open_reopens_registration_and_updates_old_launch_deadline(monkeypatch):
     with app.app_context():
         admin,users,row=fixture(monkeypatch)
+        row.match_time=datetime.utcnow()+timedelta(hours=2);db.session.commit()
+        approve(admin,row)
         browser=client(admin);path=f'/admin/tournaments/{row.id}/edit'
-        data=dict(entry_fee='0',prize_pool='0',max_participants='4',status='open',match_time=(datetime.utcnow()+timedelta(hours=3)).strftime('%Y-%m-%d %H:%M'))
+        row.status='ongoing';row.competition.phase='check_in';row.competition.checkin_closes_at=datetime.utcnow()+timedelta(hours=1)
+        row.launch_plan.registration_closes_at=datetime.utcnow()-timedelta(hours=1);db.session.commit()
+        new_time=(datetime.utcnow()+timedelta(hours=4)).strftime('%Y-%m-%d %H:%M')
+        data=dict(entry_fee='0',prize_pool='0',max_participants='4',status='open',match_time=new_time)
         assert post(browser,path,data).status_code==302
-        row.status='ongoing';row.competition.phase='check_in';db.session.commit()
-        response=post(browser,path,data)
-        assert response.status_code==409 and 'Open organiser round controls' in response.text
-        db.session.refresh(row);assert row.status=='ongoing' and row.max_participants==4
-        data.update(status='ongoing',max_participants='8')
+        db.session.refresh(row)
+        assert row.status=='open' and row.competition.phase=='registration'
+        assert row.competition.checkin_closes_at is None
+        assert row.match_time.strftime('%Y-%m-%d %H:%M')==new_time
+        assert row.launch_plan.registration_closes_at==row.match_time and registration_ready(row)
+        assert 'Join tournament' in client(users[0]).get(f'/tournament/{row.id}').text
+        data['max_participants']='8'
+        assert post(browser,path,data).status_code==302
+        db.session.refresh(row);assert row.max_participants==8
+        data['max_participants']='6'
         assert post(browser,path,data).status_code==409
-        db.session.refresh(row);assert row.max_participants==4
-        row.status='live';row.competition.phase='live';db.session.commit()
-        data.update(status='live',max_participants='4')
+        db.session.refresh(row);assert row.max_participants==8
+
+
+def test_setup_cannot_reopen_drawn_or_finished_bracket(monkeypatch):
+    with app.app_context():
+        admin,users,row=fixture(monkeypatch)
+        check_in(admin,users,row);start(admin,row)
+        data=dict(entry_fee='0',prize_pool='0',max_participants='4',status='open',match_time='')
+        browser=client(admin);path=f'/admin/tournaments/{row.id}/edit'
+        assert post(browser,path,data).status_code==409
+        db.session.refresh(row);assert row.status=='live' and row.competition.phase=='live'
+        assert TournamentMatch.query.filter_by(tournament_id=row.id).count()==2
+        data['status']='live'
         assert post(browser,path,data).status_code==302
-        db.session.refresh(row);assert row.status=='live'
+        row.status='finished';row.competition.phase='finished';db.session.commit()
+        data['status']='open'
+        assert post(browser,path,data).status_code==409
+        db.session.refresh(row);assert row.status=='finished'

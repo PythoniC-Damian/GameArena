@@ -93,11 +93,11 @@
 
         <progress class="ga-admin-progress" value="{{ participants }}" max="{{ tournament.max_participants or 1 }}" aria-label="{{ t('Tournament places filled') }}">{{ participants }} / {{ tournament.max_participants }}</progress>
 
-        <a class="ga-button ga-button-primary" href="{{ url_for('tournament_details',tournament_id=tournament.id) }}{{ '#organiser-round-controls' if tournament.competition else '' }}">{{ t('Manage rounds') if tournament.competition else t('View tournament') }}</a>
+        <a class="ga-button ga-button-primary" href="{{ url_for('edit_tournament',tournament_id=tournament.id) }}">{{ t('Set up tournament') }}</a>
 
         <div class="ga-card-actions">
 
-            <a href="{{ url_for('edit_tournament', tournament_id=tournament.id) }}" class="ga-button ga-button-secondary">Setup</a>
+            <a href="{{ url_for('tournament_details', tournament_id=tournament.id) }}" class="ga-button ga-button-secondary">{{ t('View tournament') }}</a>
 
             <a href="{{ url_for('admin_tournament_leaderboard', tournament_id=tournament.id) }}" class="ga-button ga-button-secondary">{{ t('Leaderboard') }}</a>
 

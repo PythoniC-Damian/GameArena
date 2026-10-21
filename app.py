@@ -2929,11 +2929,27 @@ def edit_tournament(tournament_id):
             db.session.rollback(); abort(409, description='Funded event prices and capacity are fixed. Use Organiser Studio for cancellation and settlement.')
         config=db.session.get(TournamentCompetition,tournament.id)
         if config:
-            expected={'registration':'open','check_in':'ongoing','live':'live','finished':'finished'}[config.phase]
-            if form.status.data!=expected or int(form.max_participants.data)!=tournament.max_participants:
+            has_matches = TournamentMatch.query.filter_by(tournament_id=tournament.id).first() is not None
+            requested_capacity = int(form.max_participants.data)
+            problem = None
+            if tournament.status in {'finished', 'cancelled'} and form.status.data != tournament.status:
+                problem = 'Completed or cancelled events cannot be reopened. Create a new event instead.'
+            elif has_matches and (form.status.data != tournament.status or requested_capacity != tournament.max_participants):
+                problem = 'Matches already exist. Status and capacity cannot be reset from Setup after the bracket has been drawn.'
+            elif not has_matches:
+                if requested_capacity < 2 or requested_capacity > 128 or requested_capacity & (requested_capacity - 1):
+                    problem = 'A 1v1 tournament needs 2, 4, 8, 16, 32, 64 or 128 players.'
+                elif requested_capacity < active_participant_count(tournament):
+                    problem = 'Capacity cannot be smaller than the number of confirmed participants.'
+                elif form.status.data != tournament.status and form.status.data != 'open':
+                    problem = 'Before matches begin, use Open to accept players. Playing and completed states follow the actual match results.'
+            if problem:
                 db.session.rollback()
-                flash('Status is managed from the tournament round controls, and published capacity cannot change here. Your changes were not saved. Use the round controls link above; reopen registration there before changing the schedule.', 'error')
+                flash(problem + ' Your changes were not saved.', 'error')
                 return render_template('admin_tournament_edit.html', tournament=tournament, form=form), 409
+            if not has_matches and form.status.data == 'open':
+                config.phase = 'registration'
+                config.checkin_closes_at = None
         tournament.entry_fee = int(form.entry_fee.data)
         tournament.prize = int(form.prize_pool.data)
         tournament.max_participants = int(form.max_participants.data)
@@ -2954,6 +2970,12 @@ def edit_tournament(tournament_id):
         else:
             tournament.match_time = None
 
+        # With no accepted entries, Setup is sufficient to reschedule an optional
+        # launch plan too; its old deadline must not silently hide the Join button.
+        if tournament.launch_plan and tournament.status == 'open' and tournament.match_time:
+            from gamearena.tournament_launch import signature
+            tournament.launch_plan.registration_closes_at = tournament.match_time
+            tournament.launch_plan.snapshot = signature(tournament, tournament.launch_plan)
         db.session.commit()
         flash(f"Tournament '{tournament.name}' updated successfully!", 'success')
         return redirect(url_for('admin'))
