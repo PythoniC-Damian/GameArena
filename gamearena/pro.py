@@ -79,7 +79,7 @@ def save_tournament(tournament_id):
 def deliver_due_reminders(now=None, limit=200):
     """Run every minute. Lock each bookmark; notification and sent marker commit together."""
     now = now or datetime.utcnow()
-    rows = SavedTournament.query.join(Tournament).join(User).filter(SavedTournament.reminder_enabled.is_(True), User.master_expires_at > now, User.suspended.is_(False), Tournament.status.in_(['open', 'live', 'ongoing']), Tournament.match_time > now, Tournament.match_time <= now+timedelta(hours=1), or_(SavedTournament.reminded_for.is_(None), SavedTournament.reminded_for != Tournament.match_time)).order_by(Tournament.match_time).limit(limit).with_for_update(of=SavedTournament, skip_locked=True).all()
+    rows = SavedTournament.query.join(Tournament).join(User).filter(SavedTournament.reminder_enabled.is_(True), or_(User.is_admin.is_(True), User.master_expires_at > now), User.suspended.is_(False), Tournament.status.in_(['open', 'live', 'ongoing']), Tournament.match_time > now, Tournament.match_time <= now+timedelta(hours=1), or_(SavedTournament.reminded_for.is_(None), SavedTournament.reminded_for != Tournament.match_time)).order_by(Tournament.match_time).limit(limit).with_for_update(of=SavedTournament, skip_locked=True).all()
     notifications = []
     for row in rows:
         preferences = UserSettings.query.filter_by(user_id=row.user_id).first()

@@ -167,6 +167,8 @@ def checkout_response(destination=None, error=None, status=400):
 @login_required
 def checkout():
     if current_user.suspended or not current_user.email_verified:return jsonify(error='Verify your email before subscribing.'),403
+    if current_user.is_admin:
+        return checkout_response(destination=url_for('pro.membership') + '#appearance')
     mode=request.form.get('billing_mode','recurring')
     if mode not in {'recurring','one_time'}:return checkout_response(error='Choose a valid payment option.')
     consent='one_time_consent' if mode=='one_time' else 'renewal_consent'

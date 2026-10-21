@@ -38,10 +38,16 @@ def equipped_items(owner):
     return {slot: getattr(owner, column) or '' for slot, column in SLOTS.items()}
 
 
+def accessible_items(owner):
+    if owner.is_admin and not owner.suspended:
+        return set(CATALOG)
+    return {row.item_key for row in CosmeticOwnership.query.filter_by(user_id=owner.id).all()}
+
+
 @market.route('/shop')
 @login_required
 def shop():
-    owned = {row.item_key for row in CosmeticOwnership.query.filter_by(user_id=current_user.id).all()}
+    owned = accessible_items(current_user)
     items = {key: dict(item, current_price=purchase_price(key, owned)) for key, item in CATALOG.items()}
     selected = request.args.get('item') if request.args.get('item') in items else 'emerald-bundle'
     return render_template('shop.html', catalog=items, owned=owned, equipped=equipped_items(current_user),
@@ -57,6 +63,10 @@ def buy(item_key):
     if owner.suspended:
         db.session.rollback()
         abort(403)
+    if owner.is_admin:
+        db.session.rollback()
+        flash('Your administrator account includes every shop item. Choose Equip to use it.', 'info')
+        return redirect(url_for('.shop', item=item_key))
     owned = CosmeticOwnership.query.filter_by(user_id=owner.id, item_key=item_key).first()
     if owned:
         db.session.rollback()
@@ -105,7 +115,7 @@ def equip():
         setattr(owner, SLOTS[slot], None)
     else:
         item = CATALOG.get(key)
-        owned = {row.item_key for row in CosmeticOwnership.query.filter_by(user_id=owner.id).all()}
+        owned = accessible_items(owner)
         if not item or key not in owned:
             db.session.rollback(); abort(403)
         parts = item.get('components', (key,))

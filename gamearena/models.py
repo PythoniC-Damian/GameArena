@@ -27,7 +27,8 @@ class User(db.Model, UserMixin):
 
     @property
     def master_active(self):
-        return bool(self.master_expires_at and self.master_expires_at > datetime.utcnow())
+        return bool(not self.suspended and (self.is_admin or (
+            self.master_expires_at and self.master_expires_at > datetime.utcnow())))
 
     # Profile (Phase 1)
     avatar_url = db.Column(db.String(500), nullable=True)
