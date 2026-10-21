@@ -210,7 +210,8 @@ def account_guard():
     g.security_actor_id=current_user.id;g.security_actor_admin=current_user.is_admin
     if request.endpoint and (request.endpoint.startswith('security.') and request.endpoint!='security.events' or request.endpoint in {'static','logout','health','login','login_google','google_callback','auth_callback','auth_google_callback'}): return
     sensitive = request.method in {'POST','PUT','PATCH','DELETE'} and (
-        request.endpoint=='wallet_withdraw' or current_user.is_admin or request.endpoint=='organizers.settlement')
+        request.endpoint=='wallet_withdraw' or request.endpoint=='organizers.settlement' or (
+            current_user.is_admin and request.endpoint not in {'pro.appearance', 'market.equip'}))
     if sensitive and current_app.config['SECURITY_REQUIRE_STEP_UP']:
         if not fresh_primary():
             return deny_for_security('security.reauthenticate','reauthentication_required','Confirm your sign-in again before this sensitive action. No action was submitted.')

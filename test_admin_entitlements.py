@@ -48,3 +48,26 @@ def test_regular_user_cannot_request_admin_entitlements():
         assert not owner.master_active
         owner.is_admin=True; owner.suspended=True; db.session.commit()
         assert not owner.master_active
+
+def test_admin_cosmetics_save_with_stale_sign_in_but_sensitive_actions_stay_protected(monkeypatch):
+    import time
+    monkeypatch.setitem(app.config,'SECURITY_REQUIRE_STEP_UP',True)
+    with app.app_context():
+        owner=player('stale_admin_cosmetics'); owner.is_admin=True; db.session.commit()
+        viewer=client(owner)
+        with viewer.session_transaction() as session:
+            session['security_primary_uid']=owner.id
+            session['security_primary_at']=time.time()-3600
+        csrf=token(viewer.get('/pro'))
+        for theme in ('ocean','forest','arena'):
+            result=viewer.post('/pro/appearance',json={'frame':'classic','profile_theme':theme},headers={'X-CSRFToken':csrf})
+            assert result.status_code==200 and result.json['profile_theme']==theme
+        assert viewer.post('/shop/equip',data={'csrf_token':csrf,'item_key':'emerald-bundle'}).status_code==302
+        assert viewer.post('/pro/appearance',json={'frame':'classic','profile_theme':'ocean'}).status_code==400
+        response=viewer.post('/wallet/withdraw',json={'amount':300},headers={'X-CSRFToken':csrf})
+        assert response.status_code==403 and response.json['code']=='reauthentication_required'
+        response=viewer.post('/admin/unknown',json={},headers={'X-CSRFToken':csrf})
+        assert response.status_code==403 and response.json['code']=='reauthentication_required'
+        owner.is_admin=False; db.session.commit()
+        assert viewer.post('/pro/appearance',json={'frame':'classic','profile_theme':'ocean'},headers={'X-CSRFToken':csrf}).status_code==403
+        assert viewer.post('/shop/equip',data={'csrf_token':csrf,'item_key':'emerald-bundle'}).status_code==403

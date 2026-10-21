@@ -25,7 +25,10 @@
   async function post(url, payload) {
     const response = await fetch(url, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json','X-CSRFToken':csrf(),Accept:'application/json'}, body:JSON.stringify(payload)});
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || (response.status === 403 ? 'An active Master membership is required.' : 'Could not save. Please try again.'));
+    if (response.redirected || response.status === 401) throw new Error('Please sign in again before saving.');
+    if (!response.ok) throw new Error(
+      (typeof data.error === 'string' ? data.error : data.error?.message) || data.message ||
+      (response.status === 403 ? 'Access denied. Refresh the page and check your sign-in.' : 'Could not save. Please try again.'));
     return data;
   }
   let checkoutBusy = false;
