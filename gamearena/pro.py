@@ -42,12 +42,16 @@ def membership():
 def appearance():
     require_master()
     payload = request.get_json(silent=True) or {}
-    if not isinstance(payload, dict) or payload.get('frame') not in FRAMES or payload.get('profile_theme') not in THEMES:
+    if not isinstance(payload, dict) or payload.get('frame') not in FRAMES | {'keep'} or payload.get('profile_theme') not in THEMES:
         return jsonify(error='Choose a valid frame and profile theme.'), 400
-    current_user.master_frame = payload['frame']
+    if payload['frame'] != 'keep':
+        current_user.master_frame = payload['frame']
+        current_user.cosmetic_frame = None
     current_user.master_profile_theme = payload['profile_theme']
     db.session.commit()
-    return jsonify(frame=current_user.master_frame, profile_theme=current_user.master_profile_theme, message='Profile appearance saved.')
+    return jsonify(frame=payload['frame'], profile_theme=current_user.master_profile_theme,
+        effective_frame=current_user.profile_frame, shop_frame=bool(current_user.cosmetic_frame),
+        message='Profile appearance saved.')
 
 @pro.route('/pro/saved/<int:tournament_id>', methods=['POST'])
 @login_required

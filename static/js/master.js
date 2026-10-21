@@ -67,7 +67,12 @@
     const surface = appearance.closest('[data-profile-theme]');
     const avatar = surface.querySelector('[data-master-avatar]');
     let saved = {frame:appearance.elements.frame.value,profile_theme:appearance.elements.profile_theme.value};
-    function preview() { avatar.dataset.frame = appearance.elements.frame.value; surface.dataset.profileTheme = appearance.elements.profile_theme.value; }
+    function preview() {
+      const keep = appearance.elements.frame.value === 'keep';
+      avatar.dataset.frame = keep ? appearance.dataset.equippedFrame : appearance.elements.frame.value;
+      avatar.classList.toggle('ga-shop-frame', keep && appearance.dataset.equippedShop === 'true');
+      surface.dataset.profileTheme = appearance.elements.profile_theme.value;
+    }
     async function save() {
       queued = true;
       if (pending) return;
@@ -77,7 +82,13 @@
         queued = false;
         const payload = {frame:appearance.elements.frame.value, profile_theme:appearance.elements.profile_theme.value};
         preview(); feedback.textContent = 'Saving…';
-        try { const data = await post(appearance.getAttribute('action'),payload); saved = payload; feedback.textContent = data.message; }
+        try {
+          const data = await post(appearance.getAttribute('action'),payload);
+          appearance.dataset.equippedFrame = data.effective_frame;
+          appearance.dataset.equippedShop = String(data.shop_frame);
+          saved = payload; feedback.textContent = data.message;
+          if (!queued) preview();
+        }
         catch (error) { if (!queued) {appearance.elements.frame.value = saved.frame; appearance.elements.profile_theme.value = saved.profile_theme; preview();} feedback.textContent = error.message; }
       }
       pending = false; submit.disabled = false;

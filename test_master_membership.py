@@ -106,3 +106,37 @@ def test_pro_catalogue_and_unconfigured_checkout(monkeypatch):
         home = viewer.get('/')
         assert 'data-pro-welcome' in home.text
         assert 'data-pro-welcome' not in viewer.get('/profile').text
+
+def test_master_and_shop_appearance_are_consistent_and_independent():
+    from gamearena.models import CosmeticOwnership
+    with app.app_context():
+        owner=player('combined_appearance'); activate(owner)
+        owner.cosmetic_frame='neon-circuit'; owner.cosmetic_card='midnight-card'; owner.cosmetic_nameplate='solar-nameplate'
+        for key in ('neon-circuit','midnight-card','solar-nameplate'):
+            db.session.add(CosmeticOwnership(user_id=owner.id,item_key=key))
+        db.session.commit(); viewer=client(owner); h=headers(viewer)
+        # Theme-only changes preserve Shop equipment, while the editor shows that equipment.
+        response=viewer.post('/pro/appearance',json={'frame':'keep','profile_theme':'forest'},headers=h)
+        assert response.status_code==200
+        assert response.json['effective_frame']=='neon-circuit' and response.json['shop_frame']
+        for url in ('/pro','/profile',f'/players/{owner.id}'):
+            page=viewer.get(url)
+            assert page.status_code==200
+            assert 'data-frame="neon-circuit"' in page.text and 'ga-shop-frame' in page.text
+            assert 'data-profile-theme="forest"' in page.text
+            assert 'data-arena-card="midnight-card"' in page.text
+            assert 'data-arena-nameplate="solar-nameplate"' in page.text
+        # Explicitly selecting Classic makes it the visible frame everywhere.
+        response=viewer.post('/pro/appearance',json={'frame':'classic','profile_theme':'forest'},headers=h)
+        assert response.status_code==200 and response.json['effective_frame']=='classic' and not response.json['shop_frame']
+        db.session.refresh(owner)
+        assert owner.cosmetic_frame is None and owner.profile_frame=='classic'
+        assert owner.cosmetic_card=='midnight-card' and owner.cosmetic_nameplate=='solar-nameplate'
+        assert CosmeticOwnership.query.filter_by(user_id=owner.id).count()==3
+        for url in ('/pro','/profile',f'/players/{owner.id}'):
+            assert 'data-frame="classic"' in viewer.get(url).text
+        # Re-equipping a Shop frame replaces only the frame, preserving Forest and other slots.
+        assert viewer.post('/shop/equip',data={'csrf_token':token(viewer.get('/shop')),'item_key':'neon-circuit'}).status_code==302
+        db.session.refresh(owner)
+        assert owner.profile_frame=='neon-circuit' and owner.master_profile_theme=='forest'
+        assert owner.cosmetic_card=='midnight-card' and owner.cosmetic_nameplate=='solar-nameplate'

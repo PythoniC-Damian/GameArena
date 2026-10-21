@@ -28,3 +28,14 @@
 .ga-cosmetic-name[data-arena-nameplate=emerald-nameplate]{color:#73edc0}
 .ga-cosmetic-name[data-arena-nameplate=solar-nameplate]{color:#ffc18a}
 .ga-cosmetic-name[data-arena-nameplate=neon-nameplate]{color:#c4a2ff}
+
+/* One rounded-square avatar shape in the editor, profiles and match cards. */
+.ga-avatar.ga-master-frame,.ga-avatar.ga-shop-frame{border-radius:20%!important;overflow:hidden}
+.ga-avatar img{border-radius:inherit}
+/* A player card layers over the profile theme without replacing its base tint. */
+.ga-cosmetic-card[data-arena-card=emerald-card]{--arena-card-wash:radial-gradient(ellipse at top right,#20cea22b,transparent 70%)}
+.ga-cosmetic-card[data-arena-card=midnight-card]{--arena-card-wash:radial-gradient(ellipse at top right,#8a58dc35,transparent 70%)}
+.ga-cosmetic-card[data-arena-card=arctic-card]{--arena-card-wash:radial-gradient(ellipse at top right,#40a9dd35,transparent 70%)}
+.ga-cosmetic-card[data-profile-theme=ocean]{--arena-profile-wash:linear-gradient(135deg,#238ada18,transparent 70%)}
+.ga-cosmetic-card[data-profile-theme=forest]{--arena-profile-wash:linear-gradient(135deg,#10b98120,transparent 70%)}
+.ga-master-surface.ga-cosmetic-card[data-arena-card]:not([data-arena-card=""]){background-image:var(--arena-card-wash),repeating-linear-gradient(125deg,transparent 0 28px,#ffffff08 29px 30px),var(--arena-profile-wash,linear-gradient(transparent,transparent))!important}
