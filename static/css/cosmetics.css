@@ -18,3 +18,13 @@
 .shop-art .mini-avatar{max-width:90%;overflow-wrap:anywhere}
 #shop-preview{scroll-margin-top:100px}
 @media(prefers-reduced-motion:reduce){.ga-cosmetic-name{text-shadow:none!important}}
+
+/* Keep catalogue swatches, try-ons and equipped items in their chosen colours. */
+.shop-art[data-frame=arena-origin]{--item-color:#17d3a0;--item-glow:#17d3a022}
+.shop-art[data-frame=neon-circuit]{--item-color:#38dcff;--item-glow:#8b5cf644}
+.shop-art[data-frame=solar-crown]{--item-color:#ffd064;--item-glow:#b97e2633}
+.shop-art[data-frame=ember-core]{--item-color:#fa8050;--item-glow:#e13b4c33}
+.shop-art[data-frame=vanguard-frame]{--item-color:#73edc0;--item-glow:#20cea222}
+.ga-cosmetic-name[data-arena-nameplate=emerald-nameplate]{color:#73edc0}
+.ga-cosmetic-name[data-arena-nameplate=solar-nameplate]{color:#ffc18a}
+.ga-cosmetic-name[data-arena-nameplate=neon-nameplate]{color:#c4a2ff}

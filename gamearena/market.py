@@ -10,17 +10,17 @@ from gamearena.gp import gp_to_naira
 
 market = Blueprint('market', __name__)
 CATALOG = {
-    'arena-origin': dict(name='Arena Origin', description='The original emerald GameArena frame.', price=0, slot='frame', theme='emerald'),
-    'neon-circuit': dict(name='Neon Circuit', description='Electric cyan with a violet outer glow.', price=200, slot='frame', theme='neon'),
-    'solar-crown': dict(name='Solar Crown', description='A warm gold finish for your player profile.', price=400, slot='frame', theme='solar'),
-    'ember-core': dict(name='Ember Core', description='An orange and crimson arena signature.', price=600, slot='frame', theme='solar'),
+    'arena-origin': dict(name='Arena Origin', description='The original emerald GameArena frame.', price=0, slot='frame', color='#17d3a0', glow='#17d3a022', theme='emerald'),
+    'neon-circuit': dict(name='Neon Circuit', description='Electric cyan with a violet outer glow.', price=200, slot='frame', color='#38dcff', glow='#8b5cf644', theme='neon'),
+    'solar-crown': dict(name='Solar Crown', description='A warm gold finish for your player profile.', price=400, slot='frame', color='#ffd064', glow='#b97e2633', theme='solar'),
+    'ember-core': dict(name='Ember Core', description='An orange and crimson arena signature.', price=600, slot='frame', color='#fa8050', glow='#e13b4c33', theme='solar'),
     'emerald-card': dict(name='Emerald Vanguard', description='The signature emerald player card.', price=450, slot='card', theme='emerald'),
     'midnight-card': dict(name='Midnight Circuit', description='A violet circuit backdrop for your player card.', price=450, slot='card', theme='neon'),
     'arctic-card': dict(name='Arctic Signal', description='A cool blue backdrop for your player card.', price=350, slot='card', theme='arctic'),
     'solar-nameplate': dict(name='Solar Flare', description='A warm highlight for your name.', price=250, slot='nameplate', theme='solar'),
     'emerald-nameplate': dict(name='Emerald Pulse', description='The signature emerald nameplate.', price=250, slot='nameplate', theme='emerald'),
     'neon-nameplate': dict(name='Neon Afterhours', description='A violet highlight for your name.', price=250, slot='nameplate', theme='neon'),
-    'vanguard-frame': dict(name='Vanguard Crest', description='An angular emerald avatar frame.', price=350, slot='frame', theme='emerald'),
+    'vanguard-frame': dict(name='Vanguard Crest', description='An angular emerald avatar frame.', price=350, slot='frame', color='#73edc0', glow='#20cea222', theme='emerald'),
     'emerald-bundle': dict(name='Emerald Vanguard', description='Player card, Vanguard Crest frame and Emerald Pulse nameplate.', price=900, slot='bundle', theme='emerald', components=('emerald-card','vanguard-frame','emerald-nameplate')),
     'neon-bundle': dict(name='Neon Afterhours', description='Midnight Circuit card, Neon Circuit frame and Neon Afterhours nameplate.', price=850, slot='bundle', theme='neon', components=('midnight-card','neon-circuit','neon-nameplate')),
 }

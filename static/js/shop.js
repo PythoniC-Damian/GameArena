@@ -13,10 +13,14 @@
   const all = selector => root.querySelectorAll(selector);
   const form = find('#shop-action');
   let selected = data.selected;
+  const preview = { ...data.equipped };
   let filter = 'all';
   function paint(element, key, background) {
-    const theme = data.catalog[key]?.theme;
-    const [color, glow] = colors[theme] || ['#a9bccf', 'transparent'];
+    const item = data.catalog[key];
+    const theme = item?.theme;
+    const [themeColor, themeGlow] = colors[theme] || ['#a9bccf', 'transparent'];
+    const color = item?.color || themeColor;
+    const glow = item?.glow || themeGlow;
     element.style.setProperty('--selected', color);
     element.style.setProperty('--glow', glow);
     if (background) element.style.background = theme
@@ -25,7 +29,6 @@
   }
   function renderSelection() {
     const item = data.catalog[selected];
-    const preview = { ...data.equipped };
     (item.components || [selected]).forEach(key => { preview[data.catalog[key].slot] = key; });
     paint(find('.player-cover'), preview.card, true);
     paint(find('.player-avatar'), preview.frame, false);
