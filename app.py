@@ -215,7 +215,7 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 # Pool options are validated in gamearena.database; NullPool remains default.
 
 # Paystack Configuration
-PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY')
+PAYSTACK_SECRET_KEY = (os.environ.get('PAYSTACK_SECRET_KEY') or '').strip()
 PAYSTACK_PUBLIC_KEY = os.environ.get('PAYSTACK_PUBLIC_KEY')
 PAYSTACK_BASE_URL = 'https://api.paystack.co'
 PAYSTACK_CURRENCY = 'NGN'
@@ -4125,6 +4125,10 @@ def wallet_initialize_deposit():
         return jsonify({'status': 'error', 'message': 'Please enter a valid deposit amount.'}), 400
 
     amount = int(amount)
+    if not PAYSTACK_SECRET_KEY:
+        app.logger.warning('Checkout unavailable reason=missing_secret_key')
+        return jsonify({'status':'error','code':'payment_configuration_missing',
+            'message':'Payments are not configured for GameArena. Please contact support.'}),503
 
     import uuid
     transaction_ref = str(uuid.uuid4())
@@ -4151,7 +4155,8 @@ def wallet_initialize_deposit():
         response = requests.post(f'{PAYSTACK_BASE_URL}/transaction/initialize', json=payload, headers=headers, timeout=(5, 15))
         response_data = response.json()
 
-        if response_data['status']:
+        checkout_url = validated_checkout_url(response_data, response.status_code)
+        if checkout_url:
             # Create pending wallet transaction
             wt = WalletTransaction(
                 user_id=current_user.id,
@@ -4165,11 +4170,19 @@ def wallet_initialize_deposit():
 
             return jsonify({
                 'status': 'success',
-                'authorization_url': response_data['data']['authorization_url'],
+                'authorization_url': checkout_url,
                 'reference': transaction_ref
             })
         else:
-            return jsonify({'status': 'error', 'message': 'Payment initialization failed.'})
+            return jsonify({'status':'error','code':'payment_provider_rejected',
+                'message':checkout_failure_message(response.status_code)}),502
+    except requests.Timeout:
+        db.session.rollback()
+        return jsonify({'status':'error','message':'Checkout timed out. Please try again shortly.'}),504
+    except ValueError:
+        db.session.rollback()
+        app.logger.warning('Checkout response rejected reason=invalid_json')
+        return jsonify({'status':'error','message':'The payment provider returned an unreadable response. Please try again shortly.'}),502
     except Exception:
         db.session.rollback()
         app.logger.exception('Wallet deposit initialization failed')
