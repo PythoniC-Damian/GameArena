@@ -215,3 +215,39 @@ def test_open_event_join_restored_without_launch_checklist():
         assert UserTournament.query.filter_by(tournament_id=row.id,user_id=user.id,payment_status='free').one()
         row.status='ongoing';db.session.commit()
         assert not registration_ready(row)
+
+
+def test_early_checkin_shows_reopen_action_and_does_not_publish_terms(monkeypatch):
+    with app.app_context():
+        admin,users,row=fixture(monkeypatch)
+        browser=client(admin)
+        assert post(browser,f'/tournament/{row.id}/competition/open-check-in',{'deadline':(datetime.utcnow()+timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M')}).status_code==302
+        page=browser.get(f'/tournament/{row.id}/launch')
+        assert page.status_code==200 and 'Reopen registration' in page.text
+        assert 'name="eligibility"' not in page.text
+        response=post(browser,f'/tournament/{row.id}/launch',launch_terms())
+        assert response.status_code==409 and 'Launch checklist is unavailable' in response.text
+        assert 'GameArena' in response.text and row.launch_plan is None
+        assert post(browser,f'/tournament/{row.id}/competition/reopen-registration').status_code==302
+        db.session.refresh(row)
+        assert row.status=='open' and row.competition.phase=='registration'
+        assert 'name="eligibility"' in browser.get(f'/tournament/{row.id}/launch').text
+
+
+def test_managed_setup_preserves_status_capacity_and_renders_recovery_link(monkeypatch):
+    with app.app_context():
+        admin,users,row=fixture(monkeypatch)
+        browser=client(admin);path=f'/admin/tournaments/{row.id}/edit'
+        data=dict(entry_fee='0',prize_pool='0',max_participants='4',status='open',match_time=(datetime.utcnow()+timedelta(hours=3)).strftime('%Y-%m-%d %H:%M'))
+        assert post(browser,path,data).status_code==302
+        row.status='ongoing';row.competition.phase='check_in';db.session.commit()
+        response=post(browser,path,data)
+        assert response.status_code==409 and 'Open organiser round controls' in response.text
+        db.session.refresh(row);assert row.status=='ongoing' and row.max_participants==4
+        data.update(status='ongoing',max_participants='8')
+        assert post(browser,path,data).status_code==409
+        db.session.refresh(row);assert row.max_participants==4
+        row.status='live';row.competition.phase='live';db.session.commit()
+        data.update(status='live',max_participants='4')
+        assert post(browser,path,data).status_code==302
+        db.session.refresh(row);assert row.status=='live'

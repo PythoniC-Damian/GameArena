@@ -2915,6 +2915,8 @@ def edit_tournament(tournament_id):
 
     tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404() if request.method == 'POST' else Tournament.query.get_or_404(tournament_id)
     form = TournamentSetupForm(obj=tournament)
+    if tournament.competition:
+        form.status.choices = list(form.status.choices) + [('live', 'Live')]
     if request.method == 'POST' and form.validate_on_submit():
         if tournament.launch_plan and UserTournament.query.filter(
             UserTournament.tournament_id==tournament.id,
@@ -2929,7 +2931,9 @@ def edit_tournament(tournament_id):
         if config:
             expected={'registration':'open','check_in':'ongoing','live':'live','finished':'finished'}[config.phase]
             if form.status.data!=expected or int(form.max_participants.data)!=tournament.max_participants:
-                db.session.rollback();abort(409,description='Use competition controls to manage rounds. Published bracket capacity is fixed.')
+                db.session.rollback()
+                flash('Status is managed from the tournament round controls, and published capacity cannot change here. Your changes were not saved. Use the round controls link above; reopen registration there before changing the schedule.', 'error')
+                return render_template('admin_tournament_edit.html', tournament=tournament, form=form), 409
         tournament.entry_fee = int(form.entry_fee.data)
         tournament.prize = int(form.prize_pool.data)
         tournament.max_participants = int(form.max_participants.data)

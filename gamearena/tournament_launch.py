@@ -115,14 +115,29 @@ def review(tournament_id):
     if not can_manage(event): abort(403)
     plan = event.launch_plan
     errors = []
+    has_entries = UserTournament.query.filter(
+        UserTournament.tournament_id == event.id,
+        db.or_(UserTournament.payment_status.in_(('paid','free')),
+               db.and_(UserTournament.payment_status == 'pending', UserTournament.transaction_ref.isnot(None)))).first() is not None
+    blocked_reason = None
+    if has_entries:
+        blocked_reason = 'Entries or pending payments already exist. Launch terms cannot be replaced. Continue with the agreed rules, or arrange cancellation and refunds before creating a replacement event.'
+    elif event.status != 'open':
+        blocked_reason = 'Registration is not open. If check-in was opened before anyone joined, reopen registration from the organiser round controls first. Live or closed events cannot publish new launch terms.'
+    can_reopen = bool(not has_entries and event.competition and event.competition.phase == 'check_in'
+        and event.status == 'ongoing' and not TournamentMatch.query.filter_by(tournament_id=event.id).first())
+    def render_review(status=200):
+        finance = db.session.get(OrganizerFinance, event.id)
+        return render_template('tournament_launch.html', tournament=event, plan=plan, errors=errors,
+            blocked_reason=blocked_reason, can_reopen=can_reopen,
+            funded=finance and finance.state=='funded' and finance.prize_reserved >= event.prize,
+            entry_ceiling=event.entry_fee*event.max_participants,
+            funding_gap=max(0,event.prize-event.entry_fee*event.max_participants)), status
     if request.method == 'POST':
         limit()
-        if event.status != 'open' or UserTournament.query.filter(
-            UserTournament.tournament_id == event.id,
-            UserTournament.payment_status.in_(('paid','free'))).first() or UserTournament.query.filter(
-            UserTournament.tournament_id == event.id, UserTournament.payment_status == 'pending',
-            UserTournament.transaction_ref.isnot(None)).first():
-            abort(409, description='Review launch terms before entries or pending payments exist. Use a new event to change accepted terms.')
+        if blocked_reason:
+            db.session.rollback()
+            return render_review(409)
         try:
             deadline = datetime.strptime(request.form.get('registration_closes_at',''), '%Y-%m-%dT%H:%M')
         except ValueError:
@@ -156,11 +171,7 @@ def review(tournament_id):
                 flash('Launch checklist complete. Registration is open until the published deadline.', 'success')
                 return redirect(url_for('tournament_details',tournament_id=event.id))
         db.session.rollback()
-    finance = db.session.get(OrganizerFinance, event.id)
-    return render_template('tournament_launch.html', tournament=event, plan=plan, errors=errors,
-        funded=finance and finance.state=='funded' and finance.prize_reserved >= event.prize,
-        entry_ceiling=event.entry_fee*event.max_participants,
-        funding_gap=max(0,event.prize-event.entry_fee*event.max_participants))
+    return render_review()
 
 
 @launch.route('/admin/tournament-funnel')

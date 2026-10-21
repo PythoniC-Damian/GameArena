@@ -9,6 +9,12 @@
 {% if current_user.is_admin %}<a class="ga-button ga-button-secondary" href="{{ url_for('edit_tournament',tournament_id=tournament.id) }}">{{ t('Edit schedule and prizes') }}</a>{% endif %}<a class="ga-button ga-button-secondary" href="{{ url_for('tournament_details',tournament_id=tournament.id) }}">{{ t('Review event and competition format') }}</a>
 {% for issue in preparation_issues(tournament) %}<p class="ga-muted">{{ issue }}</p>{% endfor %}</section>
 {% for error in errors %}<p role="alert">{{ error }}</p>{% endfor %}
+{% if blocked_reason %}
+<section class="ga-card ga-section"><h2 class="ga-section-title">{{ t('Launch checklist is unavailable') }}</h2><p role="alert">{{ t(blocked_reason) }}</p>
+{% if can_reopen %}<form method="POST" action="{{ url_for('competition.reopen_registration',tournament_id=tournament.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="ga-button">{{ t('Reopen registration') }}</button></form>{% endif %}
+<a class="ga-button ga-button-secondary" href="{{ url_for('tournament_details',tournament_id=tournament.id) }}#organiser-round-controls">{{ t('Open tournament controls') }}</a>
+</section>
+{% else %}
 <form method="POST" class="ga-card ga-studio-form ga-section"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <label>{{ t('Registration closes (UTC)') }}<input type="datetime-local" name="registration_closes_at" required value="{{ request.form.get('registration_closes_at', plan.registration_closes_at.strftime('%Y-%m-%dT%H:%M') if plan else '') }}"></label>
 <label>{{ t('Devices, game version, region and eligibility') }}<textarea name="eligibility" rows="3" minlength="10" maxlength="1000" required>{{ request.form.get('eligibility',plan.eligibility if plan else '') }}</textarea></label>
@@ -19,4 +25,5 @@
 <p class="ga-muted">{{ t('These terms are public. Do not include bank details, private room codes or payment secrets.') }}</p>
 <label class="ga-agreement-label"><input type="checkbox" name="launch_ack" value="yes" required><span>{{ t('I confirm the schedule, rules and prizes are accurate and commit to the published prize and refund terms.') }}</span></label>
 <button class="ga-button">{{ t('Confirm launch terms') }}</button><p class="ga-muted">{{ t('Terms cannot be replaced after entries or pending payments exist. Editing event amounts, schedule or competition rules requires another launch review.') }}</p></form>
+{% endif %}
 {% endblock %}
