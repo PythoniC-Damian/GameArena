@@ -1,0 +1,20 @@
+/* Purchased styling never changes competition state or result indicators. */
+[data-arena-theme=emerald]{--item-color:#73edc0;--item-glow:#25d79a55}
+[data-arena-theme=neon]{--item-color:#c4a2ff;--item-glow:#7d4bd577}
+[data-arena-theme=solar]{--item-color:#ffc18a;--item-glow:#f5893b55}
+[data-arena-theme=arctic]{--item-color:#91d9ff;--item-glow:#2586c366}
+.ga-cosmetic-card[data-arena-card=emerald-card],.ga-mini-card[data-arena-card=emerald-card]{background-image:repeating-linear-gradient(125deg,transparent 0 28px,#20cea20c 29px 30px),radial-gradient(ellipse at top right,#20cea22b,transparent 70%)}
+.ga-cosmetic-card[data-arena-card=midnight-card],.ga-mini-card[data-arena-card=midnight-card]{background-image:repeating-linear-gradient(125deg,transparent 0 28px,#b088ff0d 29px 30px),radial-gradient(ellipse at top right,#8a58dc35,transparent 70%)}
+.ga-cosmetic-card[data-arena-card=arctic-card],.ga-mini-card[data-arena-card=arctic-card]{background-image:repeating-linear-gradient(125deg,transparent 0 28px,#40a9dd0c 29px 30px),radial-gradient(ellipse at top right,#40a9dd35,transparent 70%)}
+.ga-cosmetic-name{display:inline-block;max-width:100%;overflow-wrap:anywhere}
+.ga-cosmetic-name[data-arena-nameplate=emerald-nameplate]{background:linear-gradient(90deg,transparent,#20cea23b);text-shadow:0 0 12px #20cea233}
+.ga-cosmetic-name[data-arena-nameplate=solar-nameplate]{background:linear-gradient(90deg,transparent,#f09a463b);text-shadow:0 0 12px #f09a4633}
+.ga-cosmetic-name[data-arena-nameplate=neon-nameplate]{background:linear-gradient(90deg,transparent,#a888ff3b);text-shadow:0 0 12px #a888ff33}
+.ga-shop-frame[data-frame=vanguard-frame]{border-color:#73edc0!important;border-radius:20%!important;box-shadow:0 0 0 5px #20cea222!important}
+.ga-mini-card{padding:14px;border-radius:14px;min-width:0;background-color:var(--ga-bg);overflow-wrap:anywhere}
+.ga-mini-card .ga-avatar{width:44px;height:44px;border-radius:12px;font-size:18px;flex-shrink:0}
+.ga-mini-identity{display:flex;align-items:center;gap:12px;min-width:0}
+.ga-mini-identity a{overflow-wrap:anywhere}
+.shop-art .mini-avatar{max-width:90%;overflow-wrap:anywhere}
+#shop-preview{scroll-margin-top:100px}
+@media(prefers-reduced-motion:reduce){.ga-cosmetic-name{text-shadow:none!important}}

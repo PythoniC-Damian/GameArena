@@ -38,6 +38,8 @@ class User(db.Model, UserMixin):
     wallet_winnings_balance = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     wallet_bonus_balance = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     cosmetic_frame = db.Column(db.String(40), nullable=True)
+    cosmetic_card = db.Column(db.String(40), nullable=True)
+    cosmetic_nameplate = db.Column(db.String(40), nullable=True)
 
     @property
     def purchased_balance(self):
