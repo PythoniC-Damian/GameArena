@@ -60,7 +60,13 @@ def preparation_issues(event, plan=None):
 
 def registration_ready(event):
     plan = event.launch_plan
-    return bool(event.status == 'open' and plan and not preparation_issues(event, plan)
+    if event.status != 'open':
+        return False
+    # The launch checklist is optional for existing open events. Published terms
+    # still apply once an organiser has explicitly confirmed a launch plan.
+    if plan is None:
+        return True
+    return bool(not preparation_issues(event, plan)
         and plan.snapshot == signature(event, plan)
         and datetime.utcnow() < plan.registration_closes_at
         and datetime.utcnow() < event.match_time)

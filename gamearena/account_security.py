@@ -202,7 +202,7 @@ class OriginGate:
 def socket_identity_allowed():
     if not current_user.is_authenticated or current_user.suspended: return False
     row=db.session.get(AccountSecurity,current_user.id)
-    if row and row.enabled_at or current_user.is_admin and current_app.config['SECURITY_ENFORCE_ADMIN_MFA']:
+    if current_user.is_admin and (row and row.enabled_at or current_app.config['SECURITY_ENFORCE_ADMIN_MFA']):
         return mfa_verified(row)
     return True
 
@@ -215,12 +215,12 @@ def account_guard():
     if current_user.is_admin and current_app.config['SECURITY_ENFORCE_ADMIN_MFA']:
         if not row or not row.enabled_at:
             return deny_for_security('security.enroll','mfa_enrollment_required','Set up authenticator protection before using your administrator account.')
-    if row and row.enabled_at and not mfa_verified(row):
+    if current_user.is_admin and row and row.enabled_at and not mfa_verified(row):
         return deny_for_security('security.challenge','mfa_required','Verify your authenticator or a recovery code to continue.')
     sensitive = request.method in {'POST','PUT','PATCH','DELETE'} and (
         request.endpoint=='wallet_withdraw' or current_user.is_admin or request.endpoint=='organizers.settlement')
     if sensitive and current_app.config['SECURITY_REQUIRE_STEP_UP']:
-        if not fresh_primary() or row and row.enabled_at and not mfa_verified(row,FRESH_SECONDS):
+        if not fresh_primary() or current_user.is_admin and row and row.enabled_at and not mfa_verified(row,FRESH_SECONDS):
             return deny_for_security('security.reauthenticate','reauthentication_required','Confirm your sign-in again before this sensitive action. No action was submitted.')
 
 
@@ -258,12 +258,13 @@ def audit_response(response):
 @login_required
 def overview():
     row = db.session.get(AccountSecurity,current_user.id)
-    return render_template('account_security.html',row=row,mode='overview')
+    return render_template('account_security.html',row=row if current_user.is_admin else None,mode='overview')
 
 
 @security.route('/security/enroll',methods=['GET','POST'])
 @login_required
 def enroll():
+    if not current_user.is_admin: abort(403)
     if not fresh_primary(): return redirect(url_for('.reauthenticate',next=url_for('.enroll')))
     row = locked_security(create=True)
     if row.enabled_at: return redirect(url_for('.overview'))
@@ -297,6 +298,7 @@ def enroll():
 @security.route('/security/challenge',methods=['GET','POST'])
 @login_required
 def challenge():
+    if not current_user.is_admin: abort(403)
     row = db.session.get(AccountSecurity,current_user.id)
     if not row or not row.enabled_at: return redirect(url_for('.enroll'))
     if request.method=='POST':
@@ -331,7 +333,7 @@ def reauthenticate():
                 valid = current_user.check_password(password)
         if valid:
             row = locked_security()
-            if row and row.enabled_at and not consume_factor(row,request.form.get('code','')): valid=False
+            if current_user.is_admin and row and row.enabled_at and not consume_factor(row,request.form.get('code','')): valid=False
         if valid:
             db.session.commit()
             session['security_primary_at']=time.time();session['security_primary_uid']=current_user.id
@@ -340,7 +342,7 @@ def reauthenticate():
             return redirect(safe_next())
         db.session.rollback();note('auth.reauthentication_failed');metric('authentication_failures',5)
         flash('Sign-in confirmation failed. Check your password and authenticator code.','error')
-    return render_template('account_security.html',row=row,mode='reauthenticate')
+    return render_template('account_security.html',row=row if current_user.is_admin else None,mode='reauthenticate')
 
 
 @security.route('/security/sign-in-again',methods=['POST'])
@@ -353,6 +355,7 @@ def sign_in_again():
 @security.route('/security/recovery-codes',methods=['POST'])
 @login_required
 def recovery_codes():
+    if not current_user.is_admin: abort(403)
     row=db.session.get(AccountSecurity,current_user.id)
     if not fresh_primary() or not mfa_verified(row,FRESH_SECONDS):
         return redirect(url_for('.reauthenticate',next=url_for('.overview')))

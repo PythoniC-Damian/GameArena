@@ -51,6 +51,7 @@ def test_unready_events_cannot_charge_or_accept_free_entries(monkeypatch):
     with app.app_context():
         user=player('not_ready_player');browser=client(user)
         row=event(user,entry_fee=500,prize=1000,match_time=None)
+        db.session.add(TournamentLaunchPlan(tournament_id=row.id, registration_closes_at=datetime.utcnow()+timedelta(hours=1), eligibility='Published eligibility', rules='Published competition rules', cancellation_policy='Published refund terms', funding_note='Owner funds prizes', reviewed_by=user.id, snapshot='outdated'))
         user.wallet_balance=1000;db.session.commit()
         monkeypatch.setattr(application.requests,'post',lambda *a,**k:(_ for _ in ()).throw(AssertionError('provider contacted')))
         assert 'In preparation' in browser.get('/tournaments').text
@@ -91,7 +92,7 @@ def test_cod_launch_requires_configured_competition_format():
         row=event(admin,game='COD Mobile')
         response=post(client(admin),f'/tournament/{row.id}/launch',launch_terms())
         assert response.status_code==200 and 'Publish the 1v1 competition format' in response.text
-        assert TournamentLaunchPlan.query.count()==0 and not registration_ready(row)
+        assert TournamentLaunchPlan.query.count()==0 and registration_ready(row)
 
 
 def test_ready_free_pilot_join_and_deadline_enforced(monkeypatch):
@@ -201,3 +202,16 @@ def test_pilot_prize_settlement_must_match_published_winner(monkeypatch):
         db.session.refresh(match.player_one)
         assert match.player_one.wallet_balance==1000
         assert TournamentStat.query.filter_by(user_id=match.player_one_user_id,tournament_id=row.id).one().prize_status=='paid'
+
+
+def test_open_event_join_restored_without_launch_checklist():
+    with app.app_context():
+        user=player('legacy_join');row=event(user,match_time=None)
+        browser=client(user)
+        assert registration_ready(row)
+        assert 'Join tournament' in browser.get(f'/tournament/{row.id}').text
+        response=post(browser,f'/join-tournament/{row.id}')
+        assert response.status_code==302
+        assert UserTournament.query.filter_by(tournament_id=row.id,user_id=user.id,payment_status='free').one()
+        row.status='ongoing';db.session.commit()
+        assert not registration_ready(row)

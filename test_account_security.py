@@ -63,8 +63,8 @@ def test_admin_enrollment_encrypted_recovery_single_use_and_gate(monkeypatch):
 
 def test_totp_replay_and_wrong_account_recovery_rejected():
     with app.app_context():
-        user,browser=account('factor_owner');secret,codes=enroll(browser,user)
-        other,outsider=account('factor_other');enroll(outsider,other)
+        user,browser=account('factor_owner',True);secret,codes=enroll(browser,user)
+        other,outsider=account('factor_other',True);enroll(outsider,other)
         response=post(browser,'/security/challenge',{'code':security.totp(secret,db.session.get(AccountSecurity,user.id).last_counter)})
         assert 'already used' in response.text
         response=post(outsider,'/security/challenge',{'code':codes[0]})
@@ -85,15 +85,21 @@ def test_sensitive_withdrawal_needs_fresh_password_without_debit(monkeypatch):
         with browser.session_transaction() as session:assert session['security_primary_uid']==user.id
 
 
-def test_optional_player_mfa_protects_new_http_and_socket_sessions():
+def test_player_with_existing_factor_can_use_http_socket_and_password_confirmation():
     with app.app_context():
-        user,browser=account('player_mfa');_,codes=enroll(browser,user)
+        user,browser=account('player_mfa',True);enroll(browser,user)
+        user.is_admin=False;db.session.commit()
         with browser.session_transaction() as session:session.pop('security_mfa_at',None)
-        assert '/security/challenge' in browser.get('/wallet').location
-        connection=socketio.test_client(app,flask_test_client=browser)
-        assert not connection.is_connected()
-        assert post(browser,'/security/challenge',{'code':codes[0]}).status_code==302
         assert browser.get('/wallet').status_code==200
+        connection=socketio.test_client(app,flask_test_client=browser)
+        assert connection.is_connected()
+        connection.disconnect()
+        for path in ('/security/enroll','/security/challenge'):
+            assert browser.get(path).status_code==403
+        assert post(browser,'/security/recovery-codes').status_code==403
+        assert 'Set up authenticator' not in browser.get('/security').text
+        assert 'Authenticator or recovery code' not in browser.get('/security/reauthenticate').text
+        assert post(browser,'/security/reauthenticate',{'password':'Correct test-only password!'}).status_code==302
 
 
 def test_mfa_setup_requires_recent_primary_and_cannot_disable_admin_policy(monkeypatch):
@@ -184,7 +190,7 @@ def test_real_primary_login_stamps_session_and_discards_prior_factor():
 
 def test_recovery_replacement_revokes_other_factor_sessions():
     with app.app_context():
-        user,browser=account('replace_codes');secret,codes=enroll(browser,user)
+        user,browser=account('replace_codes',True);secret,codes=enroll(browser,user)
         row=db.session.get(AccountSecurity,user.id);version=row.version
         response=post(browser,'/security/recovery-codes')
         assert response.status_code==200
@@ -196,7 +202,7 @@ def test_recovery_replacement_revokes_other_factor_sessions():
 def test_missing_factor_key_fails_closed_without_disabling_protection(monkeypatch):
     from cryptography.fernet import Fernet
     with app.app_context():
-        user,browser=account('wrong_mfa_key');_,codes=enroll(browser,user)
+        user,browser=account('wrong_mfa_key',True);_,codes=enroll(browser,user)
         monkeypatch.setitem(app.config,'SECURITY_ENCRYPTION_KEY',Fernet.generate_key())
         response=post(browser,'/security/challenge',{'code':codes[0]})
         assert response.status_code==503
