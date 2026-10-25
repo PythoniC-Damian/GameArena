@@ -56,7 +56,7 @@
             </div>
             <button aria-label="Close withdrawal" data-wallet-action="close-withdraw" class="text-slate-400 hover:text-white text-2xl">&times;</button>
         </div>
-        <form data-url="{{ url_for('wallet_withdraw') }}" data-resolve-url="{{ url_for('wallet_resolve_account') }}" id="withdrawForm" class="mt-6 space-y-5">
+        <p class="ga-muted">Bank withdrawals require Paystack Transfers approval for GameArena. Provider restrictions can prevent a payout; a failed transfer must return reserved funds to your wallet.</p><form data-url="{{ url_for('wallet_withdraw') }}" data-resolve-url="{{ url_for('wallet_resolve_account') }}" id="withdrawForm" class="mt-6 space-y-5">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <div><label for="withdrawSource">{{ t('Withdraw from') }}</label><select id="withdrawSource"><option value="purchased">{{ t('Purchased GP') }}</option><option value="winnings">{{ t('Winnings GP') }}</option></select></div>
             <div>

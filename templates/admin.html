@@ -47,7 +47,7 @@
 
 <h2 id="admin-tools-title" class="ga-section-title">{{ t('Management tools') }}</h2>
 
-<div class="ga-admin-tools">
+<div class="ga-admin-tools"><section class="ga-card ga-admin-tool"><p class="ga-eyebrow">Platform</p><h3>Shop and site settings</h3><p class="ga-muted">Edit item names, descriptions and GP prices, support contact and announcements.</p><a class="ga-button ga-button-secondary" href="{{ url_for('platform_admin.dashboard') }}">Manage Shop and settings</a><a class="ga-button ga-button-secondary" href="{{ url_for('admin_reports') }}">Support and reports</a></section>
 
 <section class="ga-card ga-admin-tool"><p class="ga-eyebrow">01 · {{ t('Competitions') }}</p><h3>{{ t('Tournament operations') }}</h3><p class="ga-muted">{{ t('Review disputed results and manage each event from its tournament card below.') }}</p><a class="ga-button ga-button-secondary" href="{{ url_for('competition.reviews') }}">{{ t('Competition review queue') }}</a></section>
 
@@ -77,7 +77,7 @@
 
         {% set participants = active_participant_count(tournament) %}
 
-        <div class="ga-card-meta"><span>{{ tournament.game }}</span><span class="ga-status ga-status-{{ tournament.status }}">{{ t(tournament.status|capitalize) }}</span></div>
+        <div class="ga-card-meta"><span>{{ tournament.game }}</span><span class="ga-status ga-status-{{ tournament.status }}">{{ t(event_public_status(tournament)) }}</span></div>
 
         <h3 class="ga-card-title">{{ tournament.name }}</h3>
 

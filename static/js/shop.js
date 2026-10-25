@@ -79,5 +79,32 @@
     }
   });
   form.addEventListener('submit', () => { form.querySelector('button[type=submit]').disabled = true; });
+  const collections = root.querySelector('[data-shop-collections]');
+  if (collections) {
+    const slides = [...collections.querySelectorAll('[data-collection]')];
+    const dots = [...collections.querySelectorAll('[data-collection-index]')];
+    const track = collections.querySelector('[data-collection-track]');
+    const pause = collections.querySelector('[data-collection-pause]');
+    const reduced = matchMedia('(prefers-reduced-motion:reduce)').matches || document.body.dataset.reduceMotion === 'true';
+    let index = 0, playing = !reduced, timer;
+    function show(next) {
+      index = (next + slides.length) % slides.length;
+      track.style.transform = `translateX(-${index * 100}%)`;
+      slides.forEach((slide,i) => {slide.inert = i !== index;slide.setAttribute('aria-hidden',String(i !== index));});
+      dots.forEach((dot,i) => dot.setAttribute('aria-pressed',String(i === index)));
+    }
+    function stop() {clearInterval(timer);}
+    function start() {
+      stop(); pause.textContent = playing ? t('Pause slides') : t('Play slides');
+      if (playing && slides.length > 1 && !document.hidden && !collections.contains(document.activeElement)) timer = setInterval(() => show(index + 1),4000);
+    }
+    dots.forEach(dot => dot.addEventListener('click',() => {show(Number(dot.dataset.collectionIndex));start();}));
+    pause.addEventListener('click',() => {playing = !playing;start();});
+    collections.addEventListener('pointerenter',stop);collections.addEventListener('pointerleave',start);
+    collections.addEventListener('focusin',stop);collections.addEventListener('focusout',() => setTimeout(start,0));
+    document.addEventListener('visibilitychange',start);
+    window.addEventListener('pagehide',stop);
+    start();
+  }
   renderSelection();
 })();

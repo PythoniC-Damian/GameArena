@@ -27,10 +27,11 @@ CATALOG = {
 SLOTS = {'frame':'cosmetic_frame', 'card':'cosmetic_card', 'nameplate':'cosmetic_nameplate'}
 
 
-def purchase_price(key, owned):
-    item = CATALOG[key]
+def purchase_price(key, owned, catalog=None):
+    catalog = catalog or CATALOG
+    item = catalog[key]
     if item['slot'] == 'bundle':
-        return min(item['price'], sum(CATALOG[part]['price'] for part in item['components'] if part not in owned))
+        return min(item['price'], sum(catalog[part]['price'] for part in item['components'] if part not in owned))
     return item['price']
 
 
@@ -47,18 +48,20 @@ def accessible_items(owner):
 @market.route('/shop')
 @login_required
 def shop():
+    from gamearena.platform_admin import catalogue
+    catalog = catalogue()
     owned = accessible_items(current_user)
-    items = {key: dict(item, current_price=purchase_price(key, owned)) for key, item in CATALOG.items()}
+    items = {key: dict(item, current_price=purchase_price(key, owned, catalog)) for key, item in catalog.items()}
     selected = request.args.get('item') if request.args.get('item') in items else 'emerald-bundle'
     return render_template('shop.html', catalog=items, owned=owned, equipped=equipped_items(current_user),
         selected_key=selected, selected_item=items[selected],
-        shop_catalog=items, shop_equipped=equipped_items(current_user))
+        shop_catalog=items, shop_equipped=equipped_items(current_user),
+        collections={key:item for key,item in items.items() if item['slot']=='bundle'})
 
 @market.route('/shop/<item_key>/buy', methods=['POST'])
 @login_required
 def buy(item_key):
-    item = CATALOG.get(item_key)
-    if not item: abort(404)
+    if item_key not in CATALOG: abort(404)
     owner = User.query.filter_by(id=current_user.id).with_for_update().populate_existing().one()
     if owner.suspended:
         db.session.rollback()
@@ -67,13 +70,16 @@ def buy(item_key):
         db.session.rollback()
         flash('Your administrator account includes every shop item. Choose Equip to use it.', 'info')
         return redirect(url_for('.shop', item=item_key))
+    from gamearena.platform_admin import catalogue
+    catalog = catalogue(lock=True)
+    item = catalog[item_key]
     owned = CosmeticOwnership.query.filter_by(user_id=owner.id, item_key=item_key).first()
     if owned:
         db.session.rollback()
         flash('You already own this item.', 'info')
         return redirect(url_for('.shop'))
     owned_keys = {row.item_key for row in CosmeticOwnership.query.filter_by(user_id=owner.id).all()}
-    price = purchase_price(item_key, owned_keys)
+    price = purchase_price(item_key, owned_keys, catalog)
     if request.form.get('confirm') != 'yes' or request.form.get('price_gp') != str(price):
         db.session.rollback()
         abort(400, description='Confirm the current GP price before purchasing.')

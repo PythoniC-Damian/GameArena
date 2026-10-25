@@ -12,6 +12,6 @@
 {% include '_mobile_nav.html' %}
 {% include '_footer.html' %}
 {% include '_pwa_register.html' %}
-{% if request.path == '/' %}{% include '_pro_welcome.html' %}{% endif %}
+{% if request.path == '/' and platform_basics.get('pro_promotion', false) %}{% include '_pro_welcome.html' %}{% endif %}
 {% block scripts %}{% endblock %}
 </body></html>

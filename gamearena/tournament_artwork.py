@@ -8,11 +8,11 @@ from gamearena.models import TournamentArtwork
 MAX_FILE_BYTES = 1024 * 1024
 
 
-def read_artwork(uploads, existing_count=0):
+def read_artwork(uploads, existing_count=0, allow_partial=False):
     files = [item for item in uploads if item and item.filename]
-    if not files and existing_count == 3:
+    if not files and (existing_count == 3 or allow_partial):
         return None
-    if len(files) != 3:
+    if (allow_partial and not 1 <= len(files) <= 3) or (not allow_partial and len(files) != 3):
         raise ValueError('Upload exactly 3 tournament images, or keep the existing 3 when editing.')
     images = []
     for upload in files:
@@ -43,3 +43,16 @@ def replace_artwork(draft, images):
     db.session.flush()
     draft.artwork = [TournamentArtwork(id=uuid.uuid4().hex, position=i, image=image)
                      for i, image in enumerate(images, 1)]
+
+
+def replace_admin_artwork(event, images):
+    if images is None:
+        return
+    if any(image.draft_id is not None for image in event.artwork):
+        raise ValueError('Manage organiser draft images in Organiser Studio.')
+    for image in list(event.artwork):
+        db.session.delete(image)
+    db.session.flush()
+    for position, image in enumerate(images, 1):
+        db.session.add(TournamentArtwork(id=uuid.uuid4().hex, tournament_id=event.id,
+            position=position, image=image))

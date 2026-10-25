@@ -23,3 +23,14 @@
 .ga-arena-shop .feature-name,.ga-arena-shop .player-name{max-width:100%;overflow-wrap:anywhere}
 .ga-arena-shop .shop-art.banner .mini-avatar,.ga-arena-shop .shop-art.nameplate .mini-avatar{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 @media(max-width:440px){.ga-arena-shop .shop-feature{grid-template-columns:1fr}}
+
+.ga-arena-shop .shop-collections{overflow:hidden;margin-bottom:24px;border-radius:22px}
+.ga-arena-shop .shop-collection-track{display:flex;transition:transform .45s ease}
+.ga-arena-shop .shop-collection-slide{flex:0 0 100%;min-width:0;margin:0;box-sizing:border-box}
+.ga-arena-shop .shop-collection-slide .shop-feature-art{border-color:var(--item-color);color:var(--item-color)}
+.ga-arena-shop .shop-collection-controls{display:flex;justify-content:space-between;gap:12px;padding-top:10px}
+.ga-arena-shop .shop-collection-controls>div{display:flex;gap:8px}
+@media(prefers-reduced-motion:reduce){.ga-arena-shop .shop-collection-track{transition:none}}
+
+.ga-arena-shop .shop-collection-slide .feature-avatar,.ga-arena-shop .shop-collection-slide .feature-name{color:var(--item-color);border-color:var(--item-color)}
+.ga-arena-shop .shop-collection-slide[data-arena-theme=neon]{background:linear-gradient(120deg,#191b36,#282042)}

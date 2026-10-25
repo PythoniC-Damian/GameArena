@@ -91,7 +91,7 @@
     </section>
 
     {% include '_launch_information.html' %}
-    {% include '_competition_panel.html' %}
+    <section class="ga-card ga-section"><h2 class="ga-section-title">Event rules and payouts</h2><p><strong>Schedule:</strong> {{ tournament.match_time.strftime('%d %b %Y · %H:%M UTC') if tournament.match_time else 'To be decided' }}. This schedule is authoritative.</p><p><strong>Format:</strong> {{ '1v1 single elimination' if tournament.competition else tournament.event_format|replace('_',' ')|capitalize }}</p><p><strong>Payout:</strong> {{ 'Organiser bank transfer after the result is confirmed; no duplicate GP credit.' if tournament.payout_method=='organizer_bank' else 'GP wallet after funded staff settlement.' if tournament.payout_method=='gp_wallet' else 'To be confirmed before paid registration opens.' }}</p><p class="ga-prewrap"><strong>Eligibility:</strong> {{ tournament.eligibility or (tournament.launch_plan.eligibility if tournament.launch_plan else 'Not published yet.') }}</p>{% if not tournament.competition %}<p class="ga-prewrap"><strong>Rules:</strong> {{ tournament.rules or (tournament.launch_plan.rules if tournament.launch_plan else 'The organiser must publish game settings, roster requirements, scoring, ties and dispute rules before paid registration opens.') }}</p><p>For room events: entrants check in with their in-game ID, receive private room details, play inside the game, then submit scoreboard evidence. Rankings follow this event’s published scoring and staff review. GameArena does not run the game servers.</p>{% endif %}</section>{% include '_competition_panel.html' %}
     <!-- Match schedule / brackets -->
     {% if current_user.is_authenticated and current_user.is_admin and not current_user.suspended and not competition_config and not matches and tournament.status in ('live', 'ongoing') %}
     <form method="POST" action="{{ url_for('create_matches', tournament_id=tournament.id) }}" class="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
@@ -277,7 +277,7 @@
                 <h2 class="text-xl font-semibold text-white">{{ t('Tournament info') }}</h2>
                 <div class="mt-5 space-y-3 text-sm text-slate-300">
                     <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Entries') }}</span><span class="font-semibold text-white">{{ active_participant_count(tournament) }}/{{ tournament.max_participants }}</span></div>
-                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Match time') }}</span><span class="font-semibold text-white">{{ tournament.match_time.strftime('%b %d, %Y · %H:%M') if tournament.match_time else 'To be announced' }} UTC</span></div>
+                    <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Match time') }}</span><span class="font-semibold text-white">{{ tournament.match_time.strftime('%b %d, %Y · %H:%M UTC') if tournament.match_time else 'To be decided' }}</span></div>
                     <div class="flex justify-between rounded-[28px] bg-slate-950/80 p-4"><span>{{ t('Status') }}</span><span class="font-semibold text-emerald-300 capitalize">{{ t(event_public_status(tournament)) }}</span></div>
                 </div>
             </section>

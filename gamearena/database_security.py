@@ -12,7 +12,7 @@ BACKEND_TABLES = (
     'cosmetic_ownership', 'organizer_draft', 'organizer_profile', 'organizer_finance', 'tournament_artwork',
     'tournament_competition', 'tournament_check_in', 'match_lobby', 'match_evidence',
     'tournament_launch_plan', 'tournament_visit',
-    'account_security', 'security_audit_event',
+    'account_security', 'security_audit_event', 'platform_setting', 'support_reply',
 )
 
 

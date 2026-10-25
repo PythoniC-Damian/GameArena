@@ -55,7 +55,7 @@ def test_unready_events_cannot_charge_or_accept_free_entries(monkeypatch):
         db.session.add(TournamentLaunchPlan(tournament_id=row.id, registration_closes_at=datetime.utcnow()+timedelta(hours=1), eligibility='Published eligibility', rules='Published competition rules', cancellation_policy='Published refund terms', funding_note='Owner funds prizes', reviewed_by=user.id, snapshot='outdated'))
         user.wallet_balance=1000;db.session.commit()
         monkeypatch.setattr(application.requests,'post',lambda *a,**k:(_ for _ in ()).throw(AssertionError('provider contacted')))
-        assert 'In preparation' in browser.get('/tournaments').text
+        assert 'To be decided' in browser.get('/tournaments').text
         assert browser.get(f'/pay/{row.id}').status_code==302
         assert post(browser,f'/initialize-payment/{row.id}').status_code==409
         response=browser.post(f'/tournaments/{row.id}/pay-gp',json={'amount':500},headers={'X-CSRFToken':token(browser.get('/tournaments'))})
@@ -205,12 +205,14 @@ def test_pilot_prize_settlement_must_match_published_winner(monkeypatch):
         assert TournamentStat.query.filter_by(user_id=match.player_one_user_id,tournament_id=row.id).one().prize_status=='paid'
 
 
-def test_open_event_join_restored_without_launch_checklist():
+def test_undated_event_is_visible_but_only_a_scheduled_event_accepts_entries():
     with app.app_context():
         user=player('legacy_join');row=event(user,match_time=None)
         browser=client(user)
+        assert not registration_ready(row)
+        assert 'To be decided' in browser.get(f'/tournament/{row.id}').text
+        row.match_time=datetime.utcnow()+timedelta(days=1);db.session.commit()
         assert registration_ready(row)
-        assert 'Join tournament' in browser.get(f'/tournament/{row.id}').text
         response=post(browser,f'/join-tournament/{row.id}')
         assert response.status_code==302
         assert UserTournament.query.filter_by(tournament_id=row.id,user_id=user.id,payment_status='free').one()
@@ -283,7 +285,7 @@ def test_setup_reopens_empty_postponed_pilot(monkeypatch,old_status):
         admin,users,row=fixture(monkeypatch)
         row.status=old_status;row.competition.phase='finished';db.session.commit()
         planned=(datetime.utcnow()+timedelta(hours=2)).strftime('%Y-%m-%d %H:%M')
-        data=dict(entry_fee='200',prize_pool='1000',max_participants='4',status='open',match_time=planned,first_place='1000',second_place='0',third_place='0')
+        data=dict(entry_fee='200',prize_pool='1000',max_participants='4',status='open',match_time=planned,first_place='1000',second_place='0',third_place='0',payout_method='organizer_bank')
         assert post(client(admin),f'/admin/tournaments/{row.id}/edit',data).status_code==302
         db.session.refresh(row)
         assert row.status=='open' and row.competition.phase=='registration'

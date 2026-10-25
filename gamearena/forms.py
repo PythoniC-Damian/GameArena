@@ -1,6 +1,6 @@
 """Existing WTForms field and validation contracts."""
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, BooleanField, validators
+from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, BooleanField, TextAreaField, validators
 
 class LocalizedForm(FlaskForm):
     def __init__(self, *args, **kwargs):
@@ -75,6 +75,17 @@ class ResetPasswordForm(LocalizedForm):
 
 
 class TournamentForm(LocalizedForm):
+    name = StringField('Event name', [validators.Optional(), validators.Length(max=200)])
+    description = TextAreaField('Description', [validators.Optional(), validators.Length(max=2000)])
+    rules = TextAreaField('Game rules, scoring and disputes', [validators.Optional(), validators.Length(max=10000)])
+    no_show_policy = TextAreaField('No-shows, ties and disconnections', [validators.Optional(), validators.Length(max=1000)])
+    eligibility = TextAreaField('Devices, region and eligibility', [validators.Optional(), validators.Length(max=1000)])
+    event_format = SelectField('Format', choices=[('custom','Custom format'),('battle_royale','Battle royale rooms'),('single_elimination_1v1','1v1 single elimination')], default='custom')
+    payout_method = SelectField('Prize payout method', choices=[('unconfirmed','To be confirmed'),('organizer_bank','Organiser bank transfer'),('gp_wallet','GameArena GP wallet after staff settlement')], default='unconfirmed')
+    first_place = StringField('1st place (GP)', [validators.Optional(), validators.Length(max=150)])
+    second_place = StringField('2nd place (GP)', [validators.Optional(), validators.Length(max=150)])
+    third_place = StringField('3rd place (GP)', [validators.Optional(), validators.Length(max=150)])
+
     game = StringField('Game Name', [
         validators.DataRequired(),
         validators.Length(min=3, max=100)
@@ -98,7 +109,8 @@ class TournamentForm(LocalizedForm):
     submit = SubmitField('Create Tournament')
 
 
-class TournamentSetupForm(LocalizedForm):
+class TournamentSetupForm(TournamentForm):
+    game = StringField('Game', [validators.Optional(), validators.Length(max=100)])
     entry_fee = StringField('Entry Fee (GP)', [
         validators.DataRequired(),
         validators.Regexp(r'^\d+$', message="Entry fee must be a number")

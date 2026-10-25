@@ -31,7 +31,7 @@
             </div>
         </form>
         {% else %}<p class="mt-6"><a class="ga-button" href="{{ url_for('login',next=url_for('support')) }}">{{ t('Sign in to send an in-app message') }}</a></p>{% endif %}
-    </section>
+    </section><section class="ga-card ga-section"><h2 class="ga-section-title">Your tickets and account requests</h2>{% for ticket in tickets %}<a class="ga-record" href="{{ url_for('support_center.ticket',ticket_id=ticket.id) }}"><span>#{{ ticket.id }} · {{ ticket.reason[:100] }}</span><span class="ga-status">{{ 'Open' if ticket.status=='pending' else 'Resolved' }}</span></a>{% else %}<p class="ga-muted">Your submitted tickets will appear here.</p>{% endfor %}{% if ticket_pages %}<nav class="ga-card-actions">{% if ticket_pages.has_prev %}<a href="{{ url_for('support',page=ticket_pages.prev_num) }}">Previous tickets</a>{% endif %}{% if ticket_pages.has_next %}<a href="{{ url_for('support',page=ticket_pages.next_num) }}">More tickets</a>{% endif %}</nav>{% endif %}</section>
 </main>
 {% include '_mobile_nav.html' %}
 {% include '_footer.html' %}

@@ -60,11 +60,16 @@ def preparation_issues(event, plan=None):
 
 def registration_ready(event):
     plan = event.launch_plan
-    if event.status != 'open':
+    if event.status != 'open' or not event.match_time or event.match_time <= datetime.utcnow():
         return False
     # The launch checklist is optional for existing open events. Published terms
     # still apply once an organiser has explicitly confirmed a launch plan.
     if plan is None:
+        if event.entry_fee:
+            amounts = [prize_amount(getattr(event,key)) for key in ('first_place','second_place','third_place')]
+            rules = event.rules or (event.competition.game_rules if event.competition else '')
+            if not rules or None in amounts or sum(amounts) != event.prize or event.payout_method == 'unconfirmed':
+                return False
         return True
     return bool(not preparation_issues(event, plan)
         and plan.snapshot == signature(event, plan)
@@ -75,6 +80,10 @@ def registration_ready(event):
 def public_status(event):
     if event.status != 'open':
         return event.status.replace('_', ' ').capitalize()
+    if not event.match_time:
+        return 'To be decided'
+    if event.match_time <= datetime.utcnow():
+        return 'Registration closed'
     plan = event.launch_plan
     if plan and (datetime.utcnow() >= plan.registration_closes_at or
                  event.match_time and datetime.utcnow() >= event.match_time):
@@ -192,3 +201,13 @@ def funnel():
     matches = dict(db.session.query(TournamentMatch.tournament_id,db.func.count()).filter(
         TournamentMatch.tournament_id.in_(ids),TournamentMatch.status=='confirmed').group_by(TournamentMatch.tournament_id).all())
     return render_template('tournament_funnel.html', pagination=page,views=views,entries=entries,checkins=checkins,matches=matches)
+
+
+def validate_admin_terms(form):
+    if not 0 <= int(form.entry_fee.data) <= 10000000 or not 0 <= int(form.prize_pool.data) <= 10000000:
+        raise ValueError('Entry fee and prize pool must be between 0 and 10,000,000 GP.')
+    places = [form.first_place.data,form.second_place.data,form.third_place.data]
+    if any(str(value or '').strip() for value in places):
+        amounts = [prize_amount(value) for value in places]
+        if None in amounts or sum(amounts) != int(form.prize_pool.data):
+            raise ValueError('Enter whole GP amounts for all three places, totalling the prize pool. Use 0 for no award.')

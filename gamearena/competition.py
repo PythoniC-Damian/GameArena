@@ -336,6 +336,7 @@ def status(tournament_id):
 
 
 @competition.route('/tournaments/guide/1v1')
+@competition.route('/tournaments/guide')
 def guide():
     return render_template('competition_guide.html')
 

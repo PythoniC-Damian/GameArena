@@ -402,6 +402,10 @@ from gamearena.legal import legal
 app.register_blueprint(legal)
 from gamearena.master_billing import billing as master_billing, handle_event as handle_master_billing_event
 app.register_blueprint(master_billing)
+from gamearena.platform_admin import platform_admin
+app.register_blueprint(platform_admin)
+from gamearena.support_center import support_center
+app.register_blueprint(support_center)
 
 from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
 from gamearena.models import TournamentCompetition, TournamentCheckIn, MatchLobby, MatchEvidence
@@ -447,6 +451,8 @@ def create_and_emit_notification(user_id: int, message: str, category='system', 
     """Create one preference-aware notification and emit it to the user's room."""
     if not user_id or not message:
         return
+    from gamearena.platform_admin import clean_currency_text
+    message = clean_currency_text(message)
     category = category if category in {
         'tournament', 'match', 'wallet', 'chat', 'achievement', 'system', 'marketing',
     } else 'system'
@@ -1893,9 +1899,10 @@ def avatar_file(filename):
 @app.route('/notifications/preview')
 @login_required
 def notification_preview():
+    from gamearena.platform_admin import clean_currency_text
     records = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc(), Notification.id.desc()).limit(6).all()
     return jsonify({'unread':get_unread_notification_count(current_user.id), 'notifications':[
-        {'id':item.id, 'message':item.message, 'category':item.category, 'target_url':item.target_url,
+        {'id':item.id, 'message':clean_currency_text(item.message), 'category':item.category, 'target_url':item.target_url,
          'unread':item.read_at is None, 'created_at':item.created_at.isoformat() if item.created_at else None,
          'read_url':url_for('mark_notification_read', notification_id=item.id)} for item in records]})
 
@@ -2037,7 +2044,10 @@ def support():
             db.session.commit()
             flash('Your message was sent to the support team.', 'success')
             return redirect(url_for('support'))
-    return render_template('support.html', contact_email=os.environ.get('GAMEARENA_SUPPORT_EMAIL', 'jegzdami@gmail.com'))
+    from gamearena.platform_admin import setting
+    ticket_pages=UserReport.query.filter(UserReport.reporter_id==current_user.id,UserReport.content_type.in_(['support','account_closure','data_request'])).order_by(UserReport.id.desc()).paginate(page=max(1,request.args.get('page',1,type=int) or 1),per_page=20,error_out=False) if current_user.is_authenticated else None
+    tickets=ticket_pages.items if ticket_pages else []
+    return render_template('support.html', tickets=tickets, ticket_pages=ticket_pages, contact_email=setting('basics').get('support_email') or os.environ.get('GAMEARENA_SUPPORT_EMAIL','jegzdami@gmail.com'))
 
 
 @app.route('/admin/reports')
@@ -2736,11 +2746,19 @@ def dashboard():
 @app.route("/notifications")
 @login_required
 def notifications():
-    notifications = Notification.query.filter_by(user_id=current_user.id).order_by(
-        Notification.created_at.desc(), Notification.id.desc(),
-    ).limit(100).all()
+    category = request.args.get('category','')
+    allowed = {'tournament','match','wallet','chat','achievement','system','marketing'}
+    if category and category not in allowed: abort(400)
+    unread_only = request.args.get('unread') == '1'
+    query = Notification.query.filter_by(user_id=current_user.id)
+    if category: query = query.filter_by(category=category)
+    if unread_only: query = query.filter(Notification.read_at.is_(None))
+    page = query.order_by(Notification.created_at.desc(),Notification.id.desc()).paginate(
+        page=max(1,request.args.get('page',1,type=int) or 1), per_page=30,error_out=False)
     unread_count = get_unread_notification_count(current_user.id)
-    return render_template("notifications.html", notifications=notifications, unread_count=unread_count)
+    return render_template('notifications.html', notifications=page.items, unread_count=unread_count,
+        pagination=page, category=category, unread_only=unread_only)
+
 
 
 @app.route('/notifications/count')
@@ -2944,16 +2962,32 @@ def edit_tournament(tournament_id):
     if tournament.competition:
         form.status.choices = list(form.status.choices) + [('live', 'Live')]
     if request.method == 'POST' and form.validate_on_submit():
-        if tournament.launch_plan and UserTournament.query.filter(
+        has_accepted_entries = UserTournament.query.filter(
             UserTournament.tournament_id==tournament.id,
             or_(UserTournament.payment_status.in_(('paid','free')),
-                and_(UserTournament.payment_status=='pending',UserTournament.transaction_ref.isnot(None)))).first():
-            abort(409, description='Accepted event terms are fixed. Contact entrants and use the cancellation/refund process instead of replacing their terms.')
+                and_(UserTournament.payment_status=='pending',UserTournament.transaction_ref.isnot(None)))).first() is not None
+        existing_time = tournament.match_time.strftime('%Y-%m-%d %H:%M') if tournament.match_time else ''
+        terms_changed = (int(form.entry_fee.data)!=tournament.entry_fee or int(form.prize_pool.data)!=tournament.prize
+            or int(form.max_participants.data)!=tournament.max_participants or (form.match_time.data or '')!=existing_time
+            or form.status.data!=tournament.status or (form.name.data and form.name.data!=tournament.name)
+            or any((getattr(form,key).data or '')!=(getattr(tournament,key) or '') for key in ('first_place','second_place','third_place','payout_method','eligibility'))
+            or (form.rules.data and form.rules.data!=(tournament.competition.game_rules if tournament.competition else tournament.rules)))
+        if has_accepted_entries and terms_changed:
+            abort(409, description='Accepted entry or payment history is protected. Event terms cannot be replaced; contact entrants about cancellation and refunds.')
         from gamearena.models import OrganizerFinance
         finance=db.session.get(OrganizerFinance,tournament.id)
         if finance and (finance.state != 'funded' or int(form.entry_fee.data) != tournament.entry_fee or int(form.prize_pool.data) != tournament.prize or int(form.max_participants.data) != tournament.max_participants or form.status.data == 'cancelled' or (tournament.status == 'finished' and form.status.data != 'finished')):
             db.session.rollback(); abort(409, description='Funded event prices and capacity are fixed. Use Organiser Studio for cancellation and settlement.')
         config=db.session.get(TournamentCompetition,tournament.id)
+        if not config and form.event_format.data == 'single_elimination_1v1':
+            from gamearena.competition import supports_bracket
+            capacity = int(form.max_participants.data)
+            if not supports_bracket(tournament.game) or capacity < 2 or capacity > 128 or capacity & (capacity-1) or len(form.rules.data or '') < 20 or len(form.no_show_policy.data or '') < 20:
+                db.session.rollback(); flash('Choose supported 1v1 rules, a no-show policy, and 2/4/8/16/32/64/128 players.','error')
+                return render_template('admin_tournament_edit.html', tournament=tournament, form=form),400
+            config=TournamentCompetition(tournament_id=tournament.id,game_rules=form.rules.data,no_show_policy=form.no_show_policy.data)
+            tournament.competition=config
+            db.session.add(config)
         if config:
             has_matches = TournamentMatch.query.filter_by(tournament_id=tournament.id).first() is not None
             requested_capacity = int(form.max_participants.data)
@@ -2976,6 +3010,26 @@ def edit_tournament(tournament_id):
             if not has_matches and form.status.data == 'open':
                 config.phase = 'registration'
                 config.checkin_closes_at = None
+        from gamearena.tournament_artwork import read_artwork, replace_admin_artwork
+        try:
+            from gamearena.tournament_launch import validate_admin_terms
+            validate_admin_terms(form)
+            if not 2 <= int(form.max_participants.data) <= 10000: raise ValueError('Capacity must be between 2 and 10,000.')
+            images = read_artwork(request.files.getlist('images'), allow_partial=True)
+            if form.payout_method.data == 'gp_wallet' and not finance:
+                raise ValueError('Fund GP-wallet prizes through Organiser Studio first.')
+            replace_admin_artwork(tournament, images)
+        except ValueError as error:
+            db.session.rollback(); flash(str(error), 'error')
+            return render_template('admin_tournament_edit.html', tournament=tournament, form=form), 400
+        if form.name.data: tournament.name = form.name.data.strip()
+        tournament.description = form.description.data
+        tournament.rules = form.rules.data
+        tournament.eligibility = form.eligibility.data
+        tournament.event_format = 'single_elimination_1v1' if config else form.event_format.data
+        tournament.payout_method = form.payout_method.data
+        if config and form.rules.data: config.game_rules = form.rules.data
+        if config and form.no_show_policy.data: config.no_show_policy = form.no_show_policy.data
         tournament.entry_fee = int(form.entry_fee.data)
         tournament.prize = int(form.prize_pool.data)
         tournament.max_participants = int(form.max_participants.data)
@@ -2989,6 +3043,7 @@ def edit_tournament(tournament_id):
         if form.match_time.data:
             try:
                 tournament.match_time = datetime.strptime(form.match_time.data, '%Y-%m-%d %H:%M')
+                if tournament.status == 'open' and tournament.match_time <= datetime.utcnow(): raise ValueError('Choose a future date.')
             except ValueError:
                 db.session.rollback()
                 flash('Match time must be in YYYY-MM-DD HH:MM format.', 'error')
@@ -3010,6 +3065,9 @@ def edit_tournament(tournament_id):
     if tournament.match_time:
         form.match_time.data = tournament.match_time.strftime('%Y-%m-%d %H:%M')
     form.prize_pool.data = tournament.prize
+    if tournament.competition:
+        form.rules.data = tournament.competition.game_rules
+        form.no_show_policy.data = tournament.competition.no_show_policy
 
     return render_template('admin_tournament_edit.html', tournament=tournament, form=form)
 
@@ -3071,41 +3129,46 @@ def create_tournament():
     if not current_user.is_admin:
         abort(403)  # Forbidden
     
+    from gamearena.tournament_artwork import read_artwork, replace_admin_artwork
+    from gamearena.competition import supports_bracket
     form = TournamentForm()
     if form.validate_on_submit():
-        # Check if tournament with this game name already exists
-        existing_tournament = Tournament.query.filter_by(game=form.game.data).first()
-        if existing_tournament:
-            flash("A tournament with this game name already exists!", "error")
-            return redirect(url_for("create_tournament"))
-        
         try:
-            match_time = None
-            if form.match_time.data:
-                try:
-                    match_time = datetime.strptime(form.match_time.data, '%Y-%m-%d %H:%M')
-                except ValueError:
-                    flash("Match time must be in YYYY-MM-DD HH:MM format.", "error")
-                    return render_template("create_tournament.html", form=form)
-
-            new_tournament = Tournament(
-                name=form.game.data,  # Use game name as tournament name
-                game=form.game.data,
-                entry_fee=int(form.entry_fee.data),
-                prize=int(form.prize_pool.data),  # Map prize_pool to prize field
-                max_participants=int(form.max_participants.data),
-                match_time=match_time
-            )
-            db.session.add(new_tournament)
+            from gamearena.tournament_launch import validate_admin_terms
+            validate_admin_terms(form)
+            starts = datetime.strptime(form.match_time.data, '%Y-%m-%d %H:%M') if form.match_time.data else None
+            if starts and starts <= datetime.utcnow():
+                raise ValueError('Choose a future start time in UTC, or leave it blank for To be decided.')
+            images = read_artwork(request.files.getlist('images'), allow_partial=True)
+            if not images:
+                raise ValueError('Choose at least one tournament image (up to three).')
+            capacity = int(form.max_participants.data)
+            if not 2 <= capacity <= 10000:
+                raise ValueError('Choose a capacity between 2 and 10,000.')
+            if form.event_format.data == 'single_elimination_1v1':
+                if not supports_bracket(form.game.data) or capacity > 128 or capacity & (capacity - 1) or len(form.rules.data or '') < 20 or len(form.no_show_policy.data or '') < 20:
+                    raise ValueError('For 1v1 choose a supported game, 2/4/8/16/32/64/128 players, match rules and a no-show policy.')
+            if form.payout_method.data == 'gp_wallet':
+                raise ValueError('Use Organiser Studio to fund and settle GP-wallet prizes.')
+            event = Tournament(name=(form.name.data or form.game.data).strip(), game=form.game.data,
+                entry_fee=int(form.entry_fee.data), prize=int(form.prize_pool.data),
+                max_participants=capacity, match_time=starts, description=form.description.data,
+                rules=form.rules.data, eligibility=form.eligibility.data, event_format=form.event_format.data,
+                payout_method=form.payout_method.data, first_place=form.first_place.data,
+                second_place=form.second_place.data, third_place=form.third_place.data)
+            db.session.add(event); db.session.flush()
+            if form.event_format.data == 'single_elimination_1v1':
+                db.session.add(TournamentCompetition(tournament_id=event.id, game_rules=form.rules.data,
+                    no_show_policy=form.no_show_policy.data))
+            replace_admin_artwork(event, images)
             db.session.commit()
-            flash(f"Tournament '{form.game.data}' created successfully!", "success")
-            return redirect(url_for("admin"))
-        except Exception as e:
-            db.session.rollback()
-            flash("An error occurred while creating the tournament.", "error")
-            app.logger.error(f"Tournament creation error: {e}")
-    
-    return render_template("create_tournament.html", form=form)
+            flash('Tournament created. Unscheduled events display To be decided. Complete its terms before paid entries open.', 'success')
+            return redirect(url_for('admin'))
+        except (ValueError, TypeError) as error:
+            db.session.rollback(); flash(str(error), 'error')
+            return render_template('create_tournament.html', form=form), 400
+    return render_template('create_tournament.html', form=form)
+
 
 
 # -------------------------  # JOIN TOURNAMENT

@@ -11,6 +11,19 @@
   const seenIds = new Set(), viewedIds = new Set();
   let reading = false, inboxTimer, refreshingInbox = false;
   const inbox = document.getElementById('conversationList');
+  const conversationSearch = document.getElementById('conversationSearch');
+  function filterConversations() {
+    const search = (conversationSearch?.value || '').trim().toLowerCase();
+    let count = 0;
+    inbox?.querySelectorAll('.ga-conversation-row').forEach(row => {
+      row.hidden = !String(row.dataset.searchName || row.querySelector('strong')?.textContent || '').toLowerCase().includes(search);
+      if (!row.hidden) count++;
+    });
+    const empty = document.getElementById('conversationSearchEmpty');
+    if (empty) empty.hidden = !search || count > 0;
+  }
+  conversationSearch?.addEventListener('input',filterConversations);
+
   function applySeen(id) {
     seenIds.add(String(id));
     const row = messages.querySelector(`[data-message-id="${Number(id)}"]`);
@@ -31,7 +44,7 @@
       const data = await response.json(), fragment = document.createDocumentFragment();
       const conversations = data.conversations.filter(item => Boolean(item.request) === (inbox.dataset.filter === 'requests'));
       for (const item of conversations) {
-        const link = document.createElement('a'); link.href = item.url; link.className = 'ga-conversation-row';
+        const link = document.createElement('a'); link.href = item.url; link.className = 'ga-conversation-row'; link.dataset.searchName = item.username.toLowerCase();
         if (Number(item.id) === partnerId) { link.classList.add('is-active'); link.setAttribute('aria-current','page'); }
         const avatar = document.createElement(item.avatar_url ? 'img' : 'span'); avatar.className = 'ga-chat-avatar';
         if (item.avatar_url) { avatar.src = item.avatar_url; avatar.alt = ''; avatar.loading = 'lazy'; avatar.width = avatar.height = 48; }
@@ -49,7 +62,7 @@
       }
       if (!conversations.length) { const empty = document.createElement('p'); empty.className = 'ga-muted'; empty.textContent = inbox.dataset.filter === 'requests' ? 'No player requests yet.' : 'Start chatting and connect with other players.'; fragment.append(empty); }
       // Preserve focus and scroll while replacing frequently updated rows.
-      if (!inbox.contains(document.activeElement)) inbox.replaceChildren(fragment);
+      if (!inbox.contains(document.activeElement)) {inbox.replaceChildren(fragment);filterConversations();}
       document.getElementById('conversationCount').textContent = conversations.length;
       const requestsLink = document.querySelector('.ga-inbox-tabs a:last-child');
       if (requestsLink) requestsLink.textContent = `Requests (${data.conversations.filter(item => item.request).length})`;
@@ -99,12 +112,21 @@
     row.className = `${own ? 'ml-auto bg-emerald-500/10 text-emerald-200 border-emerald-500/10' : 'bg-slate-900/80 text-slate-300 border-slate-800'} w-fit max-w-[85%] break-words rounded-[28px] border p-4 shadow-sm`;
     const heading = document.createElement('div'); heading.className = 'flex items-center justify-between gap-3';
     const username = document.createElement('strong'); username.textContent = row.dataset.username;
-    const timestamp = document.createElement('small'); const date = new Date(message.created_at); timestamp.className = 'ga-muted'; timestamp.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); heading.append(username,timestamp);
+    const timestamp = document.createElement('small'); const date = new Date(message.created_at); timestamp.className = 'ga-muted'; timestamp.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',timeZone:'UTC'})+' UTC'; heading.append(username,timestamp);
     const body = document.createElement('p'); body.className = 'mt-2 whitespace-pre-wrap text-sm leading-6'; body.dataset.messageBody = ''; body.textContent = message.message;
     row.append(heading); if (message.reply) row.append(quote(message.reply)); row.append(body);
     if (own && partnerId && message.id && !message.deleted) {
       const delivery = document.createElement('div'); delivery.className = 'ga-message-delivery';
       const label = document.createElement('small'); label.dataset.readReceipt = ''; label.textContent = '✓ Sent'; delivery.append(label); row.append(delivery);
+    }
+    if (!Number.isNaN(date.getTime())) {
+      const day = date.toISOString().slice(0,10);
+      const existingDates = messages.querySelectorAll('[data-chat-date]');
+      if (existingDates[existingDates.length-1]?.dataset.chatDate !== day) {
+        const separator = document.createElement('p');separator.className='ga-chat-date ga-muted';separator.dataset.chatDate=day;
+        separator.textContent=date.toLocaleDateString([], {timeZone:'UTC',day:'numeric',month:'short',year:'numeric'})+' · UTC';
+        messages.append(separator);
+      }
     }
     messages.append(row); if (own || nearBottom) messages.scrollTop = messages.scrollHeight;
     readObserver?.observe(row);

@@ -147,6 +147,10 @@ class Tournament(db.Model):
     prize = db.Column(db.Integer, default=5000)
     max_participants = db.Column(db.Integer, default=50)
     description = db.Column(db.Text)
+    rules = db.Column(db.Text)
+    eligibility = db.Column(db.String(1000))
+    event_format = db.Column(db.String(40), nullable=False, default='custom', server_default='custom')
+    payout_method = db.Column(db.String(30), nullable=False, default='unconfirmed', server_default='unconfirmed')
     created_at = db.Column(db.DateTime, default=db.func.now())
     status = db.Column(db.String(20), default='open')
     room_id = db.Column(db.String(50))
@@ -610,7 +614,7 @@ class OrganizerFinance(db.Model):
 class TournamentArtwork(db.Model):
     """Validated, bounded WebP images; binary data loads only on media requests."""
     id = db.Column(db.String(32), primary_key=True)
-    draft_id = db.Column(db.Integer, db.ForeignKey('organizer_draft.id'), nullable=False)
+    draft_id = db.Column(db.Integer, db.ForeignKey('organizer_draft.id'), nullable=True)
     tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=True, index=True)
     position = db.Column(db.Integer, nullable=False)
     image = db.deferred(db.Column(db.LargeBinary, nullable=False))
@@ -661,3 +665,19 @@ class MatchEvidence(db.Model):
     image = db.deferred(db.Column(db.LargeBinary, nullable=False))
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     user = db.relationship('User')
+
+
+class PlatformSetting(db.Model):
+    key = db.Column(db.String(80), primary_key=True)
+    value = db.Column(db.JSON, nullable=False, default=dict)
+    updated_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class SupportReply(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    report_id = db.Column(db.Integer, db.ForeignKey('user_report.id'), nullable=False, index=True)
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    message = db.Column(db.String(2000), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    author = db.relationship('User')

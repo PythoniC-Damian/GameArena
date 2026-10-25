@@ -36,7 +36,7 @@
             </div>
         </section>
         <section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
-            <h2 class="text-xl font-semibold">{{ t('Security and privacy') }}</h2><a href="{{ url_for('forgot_password') }}" class="ga-button ga-button-secondary">{{ t('Reset password') }}</a><p class="ga-muted">Request a secure reset link sent to your account email.</p>
+            <h2 class="text-xl font-semibold">{{ t('Security and privacy') }}</h2><a href="{{ url_for('forgot_password') }}" class="ga-button ga-button-secondary">{{ t('Reset password') }}</a><p class="ga-muted">Request a reset code sent to your account email.</p>
             <div class="mt-4 grid gap-3 sm:grid-cols-2">
                 <label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm"><input type="checkbox" name="profile_public" {% if preferences.profile_public %}checked{% endif %} class="h-4 w-4 accent-emerald-500">{{ t('Public player profile') }}</label>
                 <label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm"><input type="checkbox" name="allow_direct_messages" {% if preferences.allow_direct_messages %}checked{% endif %} class="h-4 w-4 accent-emerald-500">{{ t('Allow direct messages') }}</label>
@@ -71,7 +71,7 @@
         <div class="sticky bottom-24 flex justify-end rounded-2xl bg-slate-950/95 p-2 md:bottom-4"><button type="submit" class="rounded-xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-slate-950">{{ t('Save settings') }}</button></div>
     </form>
 {% for block in blocks %}<form id="unblock-{{ block.blocked_id }}" method="POST" action="{{ url_for('unblock_user', user_id=block.blocked_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>{% endfor %}
-<section class="ga-panel ga-section"><h2>{{ t('Account help') }}</h2><p class="ga-muted">Contact support for account closure or help with your account.</p><a class="ga-button ga-button-secondary" href="{{ url_for('support') }}">{{ t('Contact support') }}</a></section></main>
+<section class="ga-panel ga-section"><h2>{{ t('Account help') }}</h2><a class="ga-button" href="{{ url_for('support_center.export') }}">Download account data</a><p class="ga-muted">Download your profile, balances, ownership and payment/entry history. For a complete data request or account closure, submit a tracked request below.</p>{% for kind,label in [('data_request','Request complete account data'),('account_closure','Request account closure')] %}<details><summary>{{ label }}</summary><form method="POST" action="{{ url_for('support_center.account_request') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="{{ kind }}"><label><input type="checkbox" name="confirmed" value="yes" required> I confirm this request. Closure is reviewed to protect remaining funds, active events and required records.</label><button class="ga-button" type="submit">{{ label }}</button></form></details>{% endfor %}<p class="ga-muted">Contact support for account closure or help with your account.</p><a class="ga-button ga-button-secondary" href="{{ url_for('support') }}">{{ t('Contact support') }}</a></section></main>
 {% include '_mobile_nav.html' %}
 {% include '_pwa_register.html' %}
 </body>

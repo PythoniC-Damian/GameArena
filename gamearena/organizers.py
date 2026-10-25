@@ -144,7 +144,7 @@ def review(draft_id):
             db.session.rollback(); abort(409, description='Organiser eligibility and a current agreement are required.')
         if (owner.wallet_balance or 0) < row.prize_pool:
             db.session.rollback(); abort(409, description='Fund the full advertised prize pool before publication.')
-        event = Tournament(name=row.name, game=row.game, description=row.rules, entry_fee=row.entry_fee,
+        event = Tournament(name=row.name, game=row.game, description=row.rules, rules=row.rules, payout_method='gp_wallet', entry_fee=row.entry_fee,
             prize=row.prize_pool, max_participants=row.capacity, match_time=row.starts_at, status='open')
         db.session.add(event)
         db.session.flush()
@@ -261,8 +261,10 @@ def artwork(image_id):
     image = db.session.get(TournamentArtwork, image_id)
     if not image:
         abort(404)
-    draft = db.session.get(OrganizerDraft, image.draft_id)
+    draft = db.session.get(OrganizerDraft, image.draft_id) if image.draft_id else None
+    direct_event = db.session.get(Tournament, image.tournament_id) if not image.draft_id and image.tournament_id else None
     public = draft and draft.status == 'published' and draft.tournament_id == image.tournament_id and image.tournament_id is not None
+    public = public or bool(direct_event and direct_event.status in {'open','ongoing','live','finished','cancelled'})
     if not public and not (draft and current_user.is_authenticated and not current_user.suspended and (current_user.id == draft.owner_id or current_user.is_admin)):
         abort(404)
     response = Response(image.image, mimetype='image/webp')
