@@ -38,4 +38,29 @@
 .ga-cosmetic-card[data-arena-card=arctic-card]{--arena-card-wash:radial-gradient(ellipse at top right,#40a9dd35,transparent 70%)}
 .ga-cosmetic-card[data-profile-theme=ocean]{--arena-profile-wash:linear-gradient(135deg,#238ada18,transparent 70%)}
 .ga-cosmetic-card[data-profile-theme=forest]{--arena-profile-wash:linear-gradient(135deg,#10b98120,transparent 70%)}
-.ga-master-surface.ga-cosmetic-card[data-arena-card]:not([data-arena-card=""]){background-image:var(--arena-card-wash),repeating-linear-gradient(125deg,transparent 0 28px,#ffffff08 29px 30px),var(--arena-profile-wash,linear-gradient(transparent,transparent))!important}
+.ga-master-surface.ga-cosmetic-card[data-arena-card]:not([data-arena-card=""]){background-image:var(--arena-card-wash),var(--arena-card-pattern,repeating-linear-gradient(125deg,transparent 0 28px,#ffffff08 29px 30px)),var(--arena-profile-wash,linear-gradient(transparent,transparent))!important}
+
+/* Expansion designs share their artwork across Shop swatches, try-ons and profiles. */
+[data-arena-theme=astral]{--item-color:#bb9aff;--item-glow:#965bff55}
+[data-arena-theme=crimson]{--item-color:#ff708c;--item-glow:#f43f5e44}
+[data-arena-theme=frost]{--item-color:#9be9ff;--item-glow:#38bdf855}
+[data-arena-theme=obsidian]{--item-color:#f4d58a;--item-glow:#d4a43d44}
+[data-arena-card=astral-card]{--arena-card-wash:radial-gradient(ellipse at 85% 10%,#965bff65,transparent 65%);--arena-card-pattern:radial-gradient(circle at 20% 25%,#e9ddff99 1px,transparent 2px),repeating-radial-gradient(ellipse at 85% 20%,transparent 0 32px,#bb9aff20 33px 34px,transparent 35px 64px);background-size:auto,auto}
+[data-arena-card=crimson-card]{--arena-card-wash:linear-gradient(135deg,#841e414f,transparent 65%);--arena-card-pattern:repeating-linear-gradient(45deg,transparent 0 30px,#ff708c22 31px 32px),repeating-linear-gradient(-45deg,transparent 0 30px,#ff708c15 31px 32px)}
+[data-arena-card=frost-card]{--arena-card-wash:radial-gradient(ellipse at top right,#38bdf84d,transparent 75%);--arena-card-pattern:repeating-linear-gradient(0deg,transparent 0 22px,#9be9ff12 23px 24px),repeating-linear-gradient(90deg,transparent 0 22px,#9be9ff12 23px 24px),linear-gradient(145deg,transparent 40%,#9be9ff22 40% 42%,transparent 42% 60%,#9be9ff11 60% 63%,transparent 63%)}
+[data-arena-card=obsidian-card]{--arena-card-wash:linear-gradient(110deg,#090d18bb,#59451d44);--arena-card-pattern:repeating-linear-gradient(60deg,transparent 0 40px,#f4d58a22 41px 42px,transparent 43px 70px),repeating-linear-gradient(-60deg,transparent 0 40px,#f4d58a22 41px 42px,transparent 43px 70px)}
+:is(.ga-cosmetic-card,.ga-mini-card,.ga-arena-shop .shop-art,.ga-arena-shop .shop-feature-art):is([data-arena-card=astral-card],[data-arena-card=crimson-card],[data-arena-card=frost-card],[data-arena-card=obsidian-card]){background-image:var(--arena-card-wash),var(--arena-card-pattern);background-color:#101c2c}
+.ga-arena-shop .shop-art[data-arena-card]:not([data-arena-card=""]):before{background:transparent}
+.ga-arena-shop .shop-art:is([data-arena-card=astral-card],[data-arena-card=crimson-card],[data-arena-card=frost-card],[data-arena-card=obsidian-card]) .mini-avatar{background:#07111d99}
+:is(.ga-shop-frame,.player-avatar,.shop-art)[data-frame=rift-frame]{--item-color:#bb9aff;--item-glow:#965bff55}
+:is(.ga-shop-frame,.player-avatar,.shop-art)[data-frame=crimson-frame]{--item-color:#ff708c;--item-glow:#f43f5e44}
+:is(.ga-shop-frame,.player-avatar,.shop-art)[data-frame=frost-frame]{--item-color:#9be9ff;--item-glow:#38bdf855}
+:is(.ga-shop-frame,.player-avatar,.shop-art)[data-frame=obsidian-frame]{--item-color:#f4d58a;--item-glow:#d4a43d44}
+:is(.ga-shop-frame,.player-avatar)[data-frame=rift-frame],.shop-art[data-frame=rift-frame] .mini-avatar{border:4px double #bb9aff!important;box-shadow:0 0 0 3px #965bff33,0 0 22px #965bff55!important}
+:is(.ga-shop-frame,.player-avatar)[data-frame=crimson-frame],.shop-art[data-frame=crimson-frame] .mini-avatar{border:3px solid #ff708c!important;box-shadow:inset 0 0 0 3px #f43f5e44,0 0 0 3px #f43f5e22!important}
+:is(.ga-shop-frame,.player-avatar)[data-frame=frost-frame],.shop-art[data-frame=frost-frame] .mini-avatar{border:4px double #9be9ff!important;box-shadow:0 0 0 2px #38bdf833,0 0 18px #38bdf855!important}
+:is(.ga-shop-frame,.player-avatar)[data-frame=obsidian-frame],.shop-art[data-frame=obsidian-frame] .mini-avatar{border:4px double #f4d58a!important;box-shadow:0 0 0 3px #d4a43d22,inset 0 0 0 2px #d4a43d33!important}
+:is(.ga-cosmetic-name,.player-name)[data-arena-nameplate=astral-nameplate],.shop-art[data-arena-nameplate=astral-nameplate] .mini-avatar{color:#bb9aff;background:linear-gradient(90deg,transparent,#965bff33);border-bottom:1px solid #bb9aff;text-shadow:0 0 12px #965bff66}
+:is(.ga-cosmetic-name,.player-name)[data-arena-nameplate=crimson-nameplate],.shop-art[data-arena-nameplate=crimson-nameplate] .mini-avatar{color:#ff708c;background:repeating-linear-gradient(120deg,transparent 0 15px,#f43f5e15 16px 18px),linear-gradient(90deg,transparent,#f43f5e33);border-left:3px solid #ff708c;padding-left:8px}
+:is(.ga-cosmetic-name,.player-name)[data-arena-nameplate=frost-nameplate],.shop-art[data-arena-nameplate=frost-nameplate] .mini-avatar{color:#9be9ff;background:repeating-linear-gradient(90deg,transparent 0 12px,#38bdf822 13px 14px),linear-gradient(90deg,transparent,#38bdf822);border-bottom:1px solid #9be9ff}
+:is(.ga-cosmetic-name,.player-name)[data-arena-nameplate=obsidian-nameplate],.shop-art[data-arena-nameplate=obsidian-nameplate] .mini-avatar{color:#f4d58a;background:linear-gradient(90deg,transparent,#d4a43d22);border-bottom:3px double #f4d58a;letter-spacing:1.5px}

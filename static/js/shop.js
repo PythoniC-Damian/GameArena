@@ -8,6 +8,8 @@
   const colors = {
     emerald: ['#73edc0', '#25d79a55'], neon: ['#c4a2ff', '#7d4bd577'],
     solar: ['#ffc18a', '#f5893b55'], arctic: ['#91d9ff', '#2586c366'],
+    astral: ['#bb9aff', '#965bff55'], crimson: ['#ff708c', '#f43f5e44'],
+    frost: ['#9be9ff', '#38bdf855'], obsidian: ['#f4d58a', '#d4a43d44'],
   };
   const find = selector => root.querySelector(selector);
   const all = selector => root.querySelectorAll(selector);
@@ -23,8 +25,11 @@
     const glow = item?.glow || themeGlow;
     element.style.setProperty('--selected', color);
     element.style.setProperty('--glow', glow);
+    element.dataset.arenaCard = item?.slot === 'card' ? key : '';
+    element.dataset.frame = item?.slot === 'frame' ? key : '';
+    element.dataset.arenaNameplate = item?.slot === 'nameplate' ? key : '';
     if (background) element.style.background = theme
-      ? `repeating-linear-gradient(125deg,transparent 0 24px,#ffffff09 25px 26px),radial-gradient(ellipse at top right,${glow},transparent 80%),linear-gradient(120deg,#152a31,#0c1727)`
+      ? `var(--arena-card-wash,radial-gradient(ellipse at top right,${glow},transparent 80%)),var(--arena-card-pattern,repeating-linear-gradient(125deg,transparent 0 24px,#ffffff09 25px 26px)),linear-gradient(120deg,#152a31,#0c1727)`
       : '#102132';
   }
   function renderSelection() {
@@ -82,28 +87,63 @@
   const collections = root.querySelector('[data-shop-collections]');
   if (collections) {
     const slides = [...collections.querySelectorAll('[data-collection]')];
-    const dots = [...collections.querySelectorAll('[data-collection-index]')];
     const track = collections.querySelector('[data-collection-track]');
-    const pause = collections.querySelector('[data-collection-pause]');
     const reduced = matchMedia('(prefers-reduced-motion:reduce)').matches || document.body.dataset.reduceMotion === 'true';
-    let index = 0, playing = !reduced, timer;
+    let index = 0, timer, settle, pointer = null, dragged = false, hovering = false;
+    function stop() { clearInterval(timer); }
+    function start() {
+      stop();
+      if (!reduced && slides.length > 1 && !document.hidden && !pointer && !hovering && !collections.contains(document.activeElement))
+        timer = setInterval(() => show(index + 1), 4000);
+    }
     function show(next) {
       index = (next + slides.length) % slides.length;
-      track.style.transform = `translateX(-${index * 100}%)`;
-      slides.forEach((slide,i) => {slide.inert = i !== index;slide.setAttribute('aria-hidden',String(i !== index));});
-      dots.forEach((dot,i) => dot.setAttribute('aria-pressed',String(i === index)));
+      track.scrollTo({ left: index * track.clientWidth, behavior: reduced ? 'auto' : 'smooth' });
     }
-    function stop() {clearInterval(timer);}
-    function start() {
-      stop(); pause.textContent = playing ? t('Pause slides') : t('Play slides');
-      if (playing && slides.length > 1 && !document.hidden && !collections.contains(document.activeElement)) timer = setInterval(() => show(index + 1),4000);
+    track.addEventListener('scroll', () => {
+      stop(); clearTimeout(settle);
+      settle = setTimeout(() => {
+        if (pointer) return;
+        index = Math.max(0, Math.min(slides.length - 1, Math.round(track.scrollLeft / track.clientWidth)));
+        start();
+      }, 160);
+    }, { passive: true });
+    track.addEventListener('keydown', event => {
+      if (event.target !== track || !['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+      event.preventDefault();
+      show(event.key === 'Home' ? 0 : event.key === 'End' ? slides.length - 1 : index + (event.key === 'ArrowRight' ? 1 : -1));
+    });
+    track.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      dragged = false; stop();
+      if (event.pointerType !== 'touch') pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, left: track.scrollLeft };
+    });
+    track.addEventListener('pointermove', event => {
+      if (!pointer || pointer.id !== event.pointerId) return;
+      const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
+      if (!dragged && (Math.abs(dx) < 8 || Math.abs(dx) <= Math.abs(dy))) return;
+      if (!dragged) { dragged = true; track.setPointerCapture(event.pointerId); track.classList.add('is-dragging'); }
+      event.preventDefault(); track.scrollLeft = pointer.left - dx;
+    });
+    function release(event) {
+      if (pointer && pointer.id === event.pointerId) {
+        if (track.hasPointerCapture(event.pointerId)) track.releasePointerCapture(event.pointerId);
+        pointer = null; track.classList.remove('is-dragging');
+        if (dragged) show(Math.round(track.scrollLeft / track.clientWidth));
+      }
+      start();
     }
-    dots.forEach(dot => dot.addEventListener('click',() => {show(Number(dot.dataset.collectionIndex));start();}));
-    pause.addEventListener('click',() => {playing = !playing;start();});
-    collections.addEventListener('pointerenter',stop);collections.addEventListener('pointerleave',start);
-    collections.addEventListener('focusin',stop);collections.addEventListener('focusout',() => setTimeout(start,0));
-    document.addEventListener('visibilitychange',start);
-    window.addEventListener('pagehide',stop);
+    track.addEventListener('pointerup', release);
+    track.addEventListener('pointercancel', release);
+    track.addEventListener('pointerleave', event => { if (pointer && !dragged) release(event); });
+    track.addEventListener('click', event => { if (dragged) { event.preventDefault(); event.stopPropagation(); } }, true);
+    collections.addEventListener('pointerenter', event => { if (event.pointerType === 'mouse') { hovering = true; stop(); } });
+    collections.addEventListener('pointerleave', () => { hovering = false; start(); });
+    collections.addEventListener('focusin', stop);
+    collections.addEventListener('focusout', () => setTimeout(start, 0));
+    document.addEventListener('visibilitychange', start);
+    window.addEventListener('resize', () => { show(index); start(); });
+    window.addEventListener('pagehide', () => { stop(); clearTimeout(settle); });
     start();
   }
   renderSelection();

@@ -118,3 +118,34 @@ def test_other_players_ownership_never_authorizes_equipment():
         db.session.add(CosmeticOwnership(user_id=first.id,item_key='solar-nameplate'));db.session.commit()
         assert post(client(second),'/shop/equip',{'item_key':'solar-nameplate'}).status_code==403
         db.session.refresh(second);assert second.cosmetic_nameplate is None
+
+
+def test_expanded_catalogue_purchases_and_five_featured_collections():
+    new_keys=('astral-card','crimson-card','frost-card','obsidian-card','rift-frame','crimson-frame','frost-frame','obsidian-frame','astral-nameplate','crimson-nameplate','frost-nameplate','obsidian-nameplate')
+    with app.app_context():
+        user=player('expanded_collection');user.wallet_balance=10000;db.session.commit();browser=client(user)
+        page=browser.get('/shop')
+        assert page.status_code==200 and page.text.count('data-collection="')==5
+        assert 'data-collection-pause' not in page.text and 'data-collection-index' not in page.text
+        assert 'data-collection-track tabindex="0"' in page.text
+        remaining=10000
+        for key in new_keys:
+            assert CATALOG[key]['price']>0
+            assert post(browser,'/shop/equip',{'item_key':key}).status_code==403
+            assert buy(browser,key,0).status_code==400
+            assert buy(browser,key).status_code==302
+            remaining-=CATALOG[key]['price']
+            assert post(browser,'/shop/equip',{'item_key':key}).status_code==302
+            db.session.refresh(user);assert user.wallet_balance==remaining
+        assert WalletTransaction.query.filter_by(user_id=user.id).count()==12
+        assert CosmeticOwnership.query.filter_by(user_id=user.id).count()==12
+        page=browser.get(f'/players/{user.id}')
+        assert 'data-arena-card="obsidian-card"' in page.text
+        assert 'data-arena-nameplate="obsidian-nameplate"' in page.text
+        assert 'data-frame="obsidian-frame"' in page.text
+        assert purchase_price('astral-bundle',set(new_keys))==0
+        assert buy(browser,'astral-bundle',0).status_code==302
+        assert post(browser,'/shop/equip',{'item_key':'astral-bundle'}).status_code==302
+        db.session.refresh(user)
+        assert user.cosmetic_frame=='rift-frame' and user.cosmetic_nameplate=='astral-nameplate'
+        assert WalletTransaction.query.filter_by(user_id=user.id).count()==12

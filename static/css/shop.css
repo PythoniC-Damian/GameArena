@@ -25,12 +25,23 @@
 @media(max-width:440px){.ga-arena-shop .shop-feature{grid-template-columns:1fr}}
 
 .ga-arena-shop .shop-collections{overflow:hidden;margin-bottom:24px;border-radius:22px}
-.ga-arena-shop .shop-collection-track{display:flex;transition:transform .45s ease}
-.ga-arena-shop .shop-collection-slide{flex:0 0 100%;min-width:0;margin:0;box-sizing:border-box}
+.ga-arena-shop .shop-collection-track{display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain;touch-action:pan-x pan-y;cursor:grab}
+.ga-arena-shop .shop-collection-track::-webkit-scrollbar{display:none}
+.ga-arena-shop .shop-collection-track.is-dragging{scroll-snap-type:none;cursor:grabbing;user-select:none}
+.ga-arena-shop .shop-collection-track:focus-visible{outline:2px solid var(--ga-accent);outline-offset:-3px}
+.ga-arena-shop .shop-collection-slide{flex:0 0 100%;min-width:0;margin:0;box-sizing:border-box;scroll-snap-align:start;scroll-snap-stop:always}
 .ga-arena-shop .shop-collection-slide .shop-feature-art{border-color:var(--item-color);color:var(--item-color)}
-.ga-arena-shop .shop-collection-controls{display:flex;justify-content:space-between;gap:12px;padding-top:10px}
-.ga-arena-shop .shop-collection-controls>div{display:flex;gap:8px}
 @media(prefers-reduced-motion:reduce){.ga-arena-shop .shop-collection-track{transition:none}}
 
 .ga-arena-shop .shop-collection-slide .feature-avatar,.ga-arena-shop .shop-collection-slide .feature-name{color:var(--item-color);border-color:var(--item-color)}
 .ga-arena-shop .shop-collection-slide[data-arena-theme=neon]{background:linear-gradient(120deg,#191b36,#282042)}
+
+.ga-arena-shop .shop-collection-slide[data-arena-theme=astral]{background:radial-gradient(ellipse at top right,#6841a14d,transparent 75%),#15152e;border-color:#57407b}
+.ga-arena-shop .shop-collection-slide[data-arena-theme=crimson]{background:repeating-linear-gradient(135deg,transparent 0 70px,#ff708c09 71px 74px),linear-gradient(120deg,#281322,#341b2e);border-color:#743348}
+.ga-arena-shop .shop-collection-slide[data-arena-theme=frost]{background:linear-gradient(130deg,#0e2537,#163b4d);border-color:#36738c}
+.ga-arena-shop .shop-collection-slide .shop-feature-art{background-color:#101c2c}
+.ga-arena-shop .shop-collection-slide .shop-eyebrow{color:var(--item-color)}
+.ga-arena-shop .shop-collection-slide:after{border-color:var(--item-glow)}
+@media(max-width:440px){.ga-arena-shop .shop-collection-slide .shop-feature-art{display:block;transform:none;padding:12px;margin-top:2px}.ga-arena-shop .shop-collection-slide .feature-avatar{float:left;width:42px;height:42px;font-size:20px;margin:0 12px 0 0}.ga-arena-shop .shop-collection-slide .feature-name{font-size:14px}.ga-arena-shop .shop-collection-slide .feature-foot{display:none}}
+
+.ga-arena-shop .shop-collection-slide .feature-avatar{border-radius:20%!important}

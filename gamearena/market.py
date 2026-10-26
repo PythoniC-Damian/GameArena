@@ -21,8 +21,23 @@ CATALOG = {
     'emerald-nameplate': dict(name='Emerald Pulse', description='The signature emerald nameplate.', price=250, slot='nameplate', theme='emerald'),
     'neon-nameplate': dict(name='Neon Afterhours', description='A violet highlight for your name.', price=250, slot='nameplate', theme='neon'),
     'vanguard-frame': dict(name='Vanguard Crest', description='An angular emerald avatar frame.', price=350, slot='frame', color='#73edc0', glow='#20cea222', theme='emerald'),
+    'astral-card': dict(name='Astral Rift', description='A starfield split by violet orbital rings.', price=600, slot='card', theme='astral'),
+    'crimson-card': dict(name='Crimson Reign', description='Angular crimson armour with a scarlet diamond lattice.', price=550, slot='card', theme='crimson'),
+    'frost-card': dict(name='Frostbyte', description='Glacial blue contours and a crystalline grid.', price=500, slot='card', theme='frost'),
+    'obsidian-card': dict(name='Obsidian Royale', description='Black and gold art-deco geometry for a royal entrance.', price=650, slot='card', theme='obsidian'),
+    'rift-frame': dict(name='Rift Sentinel', description='A double violet orbit around your rounded-square avatar.', price=450, slot='frame', color='#bb9aff', glow='#965bff55', theme='astral'),
+    'crimson-frame': dict(name='Scarlet Guard', description='Crimson armour with an inset scarlet edge.', price=400, slot='frame', color='#ff708c', glow='#f43f5e44', theme='crimson'),
+    'frost-frame': dict(name='Glacier Edge', description='A frosted double edge with an icy blue halo.', price=400, slot='frame', color='#9be9ff', glow='#38bdf855', theme='frost'),
+    'obsidian-frame': dict(name='Royal Bastion', description='An antique-gold double border over dark obsidian.', price=500, slot='frame', color='#f4d58a', glow='#d4a43d44', theme='obsidian'),
+    'astral-nameplate': dict(name='Stellar Echo', description='Violet starlight with a luminous orbital underline.', price=300, slot='nameplate', theme='astral'),
+    'crimson-nameplate': dict(name='Crimson Signal', description='A scarlet signal bar with angular stripe detail.', price=300, slot='nameplate', theme='crimson'),
+    'frost-nameplate': dict(name='Polar Frequency', description='Icy lettering over a fine blue frequency grid.', price=300, slot='nameplate', theme='frost'),
+    'obsidian-nameplate': dict(name='Gilded Signature', description='Gold lettering with a refined double-rule finish.', price=350, slot='nameplate', theme='obsidian'),
     'emerald-bundle': dict(name='Emerald Vanguard', description='Player card, Vanguard Crest frame and Emerald Pulse nameplate.', price=900, slot='bundle', theme='emerald', components=('emerald-card','vanguard-frame','emerald-nameplate')),
     'neon-bundle': dict(name='Neon Afterhours', description='Midnight Circuit card, Neon Circuit frame and Neon Afterhours nameplate.', price=850, slot='bundle', theme='neon', components=('midnight-card','neon-circuit','neon-nameplate')),
+    'astral-bundle': dict(name='Astral Rift', description='Astral Rift card, Rift Sentinel frame and Stellar Echo nameplate.', price=1150, slot='bundle', theme='astral', components=('astral-card','rift-frame','astral-nameplate')),
+    'crimson-bundle': dict(name='Crimson Reign', description='Crimson Reign card, Scarlet Guard frame and Crimson Signal nameplate.', price=1050, slot='bundle', theme='crimson', components=('crimson-card','crimson-frame','crimson-nameplate')),
+    'frost-bundle': dict(name='Frostbyte', description='Frostbyte card, Glacier Edge frame and Polar Frequency nameplate.', price=1000, slot='bundle', theme='frost', components=('frost-card','frost-frame','frost-nameplate')),
 }
 SLOTS = {'frame':'cosmetic_frame', 'card':'cosmetic_card', 'nameplate':'cosmetic_nameplate'}
 
