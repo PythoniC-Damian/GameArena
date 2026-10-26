@@ -125,7 +125,7 @@ def test_notification_filters_registration_copy_and_locked_achievements():
         from gamearena.models import Achievement,UserAchievement
         achievement=Achievement(key='audit_first_win',name='First Win',description='Win a confirmed match.',rule_type='wins',threshold=1,hidden=False)
         db.session.add(achievement);db.session.flush();db.session.add(UserAchievement(user_id=owner.id,achievement_id=achievement.id,progress=0));db.session.commit()
-        page=app.test_client().get(f'/players/{owner.id}');assert 'Email verified' in page.text and 'Verified player' not in page.text
+        page=app.test_client().get(f'/players/{owner.id}');assert 'Email verified' not in page.text and f'@{owner.username}' not in page.text
         assert 'Locked' in page.text
         home=app.test_client().get('/');assert 'data-pro-welcome' not in home.text
         shop=viewer.get('/shop');assert 'data-collection="emerald-bundle"' in shop.text and 'data-collection="neon-bundle"' in shop.text
