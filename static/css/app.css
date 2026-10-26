@@ -2,7 +2,7 @@
 * { box-sizing: border-box; }
 html { scroll-padding-top: 100px; }
 body { margin: 0; background: var(--ga-bg); color: #edf4fb; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.55; }
-body:has(.ga-bottom-nav) { padding-bottom: calc(82px + env(safe-area-inset-bottom)); }
+body:has(.ga-bottom-nav) { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
 main { scroll-margin-top: 100px; }
 main > *, .min-w-0 { min-width: 0; }
 main h1 { letter-spacing: -.035em; line-height: 1.15; }
@@ -125,9 +125,11 @@ body[data-larger-text=true] main .text-xs { font-size: 14px; }
   .ga-utilities { gap: 6px; }
   .ga-primary, .ga-desktop-account, .ga-register { display: none; }
   .ga-mobile-menu { display: block; }
-  .ga-bottom-nav { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); position: fixed; bottom: 0; left: 0; right: 0; z-index: 65; background: #0c1627f5; border-top: 1px solid #26354b; padding: 7px 10px calc(7px + env(safe-area-inset-bottom)); backdrop-filter: blur(16px); }
-  .ga-bottom-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 52px; font-size: 11px; color: #a5b4c8; border-radius: 12px; }
-  .ga-bottom-nav a[aria-current] { background: #16342e; color: #6ee7b7; }
+  .ga-bottom-nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); position:fixed; bottom:calc(12px + env(safe-area-inset-bottom)); left:max(12px,env(safe-area-inset-left)); right:max(12px,env(safe-area-inset-right)); z-index:65; height:78px; box-sizing:border-box; background:#091d2af2; border:1px solid #245366; border-radius:999px; padding:6px; box-shadow:0 10px 30px #0005,inset 0 1px 0 #ffffff05; backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
+  .ga-bottom-nav a { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; min-width:0; min-height:0; font-size:11px; line-height:1.2; font-weight:600; color:#d5dce8; border-radius:999px; text-decoration:none; -webkit-tap-highlight-color:transparent; }
+  .ga-bottom-nav a[aria-current] { background:#073a3b; color:#00dfb4; }
+  .ga-bottom-nav a:focus-visible { outline:2px solid #00dfb4; outline-offset:-2px; }
+  @media(max-width:350px){.ga-bottom-nav{left:8px;right:8px;padding:5px;height:74px}.ga-bottom-nav a{font-size:10px}}
   .ga-page { padding: 26px 16px 32px; }
   .ga-page-heading { align-items: start; flex-direction: column; gap: 14px; }
   .ga-hero { grid-template-columns: 1fr; padding: 26px 22px; gap: 24px; margin-bottom: 28px; }
