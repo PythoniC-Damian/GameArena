@@ -1,1 +1,8 @@
 .ga-input{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:48px;padding:12px 14px;border:1px solid var(--ga-border,#26354b);border-radius:12px;background:var(--ga-bg,#08111f);color:var(--ga-text,#f1f6fa);font:inherit;font-size:16px;line-height:1.5}.ga-input:focus-visible{outline:2px solid var(--ga-accent,#10b981);outline-offset:2px}.ga-stack>label,.ga-master-fields label{display:grid;gap:8px}.ga-chat-date{width:100%;text-align:center;font-size:12px;padding:10px;border-bottom:1px solid var(--ga-border,#26354b)}.ga-conversation-row[hidden]{display:none!important}.ga-card-actions{gap:12px}.ga-stack fieldset{min-width:0}.shop-collection-slide[inert]{pointer-events:none}.ga-input textarea{min-height:120px}
+
+.ga-mention-suggestions{display:flex;flex-direction:column;gap:3px;max-height:220px;overflow-y:auto;border:1px solid var(--ga-border,#334155);background:var(--ga-surface,#101c2c);border-radius:14px;padding:6px;margin-top:12px;box-shadow:0 8px 24px #0002}
+.ga-mention-suggestions[hidden]{display:none}
+.ga-mention-suggestions button{display:block;text-align:left;padding:10px 12px;border-radius:9px;min-height:44px;color:var(--ga-text,#edf5fa);overflow-wrap:anywhere;background:transparent}
+.ga-mention-suggestions button[aria-selected=true],.ga-mention-suggestions button:hover{background:#10b98125;outline:1px solid #10b98166}
+.ga-chat-mention{display:inline-block;border-radius:5px;padding:0 4px;background:#10b98125;color:light-dark(#006b51,#7ef0c8);font-weight:750;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+[data-message-id]:target{outline:2px solid #20cea2;outline-offset:3px}

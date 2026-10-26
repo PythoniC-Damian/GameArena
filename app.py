@@ -406,6 +406,8 @@ from gamearena.platform_admin import platform_admin
 app.register_blueprint(platform_admin)
 from gamearena.support_center import support_center
 app.register_blueprint(support_center)
+from gamearena.chat_mentions import chat_mentions
+app.register_blueprint(chat_mentions)
 
 from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
 from gamearena.models import TournamentCompetition, TournamentCheckIn, MatchLobby, MatchEvidence
@@ -998,14 +1000,14 @@ def player_connection(one, two, lock=False):
 
 
 def requires_player_consent(one, two):
-    return one.requires_player_consent or two.requires_player_consent
+    return one.requires_player_consent or two.requires_player_consent or player_connection(one.id, two.id) is not None
 
 
 def connection_state(other_id):
     partner = db.session.get(User, other_id)
-    if partner and not requires_player_consent(current_user, partner):
-        return {'state':'open', 'can_send':True}
     connection = player_connection(current_user.id, other_id)
+    if not connection and partner and not requires_player_consent(current_user, partner):
+        return {'state':'open', 'can_send':True}
     if not connection:
         return {'state':'none', 'can_send':True}
     state = connection.status
@@ -1019,7 +1021,10 @@ def connection_state(other_id):
 @login_required
 def update_player_connection(user_id):
     partner = db.session.get(User, user_id)
-    if not can_direct_message(current_user, partner) or not can_direct_message(partner, current_user):
+    removing = request.method == 'POST' and request.form.get('action') == 'unfriend'
+    if removing:
+        if not partner or partner.id == current_user.id or current_user.suspended: abort(403)
+    elif not can_direct_message(current_user, partner) or not can_direct_message(partner, current_user):
         abort(403)
     def respond(message=''):
         if request.method == 'GET' or request.accept_mimetypes.best == 'application/json':
@@ -1029,10 +1034,10 @@ def update_player_connection(user_id):
         if message:
             flash(message, 'success')
         return redirect(url_for('direct_message', user_id=user_id))
-    if request.method == 'GET' or not requires_player_consent(current_user, partner):
+    if request.method == 'GET':
         return respond()
     action = request.form.get('action')
-    if action not in {'request', 'accept', 'cancel', 'decline'}:
+    if action not in {'request', 'accept', 'cancel', 'decline', 'unfriend'}:
         abort(400)
     if action == 'request':
         for key, limit, window in ((f'player_requests:{current_user.id}',20,3600),
@@ -1056,6 +1061,11 @@ def update_player_connection(user_id):
             db.session.rollback()
             abort(403)
         connection.status = 'accepted' if action == 'accept' else 'declined'
+    elif action == 'unfriend':
+        if connection.status != 'accepted':
+            db.session.rollback(); abort(409)
+        connection.status = 'cancelled'
+        connection.intro_used = True
     elif action == 'cancel':
         if not own or connection.status != 'pending':
             db.session.rollback()
@@ -1071,7 +1081,7 @@ def update_player_connection(user_id):
         create_and_emit_notification(user_id, f'{current_user.username} sent you a player request.', 'chat', f'/messages/{current_user.id}')
     elif action == 'accept':
         create_and_emit_notification(user_id, f'{current_user.username} added you.', 'chat', f'/messages/{current_user.id}')
-    return respond({'request':'Player request sent.', 'accept':f'You added {partner.username}.', 'cancel':'Player request cancelled.', 'decline':'Player request declined.'}[action])
+    return respond({'request':'Player request sent.', 'accept':f'You added {partner.username}.', 'cancel':'Player request cancelled.', 'decline':'Player request declined.', 'unfriend':f'You unfriended {partner.username}.'}[action])
 
 
 @app.route('/settings/theme', methods=['POST'])
@@ -1628,7 +1638,7 @@ def chat_history():
             GlobalChatMessage.id > after,
         ).order_by(GlobalChatMessage.id).limit(51).all()
         data = [{'id': row.id, 'user_id': row.user_id, 'username': row.user.username if row.user else 'Player',
-            'message': row.message, 'deleted':bool(row.deleted_at), 'client_message_id':row.client_message_id, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
+            'mentions': [] if row.deleted_at else (row.mentions or []), 'message': row.message, 'deleted':bool(row.deleted_at), 'client_message_id':row.client_message_id, 'reply':quoted_message(row.reply_to), 'created_at': row.created_at.isoformat() if row.created_at else None} for row in rows[:50]]
     model = DirectMessage if partner_id else GlobalChatMessage
     removed = model.query.filter(model.deleted_at.isnot(None))
     if partner_id:
@@ -4762,15 +4772,20 @@ def on_send_global_chat_message(data):
     if client_id:
         existing = GlobalChatMessage.query.filter_by(client_message_id=client_id).first()
         if existing:
-            return {'status':'success', 'id':existing.id} if existing.user_id == current_user.id else {'status':'error', 'message':'Invalid message identifier.'}
+            return {'status':'success', 'id':existing.id, 'mentions':existing.mentions or []} if existing.user_id == current_user.id else {'status':'error', 'message':'Invalid message identifier.'}
     if not socket_event_allowed('send_global_chat_message'):
         return socket_rate_limit_error()
+    from gamearena.chat_mentions import resolve_mentions
+    try:
+        mentions = resolve_mentions(message.strip(), current_user.id)
+    except ValueError as error:
+        return {'status':'error', 'message':str(error)}
     reply_id = data.get('reply_to_id')
     parent = db.session.get(GlobalChatMessage, reply_id) if isinstance(reply_id, int) and reply_id > 0 else None
     if reply_id is not None and (not parent or parent.deleted_at):
         return {'status':'error', 'message':'That message is unavailable.'}
     sender_id, username, created = current_user.id, current_user.username, datetime.utcnow()
-    new = GlobalChatMessage(user_id=sender_id, message=message.strip(), reply_to_id=parent.id if parent else None, client_message_id=client_id, created_at=created)
+    new = GlobalChatMessage(user_id=sender_id, message=message.strip(), mentions=mentions, reply_to_id=parent.id if parent else None, client_message_id=client_id, created_at=created)
     quoted = quoted_message(parent)
     db.session.add(new)
     try:
@@ -4780,11 +4795,13 @@ def on_send_global_chat_message(data):
         existing = GlobalChatMessage.query.filter_by(client_message_id=client_id, user_id=sender_id).first() if client_id else None
         if not existing:
             raise
-        return {'status':'success', 'id':existing.id}
-    payload = {'id':message_id, 'user_id':sender_id, 'username':username, 'message':message.strip(), 'created_at':created.isoformat()+'Z', 'reply':quoted, 'client_message_id':client_id}
+        return {'status':'success', 'id':existing.id, 'mentions':existing.mentions or []}
+    payload = {'id':message_id, 'user_id':sender_id, 'username':username, 'message':message.strip(), 'mentions':mentions, 'created_at':created.isoformat()+'Z', 'reply':quoted, 'client_message_id':client_id}
     socketio.emit('new_global_chat_message', payload, room='global_chat')
     socketio.emit('new_global_chat_message', payload, room=f'user:{sender_id}')
-    return {'status':'success', 'id':message_id}
+    for mentioned_id in {item['id'] for item in mentions} - {sender_id}:
+        create_and_emit_notification(mentioned_id, f'{username} mentioned you in community chat.', 'chat', f'/chat#message-{message_id}')
+    return {'status':'success', 'id':message_id, 'mentions':mentions}
 
 
 @socketio.on('join_direct_message')
@@ -4838,8 +4855,8 @@ def on_send_direct_message(data):
     sender_id, sender_name = current_user.id, current_user.username
     recipient_id = recipient.id
     reply = quoted_message(parent)
-    connection = player_connection(sender_id, recipient_id, lock=True)
     consent_required = requires_player_consent(current_user, recipient)
+    connection = player_connection(sender_id, recipient_id, lock=True)
     if not consent_required:
         connection.status = 'accepted'
     awaiting_acceptance = consent_required and connection.status != 'accepted'
@@ -4919,6 +4936,7 @@ def delete_chat_message(kind, message_id):
         abort(403)
     recipient_id = row.recipient_id if kind == 'direct' else None
     row.message = 'This message was deleted.'
+    if kind == 'global': row.mentions = []
     row.deleted_at = row.deleted_at or datetime.utcnow()
     db.session.commit()
     payload = {'id':message_id, 'kind':kind}

@@ -108,12 +108,13 @@
     const sender = Number(message.sender_id || message.user_id), own = sender === userId;
     const nearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 100;
     messages.querySelector('[data-chat-empty]')?.remove();
-    const row = document.createElement('div'); if (message.id) row.dataset.messageId = message.id; row.dataset.username = message.username || 'Player'; row.dataset.senderId = sender; row.dataset.deleted = String(Boolean(message.deleted)); row.tabIndex = 0; row.setAttribute('aria-label', 'Message from '+row.dataset.username+'. Swipe to reply, or press Enter for actions.');
+    const row = document.createElement('div'); if (message.id) {row.dataset.messageId = message.id;row.id = 'message-'+message.id;} row.dataset.username = message.username || 'Player'; row.dataset.senderId = sender; row.dataset.deleted = String(Boolean(message.deleted)); row.tabIndex = 0; row.setAttribute('aria-label', 'Message from '+row.dataset.username+'. Swipe to reply, or press Enter for actions.');
     row.className = `${own ? 'ml-auto bg-emerald-500/10 text-emerald-200 border-emerald-500/10' : 'bg-slate-900/80 text-slate-300 border-slate-800'} w-fit max-w-[85%] break-words rounded-[28px] border p-4 shadow-sm`;
     const heading = document.createElement('div'); heading.className = 'flex items-center justify-between gap-3';
     const username = document.createElement('strong'); username.textContent = row.dataset.username;
     const timestamp = document.createElement('small'); const date = new Date(message.created_at); timestamp.className = 'ga-muted'; timestamp.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',timeZone:'UTC'})+' UTC'; heading.append(username,timestamp);
     const body = document.createElement('p'); body.className = 'mt-2 whitespace-pre-wrap text-sm leading-6'; body.dataset.messageBody = ''; body.textContent = message.message;
+    if (!partnerId) window.gaChatMentions?.render(body,message.message,message.deleted ? [] : message.mentions);
     row.append(heading); if (message.reply) row.append(quote(message.reply)); row.append(body);
     if (own && partnerId && message.id && !message.deleted) {
       const delivery = document.createElement('div'); delivery.className = 'ga-message-delivery';
@@ -286,7 +287,9 @@
       if (ids.has(id)) row.remove();
       else {
         ids.add(id); lastId = Math.max(lastId, Number(message.id));
-        row.dataset.messageId = id; row.dataset.deleted = String(Boolean(message.deleted)); row.tabIndex = 0;
+        row.dataset.messageId = id; row.id = 'message-'+id;
+        if (!partnerId && message.mentions) window.gaChatMentions?.render(row.querySelector('[data-message-body]'),payload.message,message.mentions);
+        row.dataset.deleted = String(Boolean(message.deleted)); row.tabIndex = 0;
         row.setAttribute('aria-label','Message from '+main.dataset.username+'. Swipe to reply, or press Enter for actions.');
         label.textContent = partnerId ? '✓ Sent' : 'Sent'; retry.hidden = true;
         if (partnerId) { label.dataset.readReceipt = ''; if (message.read_at || seenIds.has(id)) applySeen(id); }
@@ -333,6 +336,8 @@
   }
   form.addEventListener('submit',event => {
     event.preventDefault(); const text = input.value.trim(); if (!text || input.disabled) return;
+    const mentionError = !partnerId && window.gaChatMentions?.check(text);
+    if (mentionError) {status.textContent=mentionError;return;}
     if (pending.size >= 50) { status.textContent = 'You have 50 unsent messages. Retry them before sending more.'; return; }
     const selectedReply = reply, payload = {message:text,client_message_id:crypto.randomUUID()};
     if (partnerId && main.dataset.introduction === 'true') {
@@ -340,7 +345,7 @@
     }
     if (partnerId) payload.user_id = partnerId; if (selectedReply) payload.reply_to_id = selectedReply.id;
     addOutgoing(payload,selectedReply);
-    input.value = ''; clearReply(); emitTyping(false); status.textContent = '';
+    input.value = ''; window.gaChatMentions?.clear(); clearReply(); emitTyping(false); status.textContent = '';
     // Retain keyboard focus so the player can immediately write the next message.
     input.focus(); saveOutbox(); pumpOutbox();
   });

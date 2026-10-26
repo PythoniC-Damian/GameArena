@@ -344,6 +344,7 @@ class GlobalChatMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     message = db.Column(db.Text, nullable=False)
+    mentions = db.Column(db.JSON, nullable=False, default=list, server_default='[]')
     created_at = db.Column(db.DateTime, default=db.func.now())
 
     user = db.relationship('User')
