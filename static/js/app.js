@@ -137,6 +137,23 @@
       widget.querySelectorAll('button').forEach(item => { item.disabled = false; }); button.textContent = label;
     } finally { updatingConnections.delete(id); widget.removeAttribute('aria-busy'); }
   });
+  function updateRequestCooldowns() {
+    document.querySelectorAll('[data-request-retry-at]').forEach(label => {
+      const remaining = Math.max(0, Math.ceil((Date.parse(label.dataset.requestRetryAt)-Date.now())/60000));
+      if (!Number.isFinite(remaining)) return;
+      if (!remaining) {
+        label.textContent = 'You can send a friend request again. Updating…';
+        const widget = label.closest('[data-player-connection]');
+        if (widget) window.gamearenaRefreshConnection(Number(widget.dataset.playerConnection));
+        return;
+      }
+      const hours = Math.floor(remaining/60), minutes = remaining%60;
+      label.textContent = `You can resend a friend request in ${hours ? hours+'h ' : ''}${minutes}m.`;
+    });
+  }
+  updateRequestCooldowns();
+  setInterval(updateRequestCooldowns,30000);
+  window.addEventListener('gamearena:connection-updated',updateRequestCooldowns);
   function refreshConnections() { document.querySelectorAll('[data-player-connection]').forEach(widget => window.gamearenaRefreshConnection(Number(widget.dataset.playerConnection))); }
   window.addEventListener('pageshow', event => { if (event.persisted) refreshConnections(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshConnections(); });

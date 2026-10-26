@@ -137,3 +137,43 @@ def test_connection_json_actions_and_notification_text(monkeypatch):
         assert a.get(f'/players/{two.id}/connection').json['connection']['state']=='accepted'
         with a.session_transaction() as session:
             assert not session.get('_flashes')
+
+
+def test_declined_request_cools_down_then_sender_can_retry_without_new_introduction(monkeypatch):
+    from datetime import datetime,timedelta
+    monkeypatch.setattr(socketio,'start_background_task',lambda *a,**kw:None)
+    with app.app_context():
+        one,two=player('retry_sender'),player('retry_recipient');a,b=client(one),client(two)
+        url=f'/players/{two.id}/connection'
+        assert post(a,url,data={'action':'request'}).status_code==302
+        assert post(a,'/chat/send',payload={'user_id':two.id,'message':'Only introduction'}).json['status']=='success'
+        assert post(b,f'/players/{one.id}/connection',data={'action':'decline'}).status_code==302
+        connection=PlayerConnection.query.one();deadline=connection.request_retry_at
+        assert 86390<(deadline-datetime.utcnow()).total_seconds()<=86400
+        state=a.get(url).json
+        assert not state['connection']['can_request'] and 'data-request-retry-at' in state['controls_html']
+        assert 'disabled' in state['controls_html']
+        rejected=post(a,url,data={'action':'request'})
+        assert rejected.status_code==429 and int(rejected.headers['Retry-After'])>86300
+        db.session.refresh(connection);assert connection.request_retry_at==deadline and connection.status=='declined'
+        connection.request_retry_at=datetime.utcnow()-timedelta(seconds=1);db.session.commit()
+        state=a.get(url).json
+        assert state['connection']['can_request'] and 'Add player' in state['controls_html'] and 'disabled' not in state['controls_html']
+        assert post(a,url,data={'action':'request'}).status_code==302
+        db.session.refresh(connection);assert connection.status=='pending' and connection.request_retry_at is None
+        assert post(a,'/chat/send',payload={'user_id':two.id,'message':'No repeat intro'}).json['status']=='error'
+        assert post(b,f'/players/{one.id}/connection',data={'action':'accept'}).status_code==302
+
+
+def test_recipient_can_change_mind_and_request_back_during_decline_cooldown(monkeypatch):
+    monkeypatch.setattr(socketio,'start_background_task',lambda *a,**kw:None)
+    with app.app_context():
+        one,two=player('reverse_sender'),player('reverse_recipient');a,b=client(one),client(two)
+        assert post(a,f'/players/{two.id}/connection',data={'action':'request'}).status_code==302
+        assert post(b,f'/players/{one.id}/connection',data={'action':'decline'}).status_code==302
+        state=b.get(f'/players/{one.id}/connection').json
+        assert state['connection']['can_request'] and state['connection']['declined_by_me']
+        assert 'Add player' in state['controls_html']
+        assert post(b,f'/players/{one.id}/connection',data={'action':'request'}).status_code==302
+        row=PlayerConnection.query.one();assert row.requester_id==two.id and row.status=='pending' and row.request_retry_at is None
+        assert post(a,f'/players/{two.id}/connection',data={'action':'accept'}).status_code==302

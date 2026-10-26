@@ -385,6 +385,7 @@ class PlayerConnection(db.Model):
     high_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     requester_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     status = db.Column(db.String(20), nullable=False, default='pending')
+    request_retry_at = db.Column(db.DateTime, nullable=True)
     intro_used = db.Column(db.Boolean, nullable=False, default=False, server_default='false')
     created_at = db.Column(db.DateTime, nullable=False, default=db.func.now())
     __table_args__ = (

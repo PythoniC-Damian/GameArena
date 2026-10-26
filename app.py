@@ -26,6 +26,7 @@ from sqlalchemy.orm import selectinload, joinedload
 from wtforms import StringField, PasswordField, SubmitField, SelectField, IntegerField, validators
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
+from math import ceil
 from email.message import EmailMessage
 from urllib.parse import quote_plus, urlparse
 import random
@@ -1013,7 +1014,11 @@ def connection_state(other_id):
     state = connection.status
     if state == 'pending':
         state = 'outgoing' if connection.requester_id == current_user.id else 'incoming'
-    return {'state':state, 'can_send':connection.status == 'accepted' or (
+    retry_at = connection.request_retry_at if connection.status == 'declined' and connection.requester_id == current_user.id else None
+    remaining = max(0, ceil((retry_at - datetime.utcnow()).total_seconds())) if retry_at else 0
+    return {'state':state, 'can_request':remaining == 0, 'declined_by_me':connection.status == 'declined' and connection.requester_id != current_user.id,
+        'retry_at':retry_at.isoformat()+'Z' if remaining else None, 'cooldown_seconds':remaining,
+        'cooldown_minutes':(remaining+59)//60, 'can_send':connection.status == 'accepted' or (
         connection.status == 'pending' and connection.requester_id == current_user.id and not connection.intro_used)}
 
 
@@ -1051,16 +1056,20 @@ def update_player_connection(user_id):
         db.session.commit()
         return respond()
     if action == 'request' and connection.status in {'cancelled', 'declined'}:
-        if connection.status == 'declined' and own:
+        if connection.status == 'declined' and own and connection.request_retry_at and connection.request_retry_at > datetime.utcnow():
+            retry_seconds = max(1, ceil((connection.request_retry_at-datetime.utcnow()).total_seconds()))
             db.session.rollback()
-            return respond('This player declined your request.')
+            response = rate_limit_response(retry_seconds)
+            return response
         connection.requester_id = current_user.id
         connection.status = 'pending'
+        connection.request_retry_at = None
     elif action in {'accept', 'decline'}:
         if own or connection.status != 'pending':
             db.session.rollback()
             abort(403)
         connection.status = 'accepted' if action == 'accept' else 'declined'
+        connection.request_retry_at = datetime.utcnow()+timedelta(hours=24) if action == 'decline' else None
     elif action == 'unfriend':
         if connection.status != 'accepted':
             db.session.rollback(); abort(409)
