@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.gamearena.privatepreview",
+      "sha256_cert_fingerprints": [
+        "56:1D:49:9F:D1:6D:79:81:1F:ED:47:42:AB:DD:FF:CB:D8:AE:01:93:7D:43:F7:0D:3F:C8:97:BE:89:BA:26:18"
+      ]
+    }
+  }
+]

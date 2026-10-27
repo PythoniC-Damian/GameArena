@@ -1407,6 +1407,14 @@ def prepare_tournament_cards(tournaments):
     ).all()}
 
 
+@app.get('/.well-known/assetlinks.json')
+def android_asset_links():
+    # Public certificate only; the private signing key stays outside source control.
+    response = send_from_directory(app.static_folder, 'android/assetlinks.json', mimetype='application/json')
+    response.headers['Cache-Control'] = 'public, max-age=300'
+    return response
+
+
 @app.route('/sw.js')
 def service_worker():
     from flask import send_from_directory

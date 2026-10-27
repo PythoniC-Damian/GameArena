@@ -1,0 +1,35 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.gamearena.privatepreview'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.gamearena.privatepreview'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '0.1-private'
+        manifestPlaceholders = [hostName: 'gamearena01.com']
+    }
+    signingConfigs {
+        privatePreview {
+            storeFile file(System.getenv('GAMEARENA_ANDROID_KEYSTORE') ?: '../../.local-test/android-private/owner.jks')
+            storePassword System.getenv('GAMEARENA_ANDROID_STORE_PASSWORD')
+            keyAlias 'gamearena-private'
+            keyPassword System.getenv('GAMEARENA_ANDROID_STORE_PASSWORD')
+        }
+    }
+    buildTypes {
+        release {
+            debuggable false
+            minifyEnabled false
+            signingConfig signingConfigs.privatePreview
+        }
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+    implementation 'androidx.browser:browser:1.8.0'
+}
+

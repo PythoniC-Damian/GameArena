@@ -26,3 +26,11 @@ backups/
 *.gabk
 *.dump
 *.clixml
+
+# Private Android artifacts and signing material stay on this computer.
+android-private/.gradle/
+android-private/**/build/
+android-private/local.properties
+*.jks
+*.keystore
+private-apk/
