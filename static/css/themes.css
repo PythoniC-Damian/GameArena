@@ -19,9 +19,9 @@ html[data-theme=light] :is([class*="border-slate-"],.ga-empty){border-color:var(
 html[data-theme=light] :is([class*="text-emerald-200"],[class*="text-emerald-300"],[class*="text-emerald-400"]){color:var(--ga-emerald)}
 html[data-theme=light] .ga-status{background:#e8eff3;color:#344f60}
 html[data-theme=light] :is(.ga-status-open,.ga-status-live,.ga-status-ongoing){background:#d9f3e7;color:#076248}
-html[data-theme=light] .ga-bottom-nav{background:#091d2af2;border-color:#245366}
-html[data-theme=light] .ga-bottom-nav a[aria-current]{background:#073a3b;color:#00dfb4}
-html[data-theme=light] .ga-bottom-nav a:not([aria-current]){color:#d5dce8}
+html[data-theme=light] .ga-bottom-nav{background:#fffffff5;border-color:#68cdb8;box-shadow:0 8px 28px #145c4e24,0 0 16px #20cea238,inset 0 1px 0 #fff}
+html[data-theme=light] .ga-bottom-nav a[aria-current]{background:#d5f5e9;color:#007c60}
+html[data-theme=light] .ga-bottom-nav a:not([aria-current]){color:#526978}
 html[data-theme=light] :is(.ga-menu-identity,.ga-table th,.ga-footer){color:var(--ga-muted)}
 html[data-theme=light] :is([class*="text-red-200"],[class*="text-red-300"]){color:#b4233b}
 html[data-theme=light] .ga-avatar-small{background:#d5eee3;color:#076248}
@@ -138,3 +138,6 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=submit
 .ga-password-wrap button.ga-password-toggle:hover,.ga-password-wrap button.ga-password-toggle:active{transform:translateY(-50%);box-shadow:none}
 
 .ga-gp-input{width:100%;padding:14px 16px;border:1px solid var(--ga-border);border-radius:20px;background:var(--ga-bg);color:var(--ga-text);font-size:16px}.ga-gp-quote{padding:14px;border:1px solid var(--ga-border);border-radius:14px;background:var(--ga-soft)}.ga-gp-quote p{display:flex;justify-content:space-between;gap:12px;margin:8px 0;font-size:.85rem}.ga-gp-quote strong{white-space:nowrap}.ga-transaction-value small{font-size:.68rem}
+
+.ga-bottom-nav::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1.5px;background:linear-gradient(110deg,#50f4d8cc,#45cfe75c 36%,#20cea233 65%,#59e8ffbb);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude;pointer-events:none}
+html[data-theme=light] .ga-bottom-nav::before{background:linear-gradient(110deg,#1cbd99bb,#d8fff16b 45%,#28aeccaa)}

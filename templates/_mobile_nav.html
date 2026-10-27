@@ -1,6 +1,8 @@
 {% from '_icons.html' import icon %}
-<nav class="ga-bottom-nav" aria-label="Mobile navigation">
+<nav data-tab-swipe="{{ 'true' if request.endpoint in ['home','tournaments_page','leaderboard','profile'] else 'false' }}" class="ga-bottom-nav" aria-label="Mobile navigation">
 {% for endpoint, label, glyph in [('home','Home','home'),('tournaments_page','Tournaments','trophy'),('leaderboard','Leaderboard','ranking'),('profile' if current_user.is_authenticated else 'login','Profile' if current_user.is_authenticated else 'Login','user')] %}
 <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint or (endpoint == 'tournaments_page' and request.endpoint in ['tournament_details','pay_for_tournament','join_tournament']) %}aria-current="page"{% endif %}>{{ icon('nav-profile' if glyph=='user' else 'nav-' ~ glyph) }}<span>{{ t(label) }}</span></a>
 {% endfor %}
 </nav>
+
+<script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/mobile-navigation.js') }}"></script>
