@@ -148,7 +148,7 @@ def test_managed_signup_does_not_keep_password_or_trust_signup_id(client, monkey
     signup = Mock(return_value={'user': {'id': 'unconfirmed-response'}})
     monkeypatch.setattr(auth, 'signup', signup)
     response = client.post('/register', data={'email': 'new@example.com',
-        'username': 'new_player', 'password': 'secret123', 'accept_terms':'y'})
+        'username': 'new_player', 'password': 'secret123', 'accept_terms':'y', 'date_of_birth':'1990-01-01'})
     assert '/verify-email' in response.location
     with app.app_context():
         user = User.query.filter_by(email='new@example.com').one()
@@ -189,6 +189,7 @@ def test_managed_oauth_requires_pkce_session(client, monkeypatch):
     monkeypatch.setattr(auth, 'call', call)
     assert client.get('/auth/supabase/callback?code=x').location.endswith('/login')
     call.assert_not_called()
+    client.post('/register/google',data={'accept_terms':'on','date_of_birth':'1990-01-01'})
     response = client.get('/login/google')
     params = parse_qs(urlparse(response.location).query)
     assert params['code_challenge_method'] == ['s256']
@@ -235,7 +236,7 @@ def test_provider_errors_are_safe(monkeypatch, problem):
 
 def test_signup_requires_explicit_agreement_before_account_or_email(client,monkeypatch):
     send=Mock(return_value=True);monkeypatch.setattr(application,'send_verification_code',send)
-    data={'username':'agreement_player','email':'agreement@example.com','password':'secret123'}
+    data={'username':'agreement_player','email':'agreement@example.com','password':'secret123','date_of_birth':'1990-01-01'}
     response=client.post('/register',data=data)
     assert response.status_code==200 and b'Please agree to the Terms of Use' in response.data
     with app.app_context(): assert User.query.filter_by(email=data['email']).first() is None

@@ -63,6 +63,8 @@ def clean_test_database(monkeypatch):
     """Keep each test independent without touching the normal database."""
     from app import app, db, socketio
 
+    # Legacy fixtures predate the adult declaration; dedicated privacy tests enable the gate.
+    monkeypatch.setitem(test_app.config, 'ADULT_ACCESS_REQUIRED', False)
     tasks = []
     start_background_task = socketio.start_background_task
     def track_task(*args, **kwargs):

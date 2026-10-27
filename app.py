@@ -269,6 +269,9 @@ def managed_identity(data):
         if user and user.supabase_auth_id and user.supabase_auth_id != identity['id']:
             raise managed_auth.AuthError('This identity does not match your account.', 400)
         if not user:
+            from gamearena.privacy_controls import signup_declaration,record_adult
+            if not signup_declaration():
+                raise managed_auth.AuthError('Complete the 18+ signup form before creating an account.',400)
             metadata = identity.get('user_metadata') or {}
             base = re.sub(r'[^a-zA-Z0-9_]', '_', metadata.get('username') or email.split('@')[0])[:130] or 'player'
             candidate = base
@@ -276,6 +279,8 @@ def managed_identity(data):
                 candidate = base + '_' + secrets.token_hex(4)
             user = User(username=candidate, email=email,
                 password=generate_password_hash(secrets.token_urlsafe(32)))
+            record_adult(user)
+            session.pop('adult_signup_at',None)
             db.session.add(user)
         user.supabase_auth_id = identity['id']
     if user.suspended:
@@ -411,6 +416,8 @@ from gamearena.chat_mentions import chat_mentions
 app.register_blueprint(chat_mentions)
 from gamearena.waiting_list import waiting_list
 app.register_blueprint(waiting_list)
+from gamearena.privacy_controls import init_privacy
+init_privacy(app)
 
 from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
 from gamearena.models import TournamentCompetition, TournamentCheckIn, MatchLobby, MatchEvidence
@@ -2081,7 +2088,7 @@ def support():
     from gamearena.platform_admin import setting
     ticket_pages=UserReport.query.filter(UserReport.reporter_id==current_user.id,UserReport.content_type.in_(['support','account_closure','data_request'])).order_by(UserReport.id.desc()).paginate(page=max(1,request.args.get('page',1,type=int) or 1),per_page=20,error_out=False) if current_user.is_authenticated else None
     tickets=ticket_pages.items if ticket_pages else []
-    return render_template('support.html', tickets=tickets, ticket_pages=ticket_pages, contact_email=setting('basics').get('support_email') or os.environ.get('GAMEARENA_SUPPORT_EMAIL','jegzdami@gmail.com'))
+    return render_template('support.html', tickets=tickets, ticket_pages=ticket_pages, contact_email=setting('basics').get('support_email') or os.environ.get('GAMEARENA_SUPPORT_EMAIL','wegamearena@gmail.com'))
 
 
 @app.route('/admin/reports')
@@ -2299,6 +2306,7 @@ def register():
     form = RegistrationForm()
 
     if form.validate_on_submit():
+        from gamearena.privacy_controls import record_adult
 
         existing_user = User.query.filter_by(email=form.email.data.lower().strip()).first() or User.query.filter_by(username=form.username.data).first()
 
@@ -2318,6 +2326,7 @@ def register():
             email_verified=False
         )
 
+        record_adult(new_user)
         try:
             if managed_auth.enabled():
                 if not reserve_account_email(new_user, 'verification'):
@@ -2404,6 +2413,11 @@ def signup_google():
     if request.form.get('accept_terms') != 'on':
         flash('Accept the Terms of Use and Privacy Policy to continue with Google.', 'error')
         return redirect(url_for('register'))
+    from gamearena.privacy_controls import age_error
+    error=age_error(request.form.get('date_of_birth'))
+    if error:
+        flash(error,'error');return redirect(url_for('register'))
+    session['adult_signup_at']=time.time()
     return redirect(url_for('login_google'))
 
 
@@ -2540,6 +2554,10 @@ def complete_google_signin(code, google_config):
         flash('This account has been suspended.', 'error')
         return redirect(url_for('login'))
     if not user:
+        from gamearena.privacy_controls import signup_declaration,record_adult
+        if not signup_declaration():
+            flash('Complete the 18+ signup form before creating an account.','error')
+            return redirect(url_for('register'))
         base_username = ''.join(char for char in name.replace(' ', '_') if char.isalnum() or char == '_') or 'google_user'
         candidate = base_username[:150]
         counter = 1
@@ -2554,6 +2572,8 @@ def complete_google_signin(code, google_config):
             email_verified=True,
             avatar_url=picture,
         )
+        record_adult(user)
+        session.pop('adult_signup_at',None)
         db.session.add(user)
         db.session.commit()
 

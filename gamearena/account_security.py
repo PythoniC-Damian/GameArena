@@ -200,7 +200,8 @@ class OriginGate:
 
 
 def socket_identity_allowed():
-    return bool(current_user.is_authenticated and not current_user.suspended)
+    from gamearena.privacy_controls import adult_access_allowed
+    return bool(current_user.is_authenticated and not current_user.suspended and adult_access_allowed())
 
 
 def account_guard():

@@ -11,6 +11,12 @@ class LocalizedForm(FlaskForm):
 
 
 class RegistrationForm(LocalizedForm):
+    date_of_birth = StringField('Date of birth', [validators.DataRequired()])
+    def validate_date_of_birth(self, field):
+        from gamearena.privacy_controls import age_error
+        error = age_error(field.data)
+        if error: raise validators.ValidationError(error)
+
     username = StringField('Username', [
         validators.DataRequired(),
         validators.Length(min=3, max=150),

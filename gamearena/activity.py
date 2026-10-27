@@ -69,6 +69,8 @@ def notify_activity_changed():
 
 
 def record_player_visit(response):
+    from gamearena.privacy_controls import analytics_allowed
+    if not analytics_allowed() or (request.endpoint or '').startswith('privacy_controls.'): return response
     if request.endpoint in {'static', 'health', 'service_worker'}:
         return response
     # Automatic polling/static requests must not keep absent players active.

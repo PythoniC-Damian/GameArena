@@ -34,6 +34,8 @@ def test_visits_count_once_but_polling_and_admins_do_not():
         owner, admin = player('visiting_player'), player('visiting_admin')
         admin.is_admin=True;db.session.commit()
         browser=client(owner)
+        from gamearena.privacy_controls import serializer,POLICY
+        browser.set_cookie('ga_privacy',serializer().dumps({'version':POLICY,'analytics':True}))
         browser.get('/notifications/count')
         assert UserActivityDay.query.count()==0
         for _ in range(2):

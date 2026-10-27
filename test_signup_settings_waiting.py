@@ -16,7 +16,7 @@ def test_google_signup_and_login_use_same_verified_provider_identity(monkeypatch
     viewer=app.test_client();page=viewer.get('/register');assert 'Sign up with Google' in page.text
     assert viewer.post('/register/google',data={'accept_terms':'on'}).status_code==400
     assert post(viewer,'/register/google',{},'/register').location.endswith('/register')
-    assert post(viewer,'/register/google',{'accept_terms':'on'},'/register').location.endswith('/login/google')
+    assert post(viewer,'/register/google',{'accept_terms':'on','date_of_birth':'1995-01-01'},'/register').location.endswith('/login/google')
     monkeypatch.setattr(application.requests,'post',lambda *a,**kw:Mock(ok=True,json=lambda:{'access_token':'synthetic-token'}))
     monkeypatch.setattr(application.requests,'get',lambda *a,**kw:Mock(ok=True,json=lambda:{'email':'google_new@example.test','verified_email':True,'name':'Google Player'}))
     for browser in (viewer,app.test_client()):
@@ -29,7 +29,7 @@ def test_google_signup_and_login_use_same_verified_provider_identity(monkeypatch
 
 def test_google_signup_reuses_managed_provider_pkce(monkeypatch):
     monkeypatch.setenv('AUTH_PROVIDER','supabase');monkeypatch.setenv('SUPABASE_URL','https://preview.supabase.co');monkeypatch.setenv('SUPABASE_ANON_KEY','synthetic-public-key')
-    viewer=app.test_client();assert post(viewer,'/register/google',{'accept_terms':'on'},'/register').status_code==302
+    viewer=app.test_client();assert post(viewer,'/register/google',{'accept_terms':'on','date_of_birth':'1995-01-01'},'/register').status_code==302
     response=viewer.get('/login/google');url=urlparse(response.location);query=parse_qs(url.query)
     assert url.hostname=='preview.supabase.co' and url.path=='/auth/v1/authorize'
     assert query['provider']==['google'] and query['code_challenge_method']==['s256']

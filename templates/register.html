@@ -63,12 +63,12 @@
                 {% include '_flash.html' %}
                 <form method="POST" action="{{ url_for('signup_google') }}" class="ga-google-signup">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label class="ga-agreement-label"><input type="checkbox" name="accept_terms" required><span>{{ t('I agree to the') }} <a href="{{ url_for('legal.terms') }}">{{ t('Terms of Use') }}</a> {{ t('and acknowledge the') }} <a href="{{ url_for('legal.privacy') }}">{{ t('Privacy Policy') }}</a>.</span></label>
+                    <p>GameArena accounts are for adults aged 18 and over.</p><label>Date of birth <input type="date" name="date_of_birth" class="ga-birth-input" autocomplete="bday" required></label><label class="ga-agreement-label"><input type="checkbox" name="accept_terms" required><span>{{ t('I agree to the') }} <a href="{{ url_for('legal.terms') }}">{{ t('Terms of Use') }}</a> {{ t('and acknowledge the') }} <a href="{{ url_for('legal.privacy') }}">{{ t('Privacy Policy') }}</a>.</span></label>
                     <button type="submit" class="ga-button ga-button-secondary ga-google-button"><span aria-hidden="true">G</span> Sign up with Google</button>
-                    <p class="ga-muted">Choose your Google account to create an account or sign in.</p>
+                    <p class="ga-muted">Your birthday is checked but not saved. Choose your Google account to create an account or sign in.</p>
                 </form><p class="ga-auth-divider ga-muted">or sign up with email</p>
                 <form method="POST" data-auth-form data-cooldown="{{ auth_retry_after or 0 or 0 }}" class="space-y-5">
-                    {{ form.hidden_tag() }}
+                    {{ form.hidden_tag() }}<p>GameArena accounts are for adults aged 18 and over.</p><label>Date of birth {{ form.date_of_birth(class="ga-birth-input", type="date", autocomplete="bday", required=true) }}</label>{% for error in form.date_of_birth.errors %}<p role="alert">{{ error }}</p>{% endfor %}
                     <div>
                         <p class="ga-muted" id="username-help">3–150 characters: letters, numbers and underscores.</p>{{ form.username.label(class="block text-sm font-medium text-slate-300 mb-2") }}
                         {{ form.username(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}

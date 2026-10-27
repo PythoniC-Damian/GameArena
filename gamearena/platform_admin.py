@@ -41,7 +41,7 @@ def save_setting(key, value):
 def basics():
     values = setting('basics')
     return dict(platform_basics=values, support_email=values.get('support_email') or
-        os.environ.get('GAMEARENA_SUPPORT_EMAIL', 'jegzdami@gmail.com'))
+        os.environ.get('GAMEARENA_SUPPORT_EMAIL', 'wegamearena@gmail.com'))
 
 
 @platform_admin.route('/admin/platform', methods=['GET', 'POST'])

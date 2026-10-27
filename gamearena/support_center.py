@@ -46,7 +46,7 @@ def export():
     payments=WalletTransaction.query.filter_by(user_id=user.id).order_by(WalletTransaction.id).limit(1001).all()
     entries=UserTournament.query.filter_by(user_id=user.id).order_by(UserTournament.id).limit(1001).all()
     payload=dict(profile=dict(id=user.id,username=user.username,email=user.email,bio=user.bio,
-        email_verified=user.email_verified),wallet=dict(total_gp=user.wallet_balance or 0,
+        email_verified=user.email_verified,adult_confirmed_at=user.adult_confirmed_at.isoformat()+'Z' if user.adult_confirmed_at else None,adult_policy_version=user.adult_policy_version),wallet=dict(total_gp=user.wallet_balance or 0,
         winnings_gp=user.wallet_winnings_balance or 0,bonus_gp=user.wallet_bonus_balance or 0),
         cosmetics=[r.item_key for r in CosmeticOwnership.query.filter_by(user_id=user.id)],
         transactions=[dict(id=r.public_transaction_id,reference=r.transaction_ref,type=r.type,amount_gp=r.amount,status=r.status,created_at=r.created_at.isoformat()+'Z') for r in payments[:1000]],

@@ -119,6 +119,8 @@ def test_launch_and_funnel_permissions_and_unique_signed_in_counts():
         client(admin).get(f'/tournament/{row.id}')
         assert TournamentVisit.query.count()==0
         browser=client(user)
+        from gamearena.privacy_controls import serializer,POLICY
+        browser.set_cookie('ga_privacy',serializer().dumps({'version':POLICY,'analytics':True}))
         for _ in range(3):browser.get(f'/tournament/{row.id}')
         browser.get(f'/join-tournament/{row.id}')
         assert TournamentVisit.query.count()==1 and TournamentVisit.query.one().join_requested

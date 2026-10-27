@@ -25,3 +25,6 @@
 <link rel="stylesheet" href="{{ asset_url('css/platform.css') }}">
 
 <link rel="stylesheet" href="{{ asset_url('css/navigation.css') }}">
+
+<script nonce="{{ csp_nonce }}">window.gaPrivacy={{ privacy_choice|tojson }};</script>
+<script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/privacy.js') }}"></script>

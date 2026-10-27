@@ -92,6 +92,8 @@ def public_status(event):
 
 
 def track_visit(event_id, intent=False):
+    from gamearena.privacy_controls import analytics_allowed
+    if not analytics_allowed(): return
     if not current_user.is_authenticated or current_user.is_admin or current_user.suspended:
         return
     statement = insert(TournamentVisit).values(tournament_id=event_id,
