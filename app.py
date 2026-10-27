@@ -409,6 +409,8 @@ from gamearena.support_center import support_center
 app.register_blueprint(support_center)
 from gamearena.chat_mentions import chat_mentions
 app.register_blueprint(chat_mentions)
+from gamearena.waiting_list import waiting_list
+app.register_blueprint(waiting_list)
 
 from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
 from gamearena.models import TournamentCompetition, TournamentCheckIn, MatchLobby, MatchEvidence
@@ -1766,9 +1768,14 @@ def public_profile(user_id):
 
 
 @app.route('/settings', methods=['GET', 'POST'])
+@app.route('/settings/<section>', methods=['GET', 'POST'])
 @login_required
-def settings():
+def settings(section=None):
+    from gamearena.settings_hub import SECTIONS, save_section
+    if section and section not in SECTIONS: abort(404)
     preferences = get_or_create_user_settings(current_user.id)
+    if request.method == 'POST' and section:
+        return save_section(section, preferences)
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
         bio = (request.form.get('bio') or '').strip()
@@ -1836,7 +1843,7 @@ def settings():
     available_games = [row[0] for row in db.session.query(Tournament.game).distinct().order_by(Tournament.game).limit(50).all()]
     blocks = UserBlock.query.options(joinedload(UserBlock.blocked)).filter_by(blocker_id=current_user.id).order_by(UserBlock.created_at.desc()).all()
     return render_template(
-        'settings.html', preferences=preferences, available_games=available_games,
+        'settings.html', section=section, sections=SECTIONS, preferences=preferences, available_games=available_games,
         blocks=blocks, version=os.environ.get('GAMEARENA_VERSION', 'Flask V1'),
     )
 
@@ -2380,6 +2387,16 @@ def login():
         flash("Invalid email or password", "error")
 
     return render_template("login.html", form=form)
+
+
+@app.route('/register/google', methods=['POST'])
+def signup_google():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    if request.form.get('accept_terms') != 'on':
+        flash('Accept the Terms of Use and Privacy Policy to continue with Google.', 'error')
+        return redirect(url_for('register'))
+    return redirect(url_for('login_google'))
 
 
 @app.route('/login/google')
@@ -2954,7 +2971,7 @@ def delete_tournament(tournament_id):
         db.session.rollback()
         flash('Type the exact tournament name to confirm deletion. Nothing was deleted.', 'error')
         return redirect(url_for('admin'))
-    from gamearena.models import OrganizerFinance, OrganizerDraft, TournamentArtwork, TournamentLaunchPlan, TournamentVisit
+    from gamearena.models import OrganizerFinance, OrganizerDraft, TournamentArtwork, TournamentLaunchPlan, TournamentVisit, TournamentInterest
     protected = (UserTournament, TournamentMatch, TournamentStat, TournamentCheckIn,
                  TournamentChatMessage, OrganizerFinance, OrganizerDraft, TournamentArtwork)
     if any(model.query.filter_by(tournament_id=tournament.id).first() for model in protected):
@@ -2962,7 +2979,7 @@ def delete_tournament(tournament_id):
         flash('This tournament has entries, competition history or organiser records. It cannot be permanently deleted. Cancel it instead to preserve those records.', 'error')
         return redirect(url_for('admin'))
     name = tournament.name
-    for model in (SavedTournament, TournamentVisit, TournamentLaunchPlan, TournamentCompetition):
+    for model in (TournamentInterest, SavedTournament, TournamentVisit, TournamentLaunchPlan, TournamentCompetition):
         model.query.filter_by(tournament_id=tournament.id).delete(synchronize_session=False)
     Tournament.query.filter_by(id=tournament.id).delete(synchronize_session=False)
     db.session.commit()
@@ -3199,6 +3216,12 @@ def join_tournament(tournament_id):
     tournament = Tournament.query.filter_by(id=tournament_id).with_for_update().populate_existing().first_or_404() if request.method == 'POST' else Tournament.query.get_or_404(tournament_id)
     if request.method == 'GET': track_visit(tournament_id, intent=True)
     if not registration_ready(tournament):
+        if tournament.status == 'open':
+            if request.method == 'POST':
+                db.session.rollback();return redirect(url_for('join_tournament',tournament_id=tournament.id))
+            from gamearena.models import TournamentInterest
+            interest = TournamentInterest.query.filter_by(user_id=current_user.id,tournament_id=tournament.id).first()
+            return render_template('waiting_list.html',tournament=tournament,interest=interest)
         db.session.rollback()
         flash(PREPARING if tournament.status=='open' else 'Registration is closed.', 'warning')
         return redirect(url_for('tournament_details', tournament_id=tournament_id))

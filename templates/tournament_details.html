@@ -69,7 +69,7 @@
                 </form>
                 {% endif %}
             {% elif current_user.is_authenticated %}
-                {% if registration_ready(tournament) %}
+                {% if tournament.status == 'open' %}
                     {% if active_participant_count(tournament) >= tournament.max_participants %}
                     <span class="rounded-full bg-red-500 px-6 py-4 text-sm font-semibold text-white">{{ t('Full') }}</span>
                     {% else %}
@@ -79,7 +79,7 @@
                 <span class="rounded-full bg-slate-800 px-6 py-4 text-sm text-slate-300">{{ t(event_public_status(tournament)) }}</span>
                 {% endif %}
             {% else %}
-                {% if not registration_ready(tournament) %}
+                {% if tournament.status != 'open' %}
                 <span class="ga-status">{{ t(event_public_status(tournament) if tournament.status=='open' else 'Registration closed') }}</span>
                 {% elif active_participant_count(tournament) >= tournament.max_participants %}
                 <span class="ga-status">{{ t('Full') }}</span>

@@ -1,0 +1,17 @@
+/* Always current, including when an older Vite stylesheet is present. */
+.ga-bottom-nav{display:none}
+@media(max-width:767px){
+body:has(.ga-bottom-nav){padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+  .ga-bottom-nav { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); position:fixed; bottom:calc(12px + env(safe-area-inset-bottom)); left:max(12px,env(safe-area-inset-left)); right:max(12px,env(safe-area-inset-right)); z-index:65; height:78px; box-sizing:border-box; background:#091d2af2; border:1px solid #43bebc99; border-radius:999px; padding:6px; box-shadow:0 10px 30px #0005,0 0 20px #00dfb438,inset 0 0 12px #00dfb412; backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
+  .ga-bottom-nav a { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; min-width:0; min-height:0; font-size:11px; line-height:1.2; font-weight:600; color:#d5dce8; border-radius:999px; text-decoration:none; -webkit-tap-highlight-color:transparent; }
+  .ga-bottom-nav a[aria-current] { background:#073a3b; color:#00dfb4; }
+  .ga-bottom-nav a:focus-visible { outline:2px solid #00dfb4; outline-offset:-2px; }
+  @media(max-width:350px){.ga-bottom-nav{left:8px;right:8px;padding:5px;height:74px}.ga-bottom-nav a{font-size:10px}}
+}
+@media(min-width:768px){body:has(.ga-bottom-nav){padding-bottom:0}}
+html[data-theme=light] .ga-bottom-nav{background:#fffffff5;border-color:#68cdb8;box-shadow:0 8px 28px #145c4e24,0 0 16px #20cea238,inset 0 1px 0 #fff}
+html[data-theme=light] .ga-bottom-nav a[aria-current]{background:#d5f5e9;color:#007c60}
+html[data-theme=light] .ga-bottom-nav a:not([aria-current]){color:#526978}
+.ga-bottom-nav a{position:relative;transition:color .2s,background-color .2s}.ga-bottom-nav a:hover{color:#00dfb4}.ga-bottom-nav .ga-icon{width:28px;height:28px;stroke-width:1.7;flex-shrink:0}.ga-bottom-nav a[aria-current] .ga-icon{filter:drop-shadow(0 0 7px #00dfb422)}
+.ga-bottom-nav::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1.5px;background:linear-gradient(110deg,#50f4d8cc,#45cfe75c 36%,#20cea233 65%,#59e8ffbb);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask-composite:exclude;pointer-events:none}
+html[data-theme=light] .ga-bottom-nav::before{background:linear-gradient(110deg,#1cbd99bb,#d8fff16b 45%,#28aeccaa)}

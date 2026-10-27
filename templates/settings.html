@@ -1,22 +1,13 @@
-<!DOCTYPE html>
-<html lang="{{ current_language }}">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Settings - GameArena</title>
-{% include '_pwa_meta.html' %}
-{% include '_design_assets.html' %}
-</head>
-<body class="min-h-screen bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
-
-{% include '_header.html' %}
-<main id="main-content" class="mx-auto max-w-4xl space-y-6 px-4 py-8 pb-28 sm:px-6">
-    {% include '_flash.html' %}
-    <header><p class="text-sm uppercase tracking-[0.3em] text-emerald-300">{{ t('Account hub') }}</p><h1 class="mt-2 text-3xl font-bold">{{ t('Settings') }}</h1><p class="mt-2 text-slate-400">{{ t('Manage your profile, privacy, notifications, and game preferences.') }}</p></header>
-    {% include '_language_picker.html' %}
-    <form id="settingsForm" method="POST" class="space-y-6" data-saving>
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <section id="account" class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
+{% extends '_base.html' %}
+{% from '_icons.html' import icon %}
+{% block title %}{{ sections[section][0] if section else 'Settings' }} · GameArena{% endblock %}
+{% block content %}<div class="ga-settings-hub">
+<header class="ga-settings-heading">{% if section %}<a class="ga-button ga-button-secondary" href="{{ url_for('settings') }}">{{ icon('chevron-left') }} Settings</a>{% endif %}<h1>{{ t(sections[section][0] if section else 'Settings') }}</h1></header>
+{% if not section %}<nav class="ga-settings-list" aria-label="Settings categories">{% for key,item in sections.items() %}<a class="ga-settings-row" href="{{ url_for('settings',section=key) }}"><span class="ga-settings-symbol ga-settings-{{ key }}">{{ icon(item[2]) }}</span><span><strong>{{ t(item[0]) }}</strong><small>{{ t(item[1]) }}</small></span>{{ icon('chevron-right') }}</a>{% endfor %}</nav><nav class="ga-settings-list" aria-label="Arena extras"><a class="ga-settings-row" href="{{ url_for('pro.membership') }}"><span class="ga-settings-symbol">{{ icon('shield') }}</span><span><strong>GameArena Master</strong><small>Membership and profile customisation</small></span>{{ icon('chevron-right') }}</a><a class="ga-settings-row" href="{{ url_for('market.shop') }}"><span class="ga-settings-symbol">{{ icon('wallet') }}</span><span><strong>Arena Shop</strong><small>Cards, frames and nameplates</small></span>{{ icon('chevron-right') }}</a></nav>
+{% elif section=='language' %}<section class="ga-panel ga-section">{% include '_language_picker.html' %}</section>
+{% elif section=='data' %}<section class="ga-panel ga-section"><h2>{{ t('Account help') }}</h2><a class="ga-button" href="{{ url_for('support_center.export') }}">Download account data</a><p class="ga-muted">Download your profile, balances, ownership and payment/entry history. For a complete data request or account closure, submit a tracked request below.</p>{% for kind,label in [('data_request','Request complete account data'),('account_closure','Request account closure')] %}<details><summary>{{ label }}</summary><form method="POST" action="{{ url_for('support_center.account_request') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="{{ kind }}"><label><input type="checkbox" name="confirmed" value="yes" required> I confirm this request. Closure is reviewed to protect remaining funds, active events and required records.</label><button class="ga-button" type="submit">{{ label }}</button></form></details>{% endfor %}<p class="ga-muted">Contact support for account closure or help with your account.</p><a class="ga-button ga-button-secondary" href="{{ url_for('support') }}">{{ t('Contact support') }}</a></section>
+{% else %}<form id="settingsForm" method="POST" action="{{ url_for('settings',section=section) }}" class="space-y-6" data-saving><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% if section=='account' %}<section id="account" class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
             <h2 class="text-xl font-semibold">{{ t('Account and profile') }}</h2>
             <div class="mt-5 grid gap-4 sm:grid-cols-2">
                 <label class="text-sm text-slate-300">{{ t('Username') }}<input name="username" maxlength="150" required value="{{ current_user.username }}" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white"></label>
@@ -25,8 +16,8 @@
                 <label class="text-sm text-slate-300 sm:col-span-2">{{ t('Profile bio') }}<textarea name="bio" maxlength="500" rows="3" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white">{{ current_user.bio or '' }}</textarea></label>
             </div>
 
-        </section>
-        <section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
+        </section>{% endif %}
+{% if section=='notifications' %}<section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
             <h2 class="text-xl font-semibold">{{ t('Notifications') }}</h2>
             <div class="ga-push-settings"><p class="ga-muted">Get messages, tournament and payment updates even when GameArena is closed.</p>{% include '_ios_push_guide.html' %}<button type="button" class="ga-button ga-button-secondary" data-enable-push>{{ t('Enable on this device') }}</button><button type="button" class="ga-button ga-button-secondary" data-disable-push hidden>{{ t('Disable on this device') }}</button><button type="button" class="ga-button ga-button-secondary" data-test-push hidden>{{ t('Send test notification') }}</button><p data-push-status class="ga-muted" role="status">{{ t('Checking device notifications…') }}</p></div>
             <div class="mt-4 grid gap-3 sm:grid-cols-2">
@@ -34,8 +25,8 @@
                 <label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm text-slate-200"><input type="checkbox" name="{{ field }}" {% if preferences|attr(field) %}checked{% endif %} class="h-4 w-4 accent-emerald-500">{{ t(label) }}</label>
                 {% endfor %}
             </div>
-        </section>
-        <section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
+        </section>{% endif %}
+{% if section=='privacy' %}<section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
             <h2 class="text-xl font-semibold">{{ t('Security and privacy') }}</h2><a href="{{ url_for('forgot_password') }}" class="ga-button ga-button-secondary">{{ t('Reset password') }}</a><p class="ga-muted">Request a reset code sent to your account email.</p>
             <div class="mt-4 grid gap-3 sm:grid-cols-2">
                 <label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm"><input type="checkbox" name="profile_public" {% if preferences.profile_public %}checked{% endif %} class="h-4 w-4 accent-emerald-500">{{ t('Public player profile') }}</label>
@@ -47,32 +38,21 @@
                 <div class="flex items-center justify-between gap-3 rounded-xl bg-slate-950 p-3"><span>{{ block.blocked.username if block.blocked else 'Player' }}</span><button type="submit" form="unblock-{{ block.blocked_id }}" class="text-sm font-semibold text-emerald-300">{{ t('Unblock') }}</button></div>
                 {% else %}<p class="text-sm text-slate-400">{{ t('No blocked players.') }}</p>{% endfor %}
             </div>
-        </section>
-        <section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
+        </section>{% endif %}
+{% if section=='gaming' %}<section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
             <h2 class="text-xl font-semibold">{{ t('Gaming') }}</h2>
             <p class="mt-1 text-sm text-slate-400">{{ t('Choose preferred games and optionally share your game IDs on your public profile.') }}</p>
             <div class="mt-4 grid gap-2 sm:grid-cols-2">
                 {% for game in available_games %}<label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm"><input type="checkbox" name="preferred_games" value="{{ game }}" {% if game in preferences.preferred_games %}checked{% endif %} class="h-4 w-4 accent-emerald-500">{{ game }}</label>{% endfor %}
             </div>
             <label class="mt-5 block text-sm text-slate-300">Game IDs, one per line as Game: ID<textarea name="game_ids" rows="4" class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 font-mono text-sm text-white">{% for game, game_id in preferences.game_ids.items() %}{{ game }}: {{ game_id }}{% if not loop.last %}&#10;{% endif %}{% endfor %}</textarea></label>
-        </section>
-        <section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
+        </section>{% endif %}
+{% if section=='appearance' %}<section class="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7">
             <h2 class="text-xl font-semibold">{{ t('Appearance & accessibility') }}</h2>
             <p class="mt-1 text-sm text-slate-400">{{ t('Choose the look that feels right for you.') }}</p><p id="themeStatus" class="ga-muted" role="status" aria-live="polite"></p><fieldset data-theme-url="{{ url_for('save_theme') }}" class="ga-theme-options"><legend>{{ t('Theme') }}</legend>{% for value, label in [('dark','Dark'),('light','Light')] %}<label class="ga-theme-choice ga-theme-{{ value }}"><input type="radio" name="theme" value="{{ value }}" {% if preferences.theme == value %}checked{% endif %}><span class="ga-theme-swatch"></span><strong>{{ t(label) }}</strong></label>{% endfor %}</fieldset>
             <div class="mt-4 grid gap-3 sm:grid-cols-2">
                 <label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm"><input type="checkbox" name="reduce_motion" {% if preferences.reduce_motion %}checked{% endif %} class="h-4 w-4 accent-emerald-500">{{ t('Reduce motion') }}</label>
                 <label class="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm"><input type="checkbox" name="larger_text" {% if preferences.larger_text %}checked{% endif %} class="h-4 w-4 accent-emerald-500">{{ t('Larger text') }}</label>
             </div>
-        </section>
-
-
-
-
-        <div class="sticky bottom-24 flex justify-end rounded-2xl bg-slate-950/95 p-2 md:bottom-4"><button type="submit" class="rounded-xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-slate-950">{{ t('Save settings') }}</button></div>
-    </form>
-{% for block in blocks %}<form id="unblock-{{ block.blocked_id }}" method="POST" action="{{ url_for('unblock_user', user_id=block.blocked_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>{% endfor %}
-<section class="ga-panel ga-section"><h2>{{ t('Account help') }}</h2><a class="ga-button" href="{{ url_for('support_center.export') }}">Download account data</a><p class="ga-muted">Download your profile, balances, ownership and payment/entry history. For a complete data request or account closure, submit a tracked request below.</p>{% for kind,label in [('data_request','Request complete account data'),('account_closure','Request account closure')] %}<details><summary>{{ label }}</summary><form method="POST" action="{{ url_for('support_center.account_request') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="{{ kind }}"><label><input type="checkbox" name="confirmed" value="yes" required> I confirm this request. Closure is reviewed to protect remaining funds, active events and required records.</label><button class="ga-button" type="submit">{{ label }}</button></form></details>{% endfor %}<p class="ga-muted">Contact support for account closure or help with your account.</p><a class="ga-button ga-button-secondary" href="{{ url_for('support') }}">{{ t('Contact support') }}</a></section></main>
-{% include '_mobile_nav.html' %}
-{% include '_pwa_register.html' %}
-</body>
-</html>
+        </section>{% endif %}
+<div class="ga-settings-save"><button type="submit" class="ga-button">{{ t('Save settings') }}</button></div></form>{% if section=='privacy' %}{% for block in blocks %}<form id="unblock-{{ block.blocked_id }}" method="POST" action="{{ url_for('unblock_user',user_id=block.blocked_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>{% endfor %}{% endif %}{% endif %}</div>{% endblock %}

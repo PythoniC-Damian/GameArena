@@ -10,7 +10,6 @@
   <div class="ga-card-actions">
     <a class="ga-button ga-button-primary" href="{{ url_for('tournament_details', tournament_id=tournament.id) }}">{{ t('View tournament') }}</a>
     {% if membership and membership.payment_status in ['paid','free'] %}<span class="ga-status">{{ t('Joined') }}</span>
-    {% elif tournament.status == 'open' and not registration_ready(tournament) %}<span class="ga-status">{{ t(event_public_status(tournament)) }}</span>
     {% elif tournament.status != 'open' %}<span class="ga-status">{{ t('Registration closed') }}</span>
     {% elif active_participant_count(tournament) >= tournament.max_participants %}<span class="ga-status">{{ t('Full') }}</span>
     {% elif membership and membership.payment_status == 'pending' %}<a class="ga-button ga-button-secondary" href="{{ url_for('pay_for_tournament', tournament_id=tournament.id) }}">{{ t('Resume payment') }}</a>

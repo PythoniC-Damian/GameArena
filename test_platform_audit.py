@@ -76,7 +76,7 @@ def test_expired_and_incomplete_events_cannot_take_entry_payments():
         event=Tournament(name='Unscheduled',game='Free Fire',entry_fee=200,prize=1000,max_participants=4,status='open')
         db.session.add(event);db.session.commit()
         assert not registration_ready(event)
-        assert viewer.get(f'/join-tournament/{event.id}').status_code in (302,409)
+        assert 'Join the free waiting list' in viewer.get(f'/join-tournament/{event.id}').text
         assert not UserTournament.query.filter_by(tournament_id=event.id).first()
         event.match_time=datetime.utcnow()-timedelta(days=1);db.session.commit()
         assert public_status(event)=='Registration closed'

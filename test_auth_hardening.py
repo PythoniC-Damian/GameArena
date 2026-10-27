@@ -83,10 +83,11 @@ def test_rate_limit_keeps_browser_form_and_json_api(client, monkeypatch):
 def test_google_callback_uses_canonical_domain(client, monkeypatch):
     monkeypatch.setattr(application, 'is_production', True)
     monkeypatch.setitem(app.config, 'PUBLIC_BASE_URL', 'https://gamearena01.com')
+    monkeypatch.setitem(app.config, 'TRUSTED_HOSTS', ['gamearena01.com','localhost','127.0.0.1'])
     monkeypatch.setenv('GOOGLE_CLIENT_ID', 'test-client')
     monkeypatch.setenv('GOOGLE_REDIRECT_URI', 'https://gamearena.onrender.com/auth/google/callback')
     response = client.get('/login/google', base_url='https://gamearena01.com')
-    assert parse_qs(urlparse(response.location).query)['redirect_uri'] == ['https://gamearena01.com/auth/google/callback']
+    assert parse_qs(urlparse(response.location).query).get('redirect_uri') == ['https://gamearena01.com/auth/google/callback'], response.location
 
 
 @pytest.mark.parametrize('verified,suspended', [(False, False), (True, True)])

@@ -683,3 +683,11 @@ class SupportReply(db.Model):
     message = db.Column(db.String(2000), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     author = db.relationship('User')
+
+
+class TournamentInterest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournament.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('tournament_id','user_id',name='uq_tournament_interest_player'),)
