@@ -69,6 +69,8 @@ class User(db.Model, UserMixin):
 
 class AccountSecurity(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    email_enabled_at = db.Column(db.DateTime, nullable=True)
+    email_version = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     totp_secret = db.Column(db.Text)
     pending_secret = db.Column(db.Text)
     pending_at = db.Column(db.DateTime)
@@ -76,6 +78,19 @@ class AccountSecurity(db.Model):
     recovery_hashes = db.Column(db.JSON, nullable=False, default=list)
     last_counter = db.Column(db.BigInteger, nullable=False, default=-1)
     version = db.Column(db.Integer, nullable=False, default=0)
+
+
+class EmailLoginChallenge(db.Model):
+    id = db.Column(db.String(48), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    purpose = db.Column(db.String(12), nullable=False)
+    code_hash = db.Column(db.String(64), nullable=False)
+    issued_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    attempts = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+    factor_version = db.Column(db.Integer, nullable=False)
+    auth_version = db.Column(db.Integer, nullable=False)
 
 
 class SecurityAuditEvent(db.Model):
@@ -98,6 +113,8 @@ class UserSettings(db.Model):
     match_notifications = db.Column(db.Boolean, nullable=False, default=True)
     wallet_notifications = db.Column(db.Boolean, nullable=False, default=True)
     chat_notifications = db.Column(db.Boolean, nullable=False, default=True)
+    private_chat_notifications = db.Column(db.Boolean, nullable=False, default=True, server_default='true')
+    group_chat_notifications = db.Column(db.Boolean, nullable=False, default=True, server_default='true')
     marketing_notifications = db.Column(db.Boolean, nullable=False, default=False)
     profile_public = db.Column(db.Boolean, nullable=False, default=True)
     allow_direct_messages = db.Column(db.Boolean, nullable=False, default=True)

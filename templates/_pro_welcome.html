@@ -1,7 +1,7 @@
 {% from '_pro_tiers.html' import tier_cards with context %}
 <dialog class="ga-pro-welcome" data-pro-welcome aria-labelledby="pro-welcome-title">
-<div class="ga-pro-welcome-top"><p class="ga-eyebrow">{{ t('GameArena Pro') }}</p><button type="button" class="ga-button ga-button-secondary" data-pro-close aria-label="Close Pro introduction">Close &times;</button></div>
-<h2 id="pro-welcome-title">Your game. Your identity.</h2>
+<div class="ga-pro-welcome-top"><p class="ga-eyebrow">{{ t('GameArena Pro') }}</p><button type="button" class="ga-button ga-button-secondary" data-pro-close aria-label="Close Pro introduction">{{ t("Close ×") }}</button></div>
+<h2 id="pro-welcome-title">{{ t("Your game. Your identity.") }}</h2>
 {{ tier_cards(compact=true) }}
-<a class="ga-pro-all-benefits" href="{{ url_for('pro.membership') }}">View all plans and benefits</a>
+<a class="ga-pro-all-benefits" href="{{ url_for('pro.membership') }}">{{ t("View all plans and benefits") }}</a>
 </dialog>

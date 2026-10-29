@@ -1,10 +1,10 @@
 {% from '_master.html' import master_badge %}
 <!DOCTYPE html>
-<html lang="{{ current_language }}">
+<html lang="{{ current_language }}" dir="{{ language_direction }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat - GameArena</title>
+<title>{{ t("Chat - GameArena") }}</title>
 
 {% include '_pwa_meta.html' %}
 {% include '_design_assets.html' %}
@@ -24,15 +24,15 @@
             <div class="flex items-center justify-between">
                 <div>
                     {% if conversation_user %}
-                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Private conversation</p>
+                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t("Private conversation") }}</p>
                     <a href="{{ url_for('public_profile', user_id=conversation_user.id) }}" class="ga-chat-person" aria-label="View {{ conversation_user.username }}'s profile">
                         {% if conversation_user.avatar_url %}<img src="{{ conversation_user.avatar_url }}" alt="" class="ga-chat-avatar" width="52" height="52">{% else %}<span class="ga-chat-avatar">{{ conversation_user.username[:1]|upper }}</span>{% endif %}
                         <h1 class="break-words text-3xl font-bold text-white">{{ conversation_user.username }} {{ master_badge(conversation_user) }}</h1>
                     </a>
                     <p id="dmUnreadCount" class="mt-1 text-xs text-slate-400">{{ dm_unread_count }} unread messages across your inbox</p>
                     {% else %}
-                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Global chat</p>
-                    <h1 class="mt-2 text-3xl font-bold text-white">Community</h1>
+                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t("Global chat") }}</p>
+                    <h1 class="mt-2 text-3xl font-bold text-white">{{ t("Community") }}</h1>
                     {% endif %}
                 </div>
             </div>
@@ -46,7 +46,7 @@
                         {% if message.reply_to %}<blockquote class="ga-chat-quote" data-quote-id="{{ message.reply_to.id }}"><strong>{{ message.reply_to.sender.username if message.reply_to.sender else 'Player' }}</strong><p>{{ message.reply_to.message[:200] }}</p></blockquote>{% endif %}<p data-message-body class="mt-2 whitespace-pre-wrap text-sm leading-6">{{ message.message }}</p>
                         {% if message.sender_id == current_user.id and not message.deleted_at %}<div class="ga-message-delivery"><small data-read-receipt class="{{ 'ga-message-seen' if message.read_at else '' }}">{{ '✓✓ Seen' if message.read_at else '✓ Sent' }}</small></div>{% endif %}
                     </div>
-{% else %}<p data-chat-empty class="p-5 text-center text-sm text-slate-400">No messages yet. Start the conversation.</p>
+{% else %}<p data-chat-empty class="p-5 text-center text-sm text-slate-400">{{ t("No messages yet. Start the conversation.") }}</p>
 {% endfor %}
 {% else %}
 {% for message in messages %}{% if message.created_at and (loop.first or not loop.previtem.created_at or message.created_at.date()!=loop.previtem.created_at.date()) %}<p class="ga-chat-date ga-muted" data-chat-date="{{ message.created_at.strftime('%Y-%m-%d') }}">{{ message.created_at.strftime('%d %b %Y') }} · UTC</p>{% endif %}
@@ -57,34 +57,34 @@
                             <span class="text-xs text-slate-500">{{ message.created_at.strftime('%H:%M UTC') if message.created_at else '' }}</span>
                         </div>
                         {% if message.reply_to %}<blockquote class="ga-chat-quote" data-quote-id="{{ message.reply_to.id }}"><strong>{{ message.reply_to.user.username if message.reply_to.user else 'Player' }}</strong><p>{{ message.reply_to.message[:200] }}</p></blockquote>{% endif %}<p data-message-body class="mt-3 whitespace-pre-wrap text-sm leading-6">{{ message.message|mention_text(message.mentions if not message.deleted_at else []) }}</p>
-                        {% if message.user_id != current_user.id %}<details class="mt-2 text-right"><summary class="cursor-pointer text-xs text-slate-500">Report</summary><form method="POST" action="{{ url_for('report_chat_message', message_id=message.id) }}" class="mt-2 flex gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input name="reason" maxlength="2000" required placeholder="Why report this message?" class="min-w-0 flex-1 rounded-lg bg-slate-950 px-2 py-1 text-xs text-white"><button class="text-xs text-red-300">Send</button></form></details>{% endif %}
+                        {% if message.user_id != current_user.id %}<details class="mt-2 text-right"><summary class="cursor-pointer text-xs text-slate-500">{{ t("Report") }}</summary><form method="POST" action="{{ url_for('report_chat_message', message_id=message.id) }}" class="mt-2 flex gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input name="reason" maxlength="2000" required placeholder="Why report this message?" class="min-w-0 flex-1 rounded-lg bg-slate-950 px-2 py-1 text-xs text-white"><button class="text-xs text-red-300">{{ t("Send") }}</button></form></details>{% endif %}
                     </div>
                     {% endif %}
                     {% endfor %}
 {% endif %}
                 </div>
-                <p class="ga-muted ga-chat-hint">Swipe a message to reply. Hold or right-click for message actions.</p><div id="chatTyping" class="ga-typing" role="status" hidden><span data-typing-name></span><span class="ga-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
+                <p class="ga-muted ga-chat-hint">{{ t("Swipe a message to reply. Hold or right-click for message actions.") }}</p><div id="chatTyping" class="ga-typing" role="status" hidden><span data-typing-name></span><span class="ga-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
                 <div id="replyPreview" class="ga-chat-quote ga-reply-preview" hidden><div><strong></strong><p></p></div><button type="button" aria-label="Cancel reply">×</button></div>
-                {% if not conversation_user %}<div id="mentionSuggestions" class="ga-mention-suggestions" role="listbox" aria-label="Mention a player" hidden></div><p id="mentionHelp" class="ga-chat-hint ga-muted">Type @ to mention a player. Up to 5 mentions per message.</p>{% endif %}
+                {% if not conversation_user %}<div id="mentionSuggestions" class="ga-mention-suggestions" role="listbox" aria-label="Mention a player" hidden></div><p id="mentionHelp" class="ga-chat-hint ga-muted">{{ t("Type @ to mention a player. Up to 5 mentions per message.") }}</p>{% endif %}
                 <form id="chatForm" class="mt-4 flex min-w-0 gap-2 rounded-[32px] border border-slate-800 bg-slate-900/90 p-2 sm:gap-3 sm:p-3">
                     <input aria-label="Message" id="chatInput" {% if connection and not connection.can_send %}disabled{% endif %} type="text" maxlength="1000" placeholder="Type your message..." autocomplete="off" class="min-w-0 flex-1 rounded-[28px] border border-slate-800 bg-slate-950/80 px-3 py-3 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none sm:px-4" />
-                    <button type="submit" {% if connection and not connection.can_send %}disabled{% endif %} class="shrink-0 rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold leading-5 text-slate-950 hover:bg-emerald-400 sm:px-6">Send</button>
+                    <button type="submit" {% if connection and not connection.can_send %}disabled{% endif %} class="shrink-0 rounded-full bg-emerald-500 px-4 py-3 text-sm font-semibold leading-5 text-slate-950 hover:bg-emerald-400 sm:px-6">{{ t("Send") }}</button>
                 </form><p id="chatStatus" class="ga-inline-status ga-muted" role="status" aria-live="polite"></p>
             </div>
         </section>
         <aside class="ga-conversations-panel rounded-[36px] border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/20">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">Conversations</p>
-                    <h2 class="mt-2 text-2xl font-semibold text-white">Your inbox</h2>
+                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t("Conversations") }}</p>
+                    <h2 class="mt-2 text-2xl font-semibold text-white">{{ t("Your inbox") }}</h2>
                 </div>
                 <span id="conversationCount" class="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-200">{{ displayed_conversations|length }}</span>
             </div>
             <div class="mt-6">
-                <a href="{{ url_for('chat') }}" class="block rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-4 text-white">Global chat</a>
+                <a href="{{ url_for('chat') }}" class="block rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-4 text-white">{{ t("Global chat") }}</a>
             </div>
-            <div class="ga-inbox-tabs"><a href="{{ url_for('chat') }}" {{ 'aria-current=page' if not request_view else '' }}>Inbox</a><a href="{{ url_for('chat', inbox='requests') }}" {{ 'aria-current=page' if request_view else '' }}>Requests ({{ conversations|selectattr('request')|list|length }})</a></div>
-            <label class="ga-muted">Search conversations<input class="ga-input" id="conversationSearch" type="search" placeholder="Search players in your inbox" autocomplete="off"></label><p class="ga-muted" id="conversationSearchEmpty" hidden>No matching conversations.</p><nav data-filter="{{ 'requests' if request_view else 'inbox' }}" id="conversationList" class="ga-conversation-list" aria-label="Private conversations" tabindex="0" data-url="{{ url_for('chat_conversations') }}">
+            <div class="ga-inbox-tabs"><a href="{{ url_for('chat') }}" {{ 'aria-current=page' if not request_view else '' }}>{{ t("Inbox") }}</a><a href="{{ url_for('chat', inbox='requests') }}" {{ 'aria-current=page' if request_view else '' }}>Requests ({{ conversations|selectattr('request')|list|length }})</a></div>
+            <label class="ga-muted">{{ t("Search conversations") }}<input class="ga-input" id="conversationSearch" type="search" placeholder="Search players in your inbox" autocomplete="off"></label><p class="ga-muted" id="conversationSearchEmpty" hidden>{{ t("No matching conversations.") }}</p><nav data-filter="{{ 'requests' if request_view else 'inbox' }}" id="conversationList" class="ga-conversation-list" aria-label="Private conversations" tabindex="0" data-url="{{ url_for('chat_conversations') }}">
                 {% for item in displayed_conversations %}{% set partner = item.user %}
                 <a href="{{ url_for('direct_message', user_id=partner.id) }}" data-search-name="{{ partner.username|lower }}" class="ga-conversation-row {{ 'is-active' if conversation_user and conversation_user.id == partner.id else '' }}" {% if conversation_user and conversation_user.id == partner.id %}aria-current="page"{% endif %}>
                     {% if partner.avatar_url %}<img src="{{ partner.avatar_url }}" alt="" class="ga-chat-avatar" width="48" height="48" loading="lazy">{% else %}<span class="ga-chat-avatar">{{ partner.username[:1]|upper }}</span>{% endif %}
@@ -100,9 +100,9 @@
                 {% if is_blocked %}
                 <form method="POST" action="{{ url_for('unblock_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-3 py-2 text-sm">{{ t('Unblock') }}</button></form>
                 {% else %}
-                <form method="POST" action="{{ url_for('block_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-3 py-2 text-sm">Block</button></form>
+                <form method="POST" action="{{ url_for('block_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="rounded-xl border border-slate-700 px-3 py-2 text-sm">{{ t("Block") }}</button></form>
                 {% endif %}
-                <form method="POST" action="{{ url_for('report_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="reason" value="Reported from direct message"><button class="rounded-xl border border-red-500/30 px-3 py-2 text-sm text-red-200">Report player</button></form>
+                <form method="POST" action="{{ url_for('report_user', user_id=conversation_user.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="reason" value="Reported from direct message"><button class="rounded-xl border border-red-500/30 px-3 py-2 text-sm text-red-200">{{ t("Report player") }}</button></form>
             </div>
             {% endif %}
         </aside>
@@ -119,6 +119,6 @@
 <script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/chat.js') }}"></script>
 
 {% include '_pwa_register.html' %}
-<dialog id="messageActions" class="ga-message-actions"><h2>Message actions</h2><button type="button" data-action-reply>Reply</button><button type="button" data-delete-message>Delete for everyone</button><button type="button" data-delete-confirm hidden>Confirm deletion for everyone</button><p data-action-status role="status"></p><button type="button" data-action-cancel>{{ t('Cancel') }}</button></dialog>
+<dialog id="messageActions" class="ga-message-actions"><h2>{{ t("Message actions") }}</h2><button type="button" data-action-reply>{{ t("Reply") }}</button><button type="button" data-delete-message>{{ t("Delete for everyone") }}</button><button type="button" data-delete-confirm hidden>{{ t("Confirm deletion for everyone") }}</button><p data-action-status role="status"></p><button type="button" data-action-cancel>{{ t('Cancel') }}</button></dialog>
 </body>
 </html>

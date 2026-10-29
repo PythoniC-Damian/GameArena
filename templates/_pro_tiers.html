@@ -8,7 +8,7 @@
 <span class="ga-pro-tier-badge">{{ '♢' if tier == 'Master' else ('⚔' if tier == 'Grandmaster' else '♛') }} {{ tier|upper }}</span>
 <h3>{{ heading }}</h3>{% if not compact %}<p class="ga-muted">{{ description }}</p>{% endif %}
 <ul>{% for benefit in (benefits[:2] if compact else benefits) %}<li>{{ benefit }}</li>{% endfor %}</ul>
-{% if tier == 'Master' %}{% if current_user.is_authenticated and current_user.is_admin %}<p class="ga-pro-tier-price">Included for administrators</p>{% else %}<p class="ga-pro-tier-price">{{ 2300|naira }}<span> / month</span></p>{% endif %}{% if not compact %}<a class="ga-button ga-pro-tier-action" href="{{ url_for('pro.membership') }}#subscription">{{ 'Manage Master' if current_user.is_authenticated and current_user.master_active else 'Subscribe to Master' }}</a>{% endif %}{% else %}<p class="ga-muted">Coming soon · Not available to purchase</p>{% if not compact %}<button class="ga-button ga-button-secondary ga-pro-tier-action" disabled>Coming soon</button>{% endif %}{% endif %}
+{% if tier == 'Master' %}{% if current_user.is_authenticated and current_user.is_admin %}<p class="ga-pro-tier-price">{{ t("Included for administrators") }}</p>{% else %}<p class="ga-pro-tier-price">{{ 2300|naira }}<span> {{ t("/ month") }}</span></p>{% endif %}{% if not compact %}<a class="ga-button ga-pro-tier-action" href="{{ url_for('pro.membership') }}#subscription">{{ 'Manage Master' if current_user.is_authenticated and current_user.master_active else 'Subscribe to Master' }}</a>{% endif %}{% else %}<p class="ga-muted">{{ t("Coming soon · Not available to purchase") }}</p>{% if not compact %}<button class="ga-button ga-button-secondary ga-pro-tier-action" disabled>{{ t("Coming soon") }}</button>{% endif %}{% endif %}
 </article>{% endfor %}</div>
-<p class="ga-pro-swipe-hint">Swipe left or right to explore all three tiers.</p>
+<p class="ga-pro-swipe-hint">{{ t("Swipe left or right to explore all three tiers.") }}</p>
 {% endmacro %}

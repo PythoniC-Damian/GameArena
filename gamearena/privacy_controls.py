@@ -85,7 +85,7 @@ def eligibility():
 def age_guard():
     endpoint = request.endpoint or ''
     if endpoint in {'static','health','service_worker','android_asset_links','logout','login','register','login_google','signup_google','google_callback','supabase_callback','verify_email','support'}: return
-    if endpoint.startswith(('privacy_controls.','legal.','support_center.','security.')): return
+    if endpoint.startswith(('privacy_controls.','legal.','support_center.','security.','email_security.','i18n.')): return
     if any(word in endpoint for word in ('callback','webhook','verify_payment')): return
     if endpoint=='settings' and request.view_args.get('section')=='data': return
     if current_user.is_authenticated and not adult_access_allowed():
@@ -94,10 +94,11 @@ def age_guard():
         return redirect(url_for('privacy_controls.eligibility'))
 
 def purge_usage(before=None):
-    from gamearena.models import UserActivityDay,TournamentVisit
+    from gamearena.models import UserActivityDay,TournamentVisit,EmailLoginChallenge
     cutoff=before or datetime.utcnow()-timedelta(days=90)
     # Never remove payments, messages, entries or dispute evidence here.
     with db.engine.begin() as connection:
+        connection.execute(delete(EmailLoginChallenge).where(EmailLoginChallenge.expires_at<datetime.utcnow()-timedelta(days=1)))
         connection.execute(delete(UserActivityDay).where(UserActivityDay.activity_date<cutoff.date()))
         connection.execute(delete(TournamentVisit).where(TournamentVisit.viewed_at<cutoff))
 

@@ -43,6 +43,9 @@ def deliver_notification_push(notification_id):
         names = {'chat':'chat_notifications', 'match':'match_notifications',
                  'wallet':'wallet_notifications', 'tournament':'tournament_notifications',
                  'marketing':'marketing_notifications'}
+        if record.category=='chat':
+            from gamearena.notification_preferences import chat_alert_allowed
+            if not chat_alert_allowed(preferences,record.target_url): return
         if preferences and record.category in names and not getattr(preferences, names[record.category]):
             return
         subscriptions = [item.subscription for item in PushSubscription.query.filter_by(user_id=record.user_id).all()]

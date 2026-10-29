@@ -3,7 +3,7 @@
 <a class="ga-skip" href="#main-content">{{ t('Skip to content') }}</a>
 <header class="ga-header" data-user-id="{{ current_user.id if current_user.is_authenticated else '' }}" data-unread-url="{{ url_for('notification_count') if current_user.is_authenticated else '' }}">
   <div class="ga-header-inner">
-    <a class="ga-brand" href="{{ url_for('home') }}" aria-label="GameArena Home"><span class="ga-brand-mark">G</span><span>Game<span class="ga-brand-accent">Arena</span></span></a>
+    <a class="ga-brand" href="{{ url_for('home') }}" aria-label="GameArena Home"><span class="ga-brand-mark">G</span><span>{{ t("Game") }}<span class="ga-brand-accent">{{ t("Arena") }}</span></span></a>
     <nav class="ga-primary" aria-label="Primary navigation">
       {% for endpoint, label in [('home','Home'),('tournaments_page','Tournaments'),('leaderboard','Leaderboard')] %}
       <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint or (endpoint == 'tournaments_page' and request.endpoint in ['tournament_details','pay_for_tournament','join_tournament']) %}aria-current="page"{% endif %}>{{ t(label) }}</a>

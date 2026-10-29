@@ -8,4 +8,4 @@
 <div class="ga-transaction-copy"><strong>{{ t(wt.category_label) }}{% if wt.account_name %} · {{ wt.account_name }}{% endif %}</strong><p class="ga-muted">{{ wt.created_at.strftime('%b %d, %H:%M:%S UTC') if wt.created_at else 'Date unavailable' }}</p></div>
 <div class="ga-transaction-value"><strong class="{{ 'is-incoming' if wt.incoming and wt.status == 'completed' else '' }}"><span data-money-naira="{{ wt.amount }}" data-money-sign="{{ '+' if wt.incoming else '−' }}">{{ '+' if wt.incoming else '−' }}{{ wt.amount|gp }}</span></strong><small class="ga-muted">{{ wt.amount|gp }}</small><span class="ga-transaction-status status-{{ wt.status }}">{{ 'Successful' if wt.status == 'completed' else 'Failed' if wt.status == 'failed' else 'Pending' }}</span></div>
 </a>
-{% else %}<p class="ga-empty">No transactions match these filters.</p>{% endfor %}
+{% else %}<p class="ga-empty">{{ t("No transactions match these filters.") }}</p>{% endfor %}

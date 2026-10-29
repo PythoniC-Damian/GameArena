@@ -288,7 +288,7 @@ class NotificationFlowTests(unittest.TestCase):
                 'username': 'new_player',
                 'email': 'new-player@example.com',
                 'password': 'secret123',
-                'confirm_password': 'secret123', 'accept_terms':'y',
+                'confirm_password': 'secret123', 'accept_terms':'y', 'date_of_birth':'1990-01-01',
                 'csrf_token': token,
             }, follow_redirects=True)
 
@@ -485,6 +485,10 @@ class NotificationFlowTests(unittest.TestCase):
     def test_google_callback_creates_or_logs_in_user(self):
         with patch.dict('os.environ', {'GOOGLE_CLIENT_ID': 'test-client-id', 'GOOGLE_CLIENT_SECRET': 'test-secret'}, clear=False):
             with patch('app.requests.post') as mock_post, patch('app.requests.get') as mock_get:
+                self.client.post('/register/google', data={
+                    'csrf_token': self.csrf_token('/register'),
+                    'accept_terms': 'on', 'date_of_birth': '1990-01-01',
+                })
                 login_response = self.client.get('/login/google', follow_redirects=False)
                 state = parse_qs(urlparse(login_response.headers['Location']).query)['state'][0]
                 mock_post.return_value.json.return_value = {'access_token': 'google-token'}

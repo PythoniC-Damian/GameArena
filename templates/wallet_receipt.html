@@ -2,7 +2,7 @@
 {% from '_icons.html' import icon %}
 {% block title %}Transaction receipt · GameArena{% endblock %}
 {% block content %}
-<div class="ga-history-heading"><div><a class="ga-history-back" href="{{ url_for('wallet_history') }}">{{ icon('chevron-left') }} Transactions</a><h1>{{ t('Transaction details') }}</h1></div><span class="ga-receipt-brand">Game<span>Arena</span></span></div>
+<div class="ga-history-heading"><div><a class="ga-history-back" href="{{ url_for('wallet_history') }}">{{ icon('chevron-left') }} Transactions</a><h1>{{ t('Transaction details') }}</h1></div><span class="ga-receipt-brand">{{ t("Game") }}<span>{{ t("Arena") }}</span></span></div>
 <div id="walletReceipt" class="ga-receipt-layout" data-receipt-status="{{ 'Successful' if wt.status == 'completed' else 'Failed' if wt.status == 'failed' else 'Pending' }}" data-receipt-amount="{{ wt.amount|gp }}" data-receipt-type="{{ t(wt.category_label) }}" data-receipt-id="{{ wt.public_transaction_id }}">
 <section class="ga-panel ga-section ga-receipt-summary"><span class="ga-receipt-emblem">{{ icon('wallet') }}</span><p class="ga-muted">{{ t(wt.category_label) }}</p><h2>{{ wt.amount|gp }}</h2><p class="ga-muted">{{ wt.amount|naira }} equivalent</p><p class="ga-receipt-state {{ 'is-incoming' if wt.status == 'completed' else 'is-failed' if wt.status == 'failed' else '' }}">{{ icon('check' if wt.status == 'completed' else 'clock') }} {{ t('Successful' if wt.status == 'completed' else 'Failed' if wt.status == 'failed' else 'Pending') }}</p>
 {% if wt.status in ('pending','processing') %}<p class="ga-muted">{{ 'Awaiting payment confirmation.' if wt.type == 'deposit' else 'Awaiting payout confirmation. Funds have not been confirmed as delivered.' }}</p>{% endif %}</section>
@@ -20,7 +20,7 @@
 {% if wt.failed_at %}<div data-receipt-row><dt>{{ t('Failed') }}</dt><dd>{{ wt.failed_at.strftime('%d %b %Y · %H:%M:%S UTC') }}</dd></div>{% endif %}
 {% if wt.type == 'cosmetic_purchase' %}<div data-receipt-row><dt>{{ t('Cosmetic') }}</dt><dd>{{ wt.account_name }}</dd></div><div data-receipt-row><dt>{{ t('Bonus GP used') }}</dt><dd>{{ wt.bonus_spent|gp }}</dd></div>{% endif %}</dl><p class="ga-muted ga-receipt-note">{{ t('The GameArena ID identifies this wallet record. The payment reference identifies the recorded payment request. GP has a fixed value of ₦1 per GP.') }}</p>
 {% if failure_message %}<p role="status">{{ failure_message }}{% if wt.type == 'withdrawal' %} Reserved funds were returned to your wallet.{% endif %}</p>{% endif %}
-{% if current_user.is_admin and wt.failure_reason %}<details><summary>Provider failure details (admin)</summary><p>{{ wt.failure_reason }}</p></details>{% endif %}
+{% if current_user.is_admin and wt.failure_reason %}<details><summary>{{ t("Provider failure details (admin)") }}</summary><p>{{ wt.failure_reason }}</p></details>{% endif %}
 {% if wt.type == 'deposit' and wt.status == 'pending' %}<a class="ga-button ga-button-secondary" href="{{ url_for('wallet_verify_deposit', reference=wt.transaction_ref) }}">{{ t('Check payment status') }}</a>{% endif %}</section>
 </div>
 <div class="ga-receipt-actions"><a class="ga-button ga-button-secondary" href="{{ url_for('support') }}">{{ t('Report an issue') }}</a><button id="shareReceipt" class="ga-button" type="button">{{ icon('share') }} Share Receipt</button></div><p id="receiptActionStatus" class="ga-muted" role="status" aria-live="polite"></p><p class="ga-muted ga-receipt-note">{{ t('Shared receipts mask your account number. Your receipt page stays private.') }}</p>

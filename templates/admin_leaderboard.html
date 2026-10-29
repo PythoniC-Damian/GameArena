@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="{{ current_language }}">
+<html lang="{{ current_language }}" dir="{{ language_direction }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Leaderboard - GameArena Admin</title>
+<title>{{ t("Leaderboard - GameArena Admin") }}</title>
 
 {% include '_pwa_meta.html' %}
 {% include '_design_assets.html' %}
@@ -14,7 +14,7 @@
 
 <section class="p-10 text-center">
 <h1 class="text-4xl font-bold mb-2">{{ tournament.game }} Leaderboard</h1>
-<p class="text-slate-400 text-lg">Track rankings, wins, kills, and points for each player.</p>
+<p class="text-slate-400 text-lg">{{ t("Track rankings, wins, kills, and points for each player.") }}</p>
 </section>
 
 {% include '_flash.html' %}
@@ -22,7 +22,7 @@
 <section class="px-10 pb-10">
 <div class="grid gap-8 lg:grid-cols-2">
     <div class="bg-slate-900 rounded-lg p-6 shadow-lg">
-        <h2 class="text-2xl font-bold mb-4">Add / Update Entry</h2>
+        <h2 class="text-2xl font-bold mb-4">{{ t("Add / Update Entry") }}</h2>
         {% if form.user_id.choices %}
         <form method="POST">
             {{ form.hidden_tag() }}
@@ -54,7 +54,7 @@
         </form>
         {% else %}
         <div class="bg-yellow-500 text-black p-4 rounded">
-            No joined players are available yet. Players must join the tournament before leaderboard entries can be added.
+            {{ t("No joined players are available yet. Players must join the tournament before leaderboard entries can be added.") }}
         </div>
         {% endif %}
     </div>
@@ -65,12 +65,12 @@
         <table class="min-w-full text-left text-sm">
             <thead>
                 <tr class="border-b border-gray-700">
-                    <th class="px-4 py-2">Rank</th>
-                    <th class="px-4 py-2">Player</th>
+                    <th class="px-4 py-2">{{ t("Rank") }}</th>
+                    <th class="px-4 py-2">{{ t("Player") }}</th>
                     <th class="px-4 py-2">{{ t('Wins') }}</th>
-                    <th class="px-4 py-2">Kills</th>
-                    <th class="px-4 py-2">Points</th>
-                    <th class="px-4 py-2">Action</th>
+                    <th class="px-4 py-2">{{ t("Kills") }}</th>
+                    <th class="px-4 py-2">{{ t("Points") }}</th>
+                    <th class="px-4 py-2">{{ t("Action") }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -82,7 +82,7 @@
                     <td class="px-4 py-2">{{ stat.kills }}</td>
                     <td class="px-4 py-2">{{ stat.points }}</td>
                     <td class="px-4 py-2">
-                        <form method="POST" action="{{ url_for('delete_leaderboard_entry', tournament_id=tournament.id, stat_id=stat.id) }}" data-confirm="Delete this ranking record?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="ga-button ga-button-secondary">Delete</button></form>
+                        <form method="POST" action="{{ url_for('delete_leaderboard_entry', tournament_id=tournament.id, stat_id=stat.id) }}" data-confirm="Delete this ranking record?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="ga-button ga-button-secondary">{{ t("Delete") }}</button></form>
                     </td>
                 </tr>
                 {% endfor %}
@@ -90,7 +90,7 @@
         </table>
         {% else %}
         <div class="bg-slate-800 p-6 rounded text-gray-300">
-            No leaderboard entries yet. Add stats to start ranking players.
+            {{ t("No leaderboard entries yet. Add stats to start ranking players.") }}
         </div>
         {% endif %}
     </div>

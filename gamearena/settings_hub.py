@@ -12,7 +12,7 @@ SECTIONS = {
  'notifications':('Notifications','Tournament, payment and chat updates','bell'),
  'gaming':('Gaming','Preferred games and game IDs','trophy'),
  'appearance':('Appearance & accessibility','Light/dark theme, motion and text size','settings'),
- 'language':('Language','English, Spanish, French and Portuguese','chat'),
+ 'language':('Language','Choose your interface language','chat'),
  'data':('Account data & support','Export data, account requests and help','download'),
 }
 
@@ -40,6 +40,14 @@ def save_section(section, preferences):
             if theme not in {'dark','light'}:return back('Choose Dark or Light for your theme.')
             preferences.theme=theme
         for field in fields:setattr(preferences,field,request.form.get(field)=='on')
+        if section=='notifications':
+            if request.form.get('chat_controls')=='split':
+                preferences.private_chat_notifications=request.form.get('private_chat_notifications')=='on'
+                preferences.group_chat_notifications=request.form.get('group_chat_notifications')=='on'
+                preferences.chat_notifications=preferences.private_chat_notifications or preferences.group_chat_notifications
+            else:
+                preferences.private_chat_notifications=preferences.chat_notifications
+                preferences.group_chat_notifications=preferences.chat_notifications
     elif section=='gaming':
         preferences.preferred_games=list(dict.fromkeys(value.strip() for value in request.form.getlist('preferred_games') if 0<len(value.strip())<=100))[:10]
         ids={}

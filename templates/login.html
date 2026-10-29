@@ -1,6 +1,6 @@
 {% from '_password_input.html' import password_input %}
 <!DOCTYPE html>
-<html lang="{{ current_language }}">
+<html lang="{{ current_language }}" dir="{{ language_direction }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -37,7 +37,7 @@
                 <div class="flex items-center gap-3">
                     <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-slate-950 font-bold shadow-xl shadow-cyan-500/20">G</div>
                     <div>
-                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">GameArena</p>
+                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t("GameArena") }}</p>
                         <p class="text-lg font-semibold text-white/90">{{ t('Rise to the top of the next tournament.') }}</p>
                     </div>
                 </div>
@@ -65,7 +65,7 @@
                     {{ form.hidden_tag() }}
                     <a href="{{ url_for('login_google') }}" class="flex items-center justify-center gap-3 rounded-3xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:border-emerald-400 hover:bg-slate-800">
                         <span class="text-base">G</span>
-                        Continue with Google
+                        {{ t("Continue with Google") }}
                     </a>
                     <div class="flex items-center gap-3 text-xs uppercase tracking-[0.3em] text-slate-500">
                         <div class="h-px flex-1 bg-slate-800"></div>

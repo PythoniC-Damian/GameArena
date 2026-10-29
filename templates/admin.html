@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html lang="{{ current_language }}">
+<html lang="{{ current_language }}" dir="{{ language_direction }}">
 
 <head>
 
@@ -8,7 +8,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Admin Panel - GameArena</title>
+<title>{{ t("Admin Panel - GameArena") }}</title>
 
 
 
@@ -47,7 +47,7 @@
 
 <h2 id="admin-tools-title" class="ga-section-title">{{ t('Management tools') }}</h2>
 
-<div class="ga-admin-tools"><section class="ga-card ga-admin-tool"><p class="ga-eyebrow">Platform</p><h3>Shop and site settings</h3><p class="ga-muted">Edit item names, descriptions and GP prices, support contact and announcements.</p><a class="ga-button ga-button-secondary" href="{{ url_for('platform_admin.dashboard') }}">Manage Shop and settings</a><a class="ga-button ga-button-secondary" href="{{ url_for('admin_reports') }}">Support and reports</a></section>
+<div class="ga-admin-tools"><section class="ga-card ga-admin-tool"><p class="ga-eyebrow">{{ t("Platform") }}</p><h3>{{ t("Shop and site settings") }}</h3><p class="ga-muted">{{ t("Edit item names, descriptions and GP prices, support contact and announcements.") }}</p><a class="ga-button ga-button-secondary" href="{{ url_for('platform_admin.dashboard') }}">{{ t("Manage Shop and settings") }}</a><a class="ga-button ga-button-secondary" href="{{ url_for('admin_reports') }}">{{ t("Support and reports") }}</a></section>
 
 <section class="ga-card ga-admin-tool"><p class="ga-eyebrow">01 · {{ t('Competitions') }}</p><h3>{{ t('Tournament operations') }}</h3><p class="ga-muted">{{ t('Review disputed results and manage each event from its tournament card below.') }}</p><a class="ga-button ga-button-secondary" href="{{ url_for('competition.reviews') }}">{{ t('Competition review queue') }}</a></section>
 
@@ -107,7 +107,7 @@
 
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                <button type="submit" class="bg-green-500 px-4 py-2 rounded hover:bg-green-600 text-sm">Start</button>
+                <button type="submit" class="bg-green-500 px-4 py-2 rounded hover:bg-green-600 text-sm">{{ t("Start") }}</button>
 
             </form>
 
@@ -117,7 +117,7 @@
 
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                <button type="submit" class="bg-yellow-500 px-4 py-2 rounded hover:bg-yellow-600 text-sm">Finish</button>
+                <button type="submit" class="bg-yellow-500 px-4 py-2 rounded hover:bg-yellow-600 text-sm">{{ t("Finish") }}</button>
 
             </form>
 
@@ -152,7 +152,7 @@
 
 <div class="bg-slate-900 p-6 rounded-lg text-center">
 
-    <p class="text-slate-400 text-lg">No tournaments created yet.</p>
+    <p class="text-slate-400 text-lg">{{ t("No tournaments created yet.") }}</p>
 
 </div>
 

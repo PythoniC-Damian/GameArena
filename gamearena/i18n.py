@@ -5,11 +5,17 @@ from flask import Blueprint, session, request, redirect, abort
 from flask_login import current_user
 from gamearena.extensions import db
 from gamearena.models import UserSettings, User
-LANGUAGES = {'en':'English', 'es':'Español', 'fr':'Français', 'pt':'Português'}
-CATALOGS = {code:json.loads((Path(__file__).parent/'locales'/(code+'.json')).read_text(encoding='utf-8')) for code in LANGUAGES if code != 'en'}
+REQUESTED_LANGUAGES = {'en': 'English', 'ar': 'العربية', 'be': 'Беларуская', 'ca': 'Català', 'zh-Hans': '简体中文', 'zh-Hant': '繁體中文', 'hr': 'Hrvatski', 'cs': 'Čeština', 'nl': 'Nederlands', 'fi': 'Suomi', 'fr': 'Français', 'de': 'Deutsch', 'he': 'עברית', 'id': 'Bahasa Indonesia', 'it': 'Italiano', 'kk': 'Қазақша', 'ko': '한국어', 'ms': 'Bahasa Melayu', 'nb': 'Norsk (Bokmål)', 'fa': 'فارسی', 'pl': 'Polski', 'pt-BR': 'Português (Brasil)', 'pt': 'Português', 'ro': 'Română', 'ru': 'Русский', 'sr': 'Српски', 'sk': 'Slovenčina', 'es': 'Español'}
+LANGUAGES = {code:REQUESTED_LANGUAGES[code] for code in ('en','es','fr','pt')}
+
+LANGUAGE_NAMES_EN = {'en': 'English', 'ar': 'Arabic', 'be': 'Belarusian', 'ca': 'Catalan', 'zh-Hans': 'Chinese (Simplified)', 'zh-Hant': 'Chinese (Traditional)', 'hr': 'Croatian', 'cs': 'Czech', 'nl': 'Dutch', 'fi': 'Finnish', 'fr': 'French', 'de': 'German', 'he': 'Hebrew', 'id': 'Indonesian', 'it': 'Italian', 'kk': 'Kazakh', 'ko': 'Korean', 'ms': 'Malay', 'nb': 'Norwegian (Bokmål)', 'fa': 'Persian', 'pl': 'Polish', 'pt-BR': 'Portuguese (Brazil)', 'pt': 'Portuguese', 'ro': 'Romanian', 'ru': 'Russian', 'sr': 'Serbian', 'sk': 'Slovak', 'es': 'Spanish'}
+CATALOGS = {code:json.loads((Path(__file__).parent/'locales'/(code+'.json')).read_text(encoding='utf-8')) for code in LANGUAGES if code != 'en' and (Path(__file__).parent/'locales'/(code+'.json')).exists()}
+
 i18n = Blueprint('i18n', __name__)
 
 def language():
+    override=request.args.get('lang')
+    if (request.endpoint or '').startswith('legal.') and override in LANGUAGES:return override
     if current_user.is_authenticated and current_user.settings:
         value = current_user.settings.language
     else:
@@ -22,7 +28,7 @@ def translate(message):
 @i18n.app_context_processor
 def locale_context():
     code = language()
-    return dict(t=translate, current_language=code, languages=LANGUAGES,
+    return dict(t=translate, current_language=code, languages=LANGUAGES, language_names_en=LANGUAGE_NAMES_EN, language_direction='rtl' if code in {'ar','he','fa'} else 'ltr',
         interface_catalog=CATALOGS.get(code, {}))
 
 @i18n.route('/language', methods=['POST'])
@@ -42,3 +48,8 @@ def choose():
     if not target.startswith('/') or target.startswith('//') or '\\' in target or any(ord(c)<32 for c in target):
         target = '/'
     return redirect(target)
+
+@i18n.get('/languages')
+def listing():
+    from flask import render_template
+    return render_template('languages.html')

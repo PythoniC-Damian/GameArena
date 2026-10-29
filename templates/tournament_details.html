@@ -2,7 +2,7 @@
 {% set active_page = 'tournaments' %}
 {% from '_icons.html' import icon %}
 <!DOCTYPE html>
-<html lang="{{ current_language }}">
+<html lang="{{ current_language }}" dir="{{ language_direction }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -20,7 +20,7 @@
     {% include '_flash.html' %}
 
     {% if current_user.is_authenticated %}
-    <section class="ga-card ga-master-bookmark"><div class="ga-master-heading"><h2 class="ga-section-title">{{ t('Save this tournament') }}</h2><a href="{{ url_for('pro.membership') }}">{{ icon('shield') }}Master</a></div>{% if current_user.master_active %}<div class="ga-master-controls" data-saved-url="{{ url_for('pro.save_tournament', tournament_id=tournament.id) }}"><button type="button" class="ga-button ga-button-secondary" data-save-action="{{ 'remove' if saved_event else 'save' }}">{{ 'Saved · remove' if saved_event else 'Save tournament' }}</button><button type="button" class="ga-button ga-button-secondary" data-save-action="reminder" data-enabled="{{ 'false' if saved_event and saved_event.reminder_enabled else 'true' }}" aria-pressed="{{ 'true' if saved_event and saved_event.reminder_enabled else 'false' }}">{{ 'Reminder on' if saved_event and saved_event.reminder_enabled else 'Remind me' }}</button><p class="ga-muted text-sm">A notification within the hour before the scheduled start. A future start time must be set.</p><p data-master-feedback role="status" aria-live="polite"></p></div>{% else %}<p class="ga-muted">{{ t('Master players can save events and set start reminders.') }}</p>{% endif %}</section>
+    <section class="ga-card ga-master-bookmark"><div class="ga-master-heading"><h2 class="ga-section-title">{{ t('Save this tournament') }}</h2><a href="{{ url_for('pro.membership') }}">{{ icon('shield') }}Master</a></div>{% if current_user.master_active %}<div class="ga-master-controls" data-saved-url="{{ url_for('pro.save_tournament', tournament_id=tournament.id) }}"><button type="button" class="ga-button ga-button-secondary" data-save-action="{{ 'remove' if saved_event else 'save' }}">{{ 'Saved · remove' if saved_event else 'Save tournament' }}</button><button type="button" class="ga-button ga-button-secondary" data-save-action="reminder" data-enabled="{{ 'false' if saved_event and saved_event.reminder_enabled else 'true' }}" aria-pressed="{{ 'true' if saved_event and saved_event.reminder_enabled else 'false' }}">{{ 'Reminder on' if saved_event and saved_event.reminder_enabled else 'Remind me' }}</button><p class="ga-muted text-sm">{{ t("A notification within the hour before the scheduled start. A future start time must be set.") }}</p><p data-master-feedback role="status" aria-live="polite"></p></div>{% else %}<p class="ga-muted">{{ t('Master players can save events and set start reminders.') }}</p>{% endif %}</section>
     {% endif %}
     <!-- Tournament overview -->
     <section class="rounded-[36px] border border-slate-800 bg-slate-900/90 p-8 shadow-2xl shadow-emerald-500/10">
@@ -91,12 +91,12 @@
     </section>
 
     {% include '_launch_information.html' %}
-    <section class="ga-card ga-section"><h2 class="ga-section-title">Event rules and payouts</h2><p><strong>Schedule:</strong> {{ tournament.match_time.strftime('%d %b %Y · %H:%M UTC') if tournament.match_time else 'To be decided' }}. This schedule is authoritative.</p><p><strong>Format:</strong> {{ '1v1 single elimination' if tournament.competition else tournament.event_format|replace('_',' ')|capitalize }}</p><p><strong>Payout:</strong> {{ 'Organiser bank transfer after the result is confirmed; no duplicate GP credit.' if tournament.payout_method=='organizer_bank' else 'GP wallet after funded staff settlement.' if tournament.payout_method=='gp_wallet' else 'To be confirmed before paid registration opens.' }}</p><p class="ga-prewrap"><strong>Eligibility:</strong> {{ tournament.eligibility or (tournament.launch_plan.eligibility if tournament.launch_plan else 'Not published yet.') }}</p>{% if not tournament.competition %}<p class="ga-prewrap"><strong>Rules:</strong> {{ tournament.rules or (tournament.launch_plan.rules if tournament.launch_plan else 'The organiser must publish game settings, roster requirements, scoring, ties and dispute rules before paid registration opens.') }}</p><p>For room events: entrants check in with their in-game ID, receive private room details, play inside the game, then submit scoreboard evidence. Rankings follow this event’s published scoring and staff review. GameArena does not run the game servers.</p>{% endif %}</section>{% include '_competition_panel.html' %}
+    <section class="ga-card ga-section"><h2 class="ga-section-title">{{ t("Event rules and payouts") }}</h2><p><strong>{{ t("Schedule:") }}</strong> {{ tournament.match_time.strftime('%d %b %Y · %H:%M UTC') if tournament.match_time else 'To be decided' }}. This schedule is authoritative.</p><p><strong>{{ t("Format:") }}</strong> {{ '1v1 single elimination' if tournament.competition else tournament.event_format|replace('_',' ')|capitalize }}</p><p><strong>{{ t("Payout:") }}</strong> {{ 'Organiser bank transfer after the result is confirmed; no duplicate GP credit.' if tournament.payout_method=='organizer_bank' else 'GP wallet after funded staff settlement.' if tournament.payout_method=='gp_wallet' else 'To be confirmed before paid registration opens.' }}</p><p class="ga-prewrap"><strong>{{ t("Eligibility:") }}</strong> {{ tournament.eligibility or (tournament.launch_plan.eligibility if tournament.launch_plan else 'Not published yet.') }}</p>{% if not tournament.competition %}<p class="ga-prewrap"><strong>{{ t("Rules:") }}</strong> {{ tournament.rules or (tournament.launch_plan.rules if tournament.launch_plan else 'The organiser must publish game settings, roster requirements, scoring, ties and dispute rules before paid registration opens.') }}</p><p>{{ t("For room events: entrants check in with their in-game ID, receive private room details, play inside the game, then submit scoreboard evidence. Rankings follow this event’s published scoring and staff review. GameArena does not run the game servers.") }}</p>{% endif %}</section>{% include '_competition_panel.html' %}
     <!-- Match schedule / brackets -->
     {% if current_user.is_authenticated and current_user.is_admin and not current_user.suspended and not competition_config and not matches and tournament.status in ('live', 'ongoing') %}
     <form method="POST" action="{{ url_for('create_matches', tournament_id=tournament.id) }}" class="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <p class="text-sm text-slate-300">Create a single-elimination bracket from eligible participants. The field must contain a power of two; no player is dropped.</p>
+        <p class="text-sm text-slate-300">{{ t("Create a single-elimination bracket from eligible participants. The field must contain a power of two; no player is dropped.") }}</p>
         <button type="submit" class="mt-3 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950">{{ t('Create bracket') }}</button>
     </form>
     {% endif %}
@@ -152,27 +152,27 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <h3 class="font-semibold text-white">{{ t('Submit match result') }}</h3>
                     <div class="grid gap-3 sm:grid-cols-2">
-                        <label class="text-xs text-slate-400">Room code
+                        <label class="text-xs text-slate-400">{{ t("Room code") }}
                             <input name="room_code" maxlength="100" required value="{{ match.room_code or '' }}" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
                         </label>
-                        <label class="text-xs text-slate-400">Room password (if any)
+                        <label class="text-xs text-slate-400">{{ t("Room password (if any)") }}
                             <input name="room_password" maxlength="100" value="{{ match.room_password or '' }}" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
                         </label>
-                        <label class="text-xs text-slate-400">Player one game ID
+                        <label class="text-xs text-slate-400">{{ t("Player one game ID") }}
                             <input name="player_profile_id" maxlength="150" required value="{{ match.player_one_profile_id or '' }}" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
                         </label>
-                        <label class="text-xs text-slate-400">Player two game ID
+                        <label class="text-xs text-slate-400">{{ t("Player two game ID") }}
                             <input name="opponent_profile_id" maxlength="150" required value="{{ match.player_two_profile_id or '' }}" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
                         </label>
                     </div>
-                    <label class="block text-xs text-slate-400">Winner
+                    <label class="block text-xs text-slate-400">{{ t("Winner") }}
                         <select name="winner_user_id" required class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
                             <option value="">{{ t('Choose the winner') }}</option>
                             <option value="{{ match.player_one_user_id }}" {% if match.winner_user_id == match.player_one_user_id %}selected{% endif %}>{{ match.player_one.username }}</option>
                             <option value="{{ match.player_two_user_id }}" {% if match.winner_user_id == match.player_two_user_id %}selected{% endif %}>{{ match.player_two.username }}</option>
                         </select>
                     </label>
-                    <label class="block text-xs text-slate-400">Evidence or result notes
+                    <label class="block text-xs text-slate-400">{{ t("Evidence or result notes") }}
                         <textarea name="proof_note" maxlength="2000" rows="3" class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">{{ match.proof_note or '' }}</textarea>
                     </label>
                     <button type="submit" class="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400">{{ t('Submit result') }}</button>
@@ -188,7 +188,7 @@
                     </div>
                     <form method="POST" action="{{ url_for('dispute_match_result', match_id=match.id) }}" class="space-y-2">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <label class="block text-xs text-slate-400">Dispute reason
+                        <label class="block text-xs text-slate-400">{{ t("Dispute reason") }}
                             <textarea name="reason" maxlength="2000" rows="2" required class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"></textarea>
                         </label>
                         <button type="submit" class="rounded-xl border border-amber-400/40 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-500/10">{{ t('Dispute result') }}</button>
@@ -285,9 +285,7 @@
     </div>
 </main>
 
-<footer class="border-t border-slate-800/70 bg-slate-950/80 p-8 pb-28 text-center text-sm text-slate-500 md:pb-8">
-    <p>{{ t('© 2026 GameArena. Compete. Win. Earn.') }}</p>
-</footer>
+{% include '_footer.html' %}
 
 {% include '_mobile_nav.html' %}
 

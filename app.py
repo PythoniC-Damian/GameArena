@@ -418,8 +418,10 @@ from gamearena.waiting_list import waiting_list
 app.register_blueprint(waiting_list)
 from gamearena.privacy_controls import init_privacy
 init_privacy(app)
+from gamearena.email_security import init_email_security, finish_signin
+init_email_security(app)
 
-from gamearena.models import (User, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
+from gamearena.models import (User, AccountSecurity, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
 from gamearena.models import TournamentCompetition, TournamentCheckIn, MatchLobby, MatchEvidence
 from gamearena.activity import init_activity, notify_activity_changed
 init_activity(app)
@@ -476,6 +478,9 @@ def create_and_emit_notification(user_id: int, message: str, category='system', 
         'chat': 'chat_notifications',
         'marketing': 'marketing_notifications',
     }.get(category)
+    if category == 'chat':
+        from gamearena.notification_preferences import chat_alert_allowed
+        if not chat_alert_allowed(settings,target_url): return
     if settings and preference_name and not getattr(settings, preference_name):
         return
     if target_url and (not target_url.startswith('/') or target_url.startswith('//')):
@@ -963,11 +968,12 @@ def apply_rate_limits():
 
 
 def get_or_create_user_settings(user_id):
+    from gamearena.i18n import LANGUAGES
     settings = UserSettings.query.filter_by(user_id=user_id).first()
     if settings:
         return settings
     db.session.execute(
-        postgresql_insert(UserSettings).values(user_id=user_id, language=session.get('language') if session.get('language') in {'en','es','fr','pt'} else 'en').on_conflict_do_nothing(
+        postgresql_insert(UserSettings).values(user_id=user_id, language=session.get('language') if session.get('language') in LANGUAGES else 'en').on_conflict_do_nothing(
             index_elements=['user_id'],
         )
     )
@@ -1859,7 +1865,7 @@ def settings(section=None):
     blocks = UserBlock.query.options(joinedload(UserBlock.blocked)).filter_by(blocker_id=current_user.id).order_by(UserBlock.created_at.desc()).all()
     return render_template(
         'settings.html', section=section, sections=SECTIONS, preferences=preferences, available_games=available_games,
-        blocks=blocks, version=os.environ.get('GAMEARENA_VERSION', 'Flask V1'),
+        blocks=blocks, email_protection=db.session.get(AccountSecurity,current_user.id), version=os.environ.get('GAMEARENA_VERSION', 'Flask V1'),
     )
 
 
@@ -2374,8 +2380,7 @@ def login():
             session['auth_provider'] = 'supabase'
             session['auth_session_version'] = user.auth_session_version
             session.permanent = True
-            login_user(user)
-            return redirect(safe_next_url(request.args.get('next')) or url_for('dashboard'))
+            return finish_signin(user,safe_next_url(request.args.get('next')) or url_for('dashboard'),'supabase')
         user = User.query.filter_by(email=form.email.data.lower().strip()).first()
 
         if user and check_password_hash(user.password, form.password.data):
@@ -2395,9 +2400,7 @@ def login():
                 db.session.commit()
 
             session['auth_session_version'] = user.auth_session_version
-            login_user(user)
-            next_page = safe_next_url(request.args.get('next'))
-            return redirect(next_page or url_for("dashboard"))
+            return finish_signin(user,safe_next_url(request.args.get('next')) or url_for('dashboard'))
 
         from gamearena.account_security import note, metric
         note('auth.login_failed');metric('authentication_failures',5)
@@ -2477,8 +2480,7 @@ def supabase_callback():
     session['auth_provider'] = 'supabase'
     session['auth_session_version'] = user.auth_session_version
     session.permanent = True
-    login_user(user)
-    return redirect(url_for('dashboard'))
+    return finish_signin(user,url_for('dashboard'),'supabase')
 
 
 @app.route('/auth/google/callback')
@@ -2583,9 +2585,7 @@ def complete_google_signin(code, google_config):
         db.session.commit()
 
     session['auth_session_version'] = user.auth_session_version
-    login_user(user)
-    flash('Signed in successfully with Google.', 'success')
-    return redirect(url_for('dashboard'))
+    return finish_signin(user,url_for('dashboard'),'google')
 
 
 @app.route('/verify-email', methods=['GET', 'POST'])

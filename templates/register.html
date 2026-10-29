@@ -1,6 +1,6 @@
 {% from '_password_input.html' import password_input %}
 <!DOCTYPE html>
-<html lang="{{ current_language }}">
+<html lang="{{ current_language }}" dir="{{ language_direction }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -22,7 +22,7 @@
 }
 </style>
 </head>
-<body class="relative min-h-screen overflow-y-auto bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
+<body class="ga-register-page relative min-h-screen overflow-y-auto bg-slate-950 text-white" data-reduce-motion="{{ 'true' if nav_preferences and nav_preferences.reduce_motion else 'false' }}" data-larger-text="{{ 'true' if nav_preferences and nav_preferences.larger_text else 'false' }}">
 {% include '_header.html' %}
 
     <div class="absolute inset-0 overflow-hidden">
@@ -33,11 +33,11 @@
     </div>
     <div id="main-content" class="relative mx-auto flex min-h-screen items-center justify-center px-6 py-12">
         <div class="grid w-full max-w-6xl gap-10 rounded-[40px] border border-white/10 bg-slate-900/95 p-8 shadow-2xl shadow-slate-950/40 backdrop-blur-xl lg:grid-cols-[1.2fr_0.8fr]">
-            <div class="space-y-8">
+            <div class="ga-signup-intro space-y-8">
                 <div class="flex items-center gap-3">
                     <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400 text-slate-950 font-bold shadow-xl shadow-cyan-500/20">G</div>
                     <div>
-                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">GameArena</p>
+                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t("GameArena") }}</p>
                         <p class="text-lg font-semibold text-white/90">{{ t('Create your tournament profile.') }}</p>
                     </div>
                 </div>
@@ -52,25 +52,25 @@
                         <p class="mt-3 text-base">{{ t('Create your account, verify your email, and choose your next tournament.') }}</p>
                     </div>
                     <div class="rounded-3xl bg-slate-950/90 p-5 text-slate-300">
-                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t('Instant access') }}</p>
-                        <p class="mt-3 text-base">{{ t('Start joining tournaments and following leaderboards once your account is created.') }}</p>
+                        <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t('Ready to explore') }}</p>
+                        <p class="mt-3 text-base">{{ t('Verify your email, then explore tournaments and leaderboards.') }}</p>
                     </div>
                 </div>
             </div>
-            <div class="rounded-[32px] border border-white/10 bg-slate-950/90 p-8 shadow-xl shadow-slate-950/40">
+            <div class="ga-signup-fields rounded-[32px] border border-white/10 bg-slate-950/90 p-8 shadow-xl shadow-slate-950/40">
                 <h2 class="text-3xl font-semibold text-white mb-3">{{ t('Create Account') }}</h2>
-                <p class="text-sm text-slate-400 mb-6">{{ t('A verification code will be sent to your email after registration.') }}</p>
+                <p class="text-sm text-slate-400 mb-6">{{ t('Choose Google or email to create your account.') }}</p>
                 {% include '_flash.html' %}
                 <form method="POST" action="{{ url_for('signup_google') }}" class="ga-google-signup">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <p>GameArena accounts are for adults aged 18 and over.</p><label>Date of birth <input type="date" name="date_of_birth" class="ga-birth-input" autocomplete="bday" required></label><label class="ga-agreement-label"><input type="checkbox" name="accept_terms" required><span>{{ t('I agree to the') }} <a href="{{ url_for('legal.terms') }}">{{ t('Terms of Use') }}</a> {{ t('and acknowledge the') }} <a href="{{ url_for('legal.privacy') }}">{{ t('Privacy Policy') }}</a>.</span></label>
-                    <button type="submit" class="ga-button ga-button-secondary ga-google-button"><span aria-hidden="true">G</span> Sign up with Google</button>
-                    <p class="ga-muted">Your birthday is checked but not saved. Choose your Google account to create an account or sign in.</p>
-                </form><p class="ga-auth-divider ga-muted">or sign up with email</p>
+                    <p>{{ t("GameArena accounts are for adults aged 18 and over.") }}</p><label>{{ t("Date of birth") }} <input type="date" name="date_of_birth" class="ga-birth-input" autocomplete="bday" required></label><label class="ga-agreement-label"><input type="checkbox" name="accept_terms" required><span>{{ t('I agree to the') }} <a href="{{ url_for('legal.terms') }}">{{ t('Terms of Use') }}</a> {{ t('and acknowledge the') }} <a href="{{ url_for('legal.privacy') }}">{{ t('Privacy Policy') }}</a>.</span></label>
+                    <button type="submit" class="ga-button ga-button-secondary ga-google-button"><span aria-hidden="true">G</span> {{ t("Sign up with Google") }}</button>
+                    <p class="ga-muted">{{ t("Your birthday is checked but not saved. Choose your Google account to create an account or sign in.") }}</p>
+                </form><p class="ga-auth-divider ga-muted">{{ t("or sign up with email") }}</p>
                 <form method="POST" data-auth-form data-cooldown="{{ auth_retry_after or 0 or 0 }}" class="space-y-5">
-                    {{ form.hidden_tag() }}<p>GameArena accounts are for adults aged 18 and over.</p><label>Date of birth {{ form.date_of_birth(class="ga-birth-input", type="date", autocomplete="bday", required=true) }}</label>{% for error in form.date_of_birth.errors %}<p role="alert">{{ error }}</p>{% endfor %}
+                    {{ form.hidden_tag() }}<p>{{ t("GameArena accounts are for adults aged 18 and over.") }}</p><label>Date of birth {{ form.date_of_birth(class="ga-birth-input", type="date", autocomplete="bday", required=true) }}</label>{% for error in form.date_of_birth.errors %}<p role="alert">{{ error }}</p>{% endfor %}
                     <div>
-                        <p class="ga-muted" id="username-help">3–150 characters: letters, numbers and underscores.</p>{{ form.username.label(class="block text-sm font-medium text-slate-300 mb-2") }}
+                        <p class="ga-muted" id="username-help">{{ t("3–150 characters: letters, numbers and underscores.") }}</p>{{ form.username.label(class="block text-sm font-medium text-slate-300 mb-2") }}
                         {{ form.username(class="w-full rounded-3xl border border-slate-800 bg-slate-900 px-4 py-3 text-white placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20") }}
                         {% if form.username.errors %}
                         <p class="mt-2 text-sm text-red-400">{{ form.username.errors[0] }}</p>
@@ -84,7 +84,7 @@
                         {% endif %}
                     </div>
                     <div>
-                        <p class="ga-muted" id="password-help">Use at least 6 characters. A long, unique password is recommended.</p>{{ form.password.label(class="block text-sm font-medium text-slate-300 mb-2") }}
+                        <p class="ga-muted" id="password-help">{{ t("Use at least 6 characters. A long, unique password is recommended.") }}</p>{{ form.password.label(class="block text-sm font-medium text-slate-300 mb-2") }}
                         {{ password_input(form.password, 'new-password') }}
                         {% if form.password.errors %}
                         <p class="mt-2 text-sm text-red-400">{{ form.password.errors[0] }}</p>

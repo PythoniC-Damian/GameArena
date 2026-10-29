@@ -2,7 +2,7 @@
 from sqlalchemy import text
 
 BACKEND_TABLES = (
-    'tournament_interest', 'achievement', 'alembic_version', 'direct_message', 'global_chat_message',
+    'email_login_challenge', 'tournament_interest', 'achievement', 'alembic_version', 'direct_message', 'global_chat_message',
     'master_payment', 'master_subscription', 'notification', 'player_connection',
     'profile_photo', 'push_subscription', 'rate_limit_bucket', 'saved_tournament',
     'schema_migration', 'tournament', 'tournament_chat_message', 'tournament_match',
