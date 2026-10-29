@@ -7,7 +7,7 @@
 - Languages use searchable native-name/English-name rows. Only the existing English, Spanish, French and Portuguese catalogs are selectable. Additional screenshot languages remain unavailable until translations are ready, as requested by the owner. Untranslated copy falls back to English; user content is never sent to a translation service. Long legal text still needs editorial translation review.
 - Migration `20261029_settings_security` adds security challenge storage and notification preference columns without deleting existing records. Two-step verification defaults to off. Existing chat preferences remain respected.
 - Mobile signup spacing, shared tournament footer and collapsible policy contents were refined. Winner-only pilot rules, payouts and tournament records were not changed.
-- Signup now uses one age/consent step, then email account details and a password step. Google uses the same age/consent inputs. Without JavaScript, the full form remains available and the server still enforces age/consent validation.
+- Signup now matches the login card: Google at the top, username/email/password fields all visible, then the age field and agreement at the bottom. Google uses the same age/consent inputs without requiring the email/password fields. Server age/consent validation remains unchanged. Shared card/panel text-to-action spacing is more consistent.
 - The privacy notice has an X that dismisses it for the tab without granting analytics consent. Cookie choices can reopen it. Inline policy/support links are underlined with theme-appropriate emerald/cyan colors.
 
 Local verification uses synthetic accounts and an isolated PostgreSQL database, with email delivery mocked. Never copy production codes, passwords or keys into tests.

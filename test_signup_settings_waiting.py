@@ -13,7 +13,7 @@ def post(viewer,path,data,source):
 
 def test_google_signup_and_login_use_same_verified_provider_identity(monkeypatch):
     monkeypatch.setenv('AUTH_PROVIDER','local');monkeypatch.setenv('GOOGLE_CLIENT_ID','public-test-client');monkeypatch.setenv('GOOGLE_CLIENT_SECRET','test-only-secret')
-    viewer=app.test_client();page=viewer.get('/register');assert 'Sign up with Google' in page.text
+    viewer=app.test_client();page=viewer.get('/register');assert 'Continue with Google' in page.text
     assert viewer.post('/register/google',data={'accept_terms':'on'}).status_code==400
     assert post(viewer,'/register/google',{},'/register').location.endswith('/register')
     assert post(viewer,'/register/google',{'accept_terms':'on','date_of_birth':'1995-01-01'},'/register').location.endswith('/login/google')

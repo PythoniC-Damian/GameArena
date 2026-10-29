@@ -713,5 +713,8 @@
   "Your birthday is checked, not saved.": "Tu fecha de nacimiento se comprueba, no se guarda.",
   "Continue with email": "Continuar con correo",
   "Your account": "Tu cuenta",
-  "Secure your account": "Protege tu cuenta"
+  "Secure your account": "Protege tu cuenta",
+  "18+ only. Your birthday is checked, not saved.": "Solo mayores de 18. Tu fecha de nacimiento se comprueba, no se guarda.",
+  "Enter your date of birth and accept the terms below to continue with Google.": "Introduce tu fecha de nacimiento y acepta los términos de abajo para continuar con Google.",
+  "Connecting to Google…": "Conectando con Google…"
 }

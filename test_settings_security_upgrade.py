@@ -193,11 +193,11 @@ def test_toggle_requires_password_before_sending_code_even_after_recent_login(mo
         assert len(codes)==1 and not db.session.get(AccountSecurity,user.id).email_enabled_at
 
 
-def test_signup_has_one_age_consent_step_and_distinct_email_steps():
+def test_signup_shows_all_account_fields_and_places_agreement_below_them():
     page=app.test_client().get('/register').text
     assert page.count('name="date_of_birth"')==1 and page.count('name="accept_terms"')==1
-    assert page.count('<fieldset data-signup-step>')==3
-    assert 'data-google-signup' in page and 'data-signup-next' in page
+    assert 'data-google-signup' in page and 'data-signup-step' not in page
+    assert page.index('data-google-signup') < page.index('name="username"') < page.index('name="email"') < page.index('name="password"') < page.index('name="date_of_birth"') < page.index('name="accept_terms"')
 
 
 def test_google_only_account_can_reconfirm_provider_before_setup_code(monkeypatch):
