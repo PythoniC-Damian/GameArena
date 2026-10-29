@@ -584,7 +584,7 @@
   "This result is confirmed.": "Este resultado está confirmado.",
   "In preparation": "En preparación",
   "Provisional": "Provisional",
-  "Before you join": "Antes de inscribirte",
+  "Before you join": "Antes de registrarte",
   "Fixed GP value": "Valor fijo de GP",
   "This event is in preparation. Registration opens after its schedule, rules and prizes are confirmed.": "Este evento está en preparación. Las inscripciones se abrirán cuando se confirmen el horario, las reglas y los premios.",
   "Registration closes (UTC)": "Cierre de inscripciones (UTC)",
@@ -707,5 +707,11 @@
   "I confirm this request. Closure is reviewed to protect remaining funds, active events and required records.": "Confirmo esta solicitud. El cierre se revisa para proteger los fondos restantes, eventos activos y registros obligatorios.",
   "Request a reset code sent to your account email.": "Solicita un código de restablecimiento enviado al correo de tu cuenta.",
   "Request complete account data": "Solicitar todos los datos de la cuenta",
-  "Request account closure": "Solicitar el cierre de la cuenta"
+  "Request account closure": "Solicitar el cierre de la cuenta",
+  "Step {number} of 3": "Paso {number} de 3",
+  "GameArena is for adults aged 18 and over.": "GameArena es para mayores de 18 años.",
+  "Your birthday is checked, not saved.": "Tu fecha de nacimiento se comprueba, no se guarda.",
+  "Continue with email": "Continuar con correo",
+  "Your account": "Tu cuenta",
+  "Secure your account": "Protege tu cuenta"
 }

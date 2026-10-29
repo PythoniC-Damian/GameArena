@@ -49,6 +49,9 @@ def issue(user_id,purpose):
     return None
 
 def finish_signin(user,target,provider=None):
+    pending=session.get('email_setting_request')
+    if pending and pending.get('user_id')==user.id and pending.get('auth_version')==user.auth_session_version and 0<=time.time()-pending.get('at',0)<=600:
+        target=url_for('email_security.overview')
     row=db.session.get(AccountSecurity,user.id)
     if row and row.email_enabled_at:
         session.pop('_user_id',None);session.pop('_fresh',None)
@@ -67,15 +70,23 @@ def overview():
     from gamearena.account_security import fresh_primary
     row=db.session.get(AccountSecurity,current_user.id)
     if request.method=='POST':
-        if not fresh_primary():return redirect(url_for('security.reauthenticate',next=url_for('.overview')))
         if not current_user.email_verified:abort(403)
         action=request.form.get('action')
         if action not in {'enable','disable'}:abort(400)
         if (action=='disable') != bool(row and row.email_enabled_at):abort(409)
+        session['email_setting_request']={'action':action,'user_id':current_user.id,'at':time.time(),'auth_version':current_user.auth_session_version}
+        return redirect(url_for('security.reauthenticate',next=url_for('.overview')))
+    pending=session.pop('email_setting_request',None)
+    if pending and pending.get('user_id')==current_user.id and pending.get('auth_version')==current_user.auth_session_version and 0<=time.time()-pending.get('at',0)<=600:
+        if not fresh_primary() or session.get('security_primary_at',0)<pending['at']:
+            session['email_setting_request']=pending
+            return redirect(url_for('security.reauthenticate',next=url_for('.overview')))
+        action=pending['action']
+        if (action=='disable') != bool(row and row.email_enabled_at):abort(409)
         error=issue(current_user.id,action)
         if error:flash(error,'error')
         else:return redirect(url_for('.challenge'))
-    return render_template('email_two_step.html',row=row,mode='overview')
+    return redirect(url_for('settings',section='privacy'))
 
 @email_security.route('/account/two-step/challenge',methods=['GET','POST'])
 def challenge():
@@ -116,7 +127,9 @@ def challenge():
             provider=session.get('email_provider')
             session.pop('email_challenge',None)
             if purpose=='login':
+                pending=session.get('email_setting_request')
                 session.clear();session['auth_session_version']=user.auth_session_version
+                if pending:session['email_setting_request']=pending
                 if provider:session['auth_provider']=provider
                 login_user(user)
             else:session['auth_session_version']=user.auth_session_version

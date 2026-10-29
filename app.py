@@ -2376,7 +2376,9 @@ def login():
                 user = managed_identity(identity)
             finally:
                 managed_auth.close_session(identity)
+            pending=session.get('email_setting_request')
             session.clear()
+            if pending:session['email_setting_request']=pending
             session['auth_provider'] = 'supabase'
             session['auth_session_version'] = user.auth_session_version
             session.permanent = True
@@ -2476,7 +2478,9 @@ def supabase_callback():
         user = managed_identity(data)
     finally:
         managed_auth.close_session(data)
+    pending=session.get('email_setting_request')
     session.clear()
+    if pending:session['email_setting_request']=pending
     session['auth_provider'] = 'supabase'
     session['auth_session_version'] = user.auth_session_version
     session.permanent = True

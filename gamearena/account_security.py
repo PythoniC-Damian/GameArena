@@ -300,7 +300,10 @@ def reauthenticate():
 @security.route('/security/sign-in-again',methods=['POST'])
 @login_required
 def sign_in_again():
-    target=safe_next();logout_user();session.clear()
+    target=safe_next()
+    pending=session.get('email_setting_request') if target==url_for('email_security.overview') else None
+    logout_user();session.clear()
+    if pending:session['email_setting_request']=pending
     return redirect(url_for('login',next=target))
 
 
