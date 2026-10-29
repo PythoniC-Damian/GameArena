@@ -1,0 +1,9 @@
+{% extends '_base.html' %}
+{% block title %}{{ t('Connecting to Google…') }} · GameArena{% endblock %}
+{% block content %}
+<section class="ga-card ga-security-card">
+  <h1>{{ t('Connecting to Google…') }}</h1>
+  <p><a class="ga-button ga-button-secondary" href="{{ url_for('login_google') }}">{{ t('Continue with Google') }}</a></p>
+</section>
+<script nonce="{{ csp_nonce }}">window.location.replace({{ url_for('login_google')|tojson }});</script>
+{% endblock %}

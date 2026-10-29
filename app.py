@@ -2423,7 +2423,20 @@ def signup_google():
     if error:
         flash(error,'error');return redirect(url_for('register'))
     session['adult_signup_at']=time.time()
-    return redirect(url_for('login_google'))
+    return redirect(url_for('google_signup_continue'))
+
+
+@app.get('/register/google/continue')
+def google_signup_continue():
+    from gamearena.privacy_controls import signup_declaration
+    if not signup_declaration():
+        flash('Complete the 18+ signup form before creating an account.','error')
+        return redirect(url_for('register'))
+    # Complete the same-origin form submission before starting OAuth navigation.
+    # A form redirect straight to Google is blocked by our form-action CSP.
+    response=app.make_response(render_template('google_signup_continue.html'))
+    response.headers['Cache-Control']='no-store'
+    return response
 
 
 @app.route('/login/google')

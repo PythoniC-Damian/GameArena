@@ -16,7 +16,12 @@ def test_google_signup_and_login_use_same_verified_provider_identity(monkeypatch
     viewer=app.test_client();page=viewer.get('/register');assert 'Continue with Google' in page.text
     assert viewer.post('/register/google',data={'accept_terms':'on'}).status_code==400
     assert post(viewer,'/register/google',{},'/register').location.endswith('/register')
-    assert post(viewer,'/register/google',{'accept_terms':'on','date_of_birth':'1995-01-01'},'/register').location.endswith('/login/google')
+    start=post(viewer,'/register/google',{'accept_terms':'on','date_of_birth':'1995-01-01'},'/register')
+    assert start.location.endswith('/register/google/continue')
+    handoff=viewer.get(start.location)
+    assert handoff.status_code==200 and 'window.location.replace("/login/google")' in handoff.text
+    assert handoff.headers['Cache-Control']=='no-store'
+    assert "form-action 'self' https://checkout.paystack.com;" in handoff.headers['Content-Security-Policy']
     monkeypatch.setattr(application.requests,'post',lambda *a,**kw:Mock(ok=True,json=lambda:{'access_token':'synthetic-token'}))
     monkeypatch.setattr(application.requests,'get',lambda *a,**kw:Mock(ok=True,json=lambda:{'email':'google_new@example.test','verified_email':True,'name':'Google Player'}))
     for browser in (viewer,app.test_client()):
@@ -34,6 +39,13 @@ def test_google_signup_reuses_managed_provider_pkce(monkeypatch):
     assert url.hostname=='preview.supabase.co' and url.path=='/auth/v1/authorize'
     assert query['provider']==['google'] and query['code_challenge_method']==['s256']
     with viewer.session_transaction() as session:assert session['supabase_pkce_verifier']
+
+
+def test_google_signup_handoff_requires_current_validated_declaration():
+    viewer=app.test_client()
+    assert viewer.get('/register/google/continue').location.endswith('/register')
+    with viewer.session_transaction() as session:session['adult_signup_at']=0
+    assert viewer.get('/register/google/continue').location.endswith('/register')
 
 
 def test_settings_categories_save_only_the_fields_in_that_category():
