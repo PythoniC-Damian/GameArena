@@ -171,7 +171,7 @@ def add_response_security_headers(response):
         # browser/CDN cache, but not immutable because URLs are unversioned.
         if request.path.endswith(('/sw.js', '/manifest.json')):
             response.headers['Cache-Control'] = 'no-cache, max-age=0, must-revalidate'
-        elif response.status_code == 200 and (is_built_asset((request.view_args or {}).get('filename', '')) or request.args.get('v') == asset_fingerprint((request.view_args or {}).get('filename', ''))):
+        elif response.status_code in {200, 304} and (is_built_asset((request.view_args or {}).get('filename', '')) or request.args.get('v') == asset_fingerprint((request.view_args or {}).get('filename', ''))):
             response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
         else:
             response.headers['Cache-Control'] = (
@@ -1121,6 +1121,14 @@ def save_theme():
     return jsonify({'theme':theme})
 
 
+def confirmed_match_counts(query, user_id):
+    """Fetch total matches and wins in one round trip for every player view."""
+    return query.with_entities(
+        db.func.count(TournamentMatch.id),
+        db.func.coalesce(db.func.sum(case((TournamentMatch.winner_user_id == user_id, 1), else_=0)), 0),
+    ).one()
+
+
 def achievement_progress_for_user(user_id):
     memberships = UserTournament.query.filter(
         UserTournament.user_id == user_id,
@@ -1135,7 +1143,7 @@ def achievement_progress_for_user(user_id):
             TournamentMatch.player_two_user_id == user_id,
         ),
     )
-    wins = confirmed_matches.filter(TournamentMatch.winner_user_id == user_id).count()
+    matches_played, wins = confirmed_match_counts(confirmed_matches, user_id)
     win_streak = 0
     for match in confirmed_matches.order_by(
         TournamentMatch.updated_at.desc(), TournamentMatch.id.desc(),
@@ -1175,26 +1183,41 @@ def achievement_progress_for_user(user_id):
     return {
         'tournaments': tournament_count,
         'wins': wins,
+        'matches': matches_played,
         'win_streak': win_streak,
         'champions': champion_count,
         'top_rank': best_rank,
     }
 
 
-def award_achievements_for_user(user_id):
-    progress = achievement_progress_for_user(user_id)
-    definitions = Achievement.query.filter_by(enabled=True).all()
+def award_achievements_for_user(user_id, progress=None):
+    # Profile already needs these server-calculated values for its statistics.
+    if progress is None:
+        progress = achievement_progress_for_user(user_id)
+    definitions = Achievement.query.filter_by(enabled=True).order_by(Achievement.id).all()
+    if not definitions:
+        db.session.commit()
+        return progress
+    ids = [definition.id for definition in definitions]
+    # Lock in a stable order and fetch the records together, rather than doing
+    # an INSERT + SELECT (and an autoflush) for each badge on every profile view.
+    records = {record.achievement_id: record for record in UserAchievement.query.filter(
+        UserAchievement.user_id == user_id, UserAchievement.achievement_id.in_(ids),
+    ).order_by(UserAchievement.achievement_id).with_for_update().all()}
+    missing = [identifier for identifier in ids if identifier not in records]
+    if missing:
+        db.session.execute(postgresql_insert(UserAchievement).values([
+            dict(user_id=user_id, achievement_id=identifier, progress=0, unlocked_at=None)
+            for identifier in missing
+        ]).on_conflict_do_nothing(constraint='unique_user_achievement'))
+        # A concurrent request may have inserted/unlocked a missing record.
+        # Read its current state under lock before deciding to notify.
+        records.update({record.achievement_id: record for record in UserAchievement.query.filter(
+            UserAchievement.user_id == user_id, UserAchievement.achievement_id.in_(missing),
+        ).order_by(UserAchievement.achievement_id).with_for_update().all()})
     for achievement in definitions:
         value = progress.get(achievement.rule_type, 0) or 0
-        db.session.execute(
-            postgresql_insert(UserAchievement).values(
-                user_id=user_id, achievement_id=achievement.id,
-                progress=0, unlocked_at=None,
-            ).on_conflict_do_nothing(constraint='unique_user_achievement')
-        )
-        record = UserAchievement.query.filter_by(
-            user_id=user_id, achievement_id=achievement.id,
-        ).with_for_update().first()
+        record = records[achievement.id]
         if achievement.rule_type == 'top_rank':
             record.progress = achievement.threshold if value and value <= achievement.threshold else 0
             unlocked = bool(value and value <= achievement.threshold)
@@ -1210,6 +1233,7 @@ def award_achievements_for_user(user_id):
                 target_url='/profile#achievements',
             ))
     db.session.commit()
+    return progress
 
 
 def choose_room_host(pair):
@@ -1685,17 +1709,15 @@ def chat_history():
 @app.route("/profile")
 @login_required
 def profile():
-    joined_count = UserTournament.query.filter(
-        UserTournament.user_id == current_user.id,
-        UserTournament.payment_status.in_(['paid', 'free']),
-    ).count()
+    settings = current_user.settings or get_or_create_user_settings(current_user.id)
+    progress = achievement_progress_for_user(current_user.id)
+    award_achievements_for_user(current_user.id, progress)
+    joined_count = progress['tournaments']
     stats = TournamentStat.query.options(
         joinedload(TournamentStat.tournament),
     ).filter_by(user_id=current_user.id).order_by(
         TournamentStat.rank.asc(), TournamentStat.points.desc(),
     ).all()
-    settings = get_or_create_user_settings(current_user.id)
-    award_achievements_for_user(current_user.id)
     achievements = UserAchievement.query.options(
         joinedload(UserAchievement.achievement),
     ).filter(
@@ -1705,7 +1727,6 @@ def profile():
             UserAchievement.achievement.has(Achievement.hidden.is_(False)),
         ),
     ).order_by(UserAchievement.unlocked_at.desc().nullslast()).all()
-    progress = achievement_progress_for_user(current_user.id)
     confirmed_matches = TournamentMatch.query.filter(
         TournamentMatch.status == 'confirmed',
         TournamentMatch.winner_user_id.isnot(None),
@@ -1714,8 +1735,7 @@ def profile():
             TournamentMatch.player_two_user_id == current_user.id,
         ),
     )
-    matches_played = confirmed_matches.count()
-    wins = confirmed_matches.filter(TournamentMatch.winner_user_id == current_user.id).count()
+    matches_played, wins = progress['matches'], progress['wins']
     recent_activity = Notification.query.filter_by(user_id=current_user.id).order_by(
         Notification.created_at.desc(), Notification.id.desc(),
     ).limit(5).all()
@@ -1754,8 +1774,7 @@ def public_profile(user_id):
             TournamentMatch.player_two_user_id == player.id,
         ),
     )
-    matches_played = matches.count()
-    wins = matches.filter(TournamentMatch.winner_user_id == player.id).count()
+    matches_played, wins = confirmed_match_counts(matches, player.id)
     losses = matches_played - wins
     placements = TournamentStat.query.options(
         joinedload(TournamentStat.tournament),
@@ -2781,8 +2800,7 @@ def dashboard():
         TournamentMatch.status == 'confirmed',
         TournamentMatch.winner_user_id.isnot(None),
     )
-    matches_played = confirmed_matches.count()
-    wins = confirmed_matches.filter(TournamentMatch.winner_user_id == current_user.id).count()
+    matches_played, wins = confirmed_match_counts(confirmed_matches, current_user.id)
     losses = matches_played - wins
     win_rate = round((wins / matches_played) * 100) if matches_played else 0
 

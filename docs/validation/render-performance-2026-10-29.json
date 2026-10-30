@@ -1,0 +1,151 @@
+{
+  "scope": "Isolated local PostgreSQL fixtures; these are not production latency promises.",
+  "fixture_badges": 32,
+  "pool_mode": "queue",
+  "current": {
+    "/": {
+      "queries": [
+        9,
+        9,
+        9
+      ],
+      "local_median_ms": 159.8,
+      "local_samples_ms": [
+        787.9,
+        127.0,
+        159.8
+      ]
+    },
+    "/tournaments": {
+      "queries": [
+        11,
+        11,
+        11
+      ],
+      "local_median_ms": 76.8,
+      "local_samples_ms": [
+        241.9,
+        76.8,
+        73.5
+      ]
+    },
+    "/leaderboard": {
+      "queries": [
+        12,
+        12,
+        12
+      ],
+      "local_median_ms": 93.6,
+      "local_samples_ms": [
+        296.9,
+        93.6,
+        86.2
+      ]
+    },
+    "/dashboard": {
+      "queries": [
+        15,
+        15,
+        15
+      ],
+      "local_median_ms": 148.1,
+      "local_samples_ms": [
+        429.4,
+        134.4,
+        148.1
+      ]
+    },
+    "/profile": {
+      "queries": [
+        21,
+        21,
+        21
+      ],
+      "local_median_ms": 178.5,
+      "local_samples_ms": [
+        188.5,
+        178.5,
+        178.0
+      ]
+    },
+    "/wallet": {
+      "queries": [
+        9,
+        9,
+        9
+      ],
+      "local_median_ms": 148.8,
+      "local_samples_ms": [
+        480.7,
+        93.0,
+        148.8
+      ]
+    },
+    "/settings": {
+      "queries": [
+        7,
+        7,
+        7
+      ],
+      "local_median_ms": 90.9,
+      "local_samples_ms": [
+        517.9,
+        85.6,
+        90.9
+      ]
+    },
+    "/notifications": {
+      "queries": [
+        6,
+        6,
+        6
+      ],
+      "local_median_ms": 89.2,
+      "local_samples_ms": [
+        258.7,
+        89.2,
+        66.5
+      ]
+    },
+    "/chat": {
+      "queries": [
+        9,
+        9,
+        9
+      ],
+      "local_median_ms": 89.7,
+      "local_samples_ms": [
+        686.5,
+        89.7,
+        86.1
+      ]
+    },
+    "/search?q=PUBG": {
+      "queries": [
+        13,
+        13,
+        13
+      ],
+      "local_median_ms": 89.6,
+      "local_samples_ms": [
+        193.9,
+        84.7,
+        89.6
+      ]
+    }
+  },
+  "baseline_profile": {
+    "queries": [
+      94,
+      94,
+      94
+    ],
+    "local_median_ms": 606.3,
+    "local_samples_ms": [
+      606.3,
+      606.4,
+      569.7
+    ]
+  },
+  "baseline_ref": "54f02a810fa44fa51d1eeabe73444712b5f3b345"
+}
