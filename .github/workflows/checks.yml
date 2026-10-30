@@ -18,7 +18,7 @@ jobs:
       GAMEARENA_TEST_DATABASE_URL: postgresql://gamearena_test:isolated-ci-only@127.0.0.1:5432/gamearena_test
       SECRET_KEY: isolated-ci-only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -47,7 +47,7 @@ jobs:
       GAMEARENA_UI_BASE_URL: http://127.0.0.1:8084
       SECRET_KEY: isolated-ci-only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
