@@ -32,7 +32,8 @@ def is_built_asset(filename):
         return False
 
 
-STYLE_SOURCES = ('css/tailwind.css','css/app.css','css/themes.css','css/master.css','css/legal.css')
+STYLE_SOURCES = ('css/tailwind.css','css/app.css','css/themes.css','css/master.css','css/legal.css',
+                 'css/cosmetics.css','css/platform.css','css/navigation.css')
 
 def stylesheet_source_digest(folder):
     return hashlib.sha256(b''.join((Path(folder) / name).read_text(encoding='utf-8').encode('utf-8') for name in STYLE_SOURCES)).hexdigest()

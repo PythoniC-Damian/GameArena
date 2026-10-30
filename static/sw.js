@@ -1,5 +1,5 @@
 /* Public static assets only. Never cache session-dependent pages or APIs. */
-const CACHE_NAME = 'gamearena-v7';
+const CACHE_NAME = 'gamearena-v8';
 const OFFLINE_URL = '/static/offline.html';
 const MAX_ENTRIES = 80;
 const APP_SHELL = [OFFLINE_URL, '/static/manifest.json', '/static/icons/icon-192.png', '/static/icons/icon-512.png'];
@@ -26,9 +26,15 @@ self.addEventListener('fetch', event => {
   if (!isCacheableStaticAsset(url)) return;
   // Register lifetime work synchronously so a cached response cannot terminate
   // the worker before its refresh has finished.
-  const network = fetch(request);
-  event.waitUntil(network.then(response => response.ok ? storeAsset(request, response.clone()) : undefined).catch(() => {}));
-  event.respondWith(caches.match(request).then(cached => cached || network));
+  const cached = caches.match(request);
+  // A fingerprinted response never changes at this URL. Revalidating it on
+  // every navigation competes with page/API requests on slow connections.
+  const network = cached.then(response => {
+    if (response && /\bimmutable\b/i.test(response.headers.get('Cache-Control') || '')) return null;
+    return fetch(request);
+  });
+  event.waitUntil(network.then(response => response?.ok ? storeAsset(request, response.clone()) : undefined).catch(() => {}));
+  event.respondWith(cached.then(response => response || network));
 });
 self.addEventListener('push', event => {
   let data;

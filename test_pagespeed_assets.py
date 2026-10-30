@@ -15,6 +15,9 @@ def test_homepage_uses_one_complete_versioned_stylesheet():
         assert len(links)==1 and '/css/site.css?v=' in links[0]
         response=viewer.get(links[0])
         assert 'immutable' in response.headers['Cache-Control']
+        revalidated = viewer.get(links[0], headers={'If-None-Match': response.headers['ETag']})
+        assert revalidated.status_code == 304
+        assert 'immutable' in revalidated.headers['Cache-Control']
         for selector in ['.ga-master-badge','.ga-policy-links','html[data-theme=light]']:
             assert selector in response.text
 

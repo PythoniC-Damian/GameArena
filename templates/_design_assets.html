@@ -5,13 +5,15 @@
 {% for style in compiled_frontend.styles %}<link rel="stylesheet" href="{{ style }}">{% endfor %}
 <link rel="stylesheet" href="{{ asset_url('css/master.css') }}">
 <link rel="stylesheet" href="{{ asset_url('css/legal.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/cosmetics.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/platform.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/navigation.css') }}">
 {% elif combined_styles %}<link rel="stylesheet" href="{{ asset_url(combined_styles) }}">
 {% else %}
-{% for style in ['css/tailwind.css','css/app.css','css/themes.css','css/master.css','css/legal.css'] %}<link rel="stylesheet" href="{{ asset_url(style) }}">{% endfor %}
+{% for style in ['css/tailwind.css','css/app.css','css/themes.css','css/master.css','css/legal.css','css/cosmetics.css','css/platform.css','css/navigation.css'] %}<link rel="stylesheet" href="{{ asset_url(style) }}">{% endfor %}
 {% endif %}
-<link rel="stylesheet" href="{{ asset_url('css/cosmetics.css') }}">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-{% if current_user.is_authenticated %}<script nonce="{{ csp_nonce }}" src="{{ asset_url('js/socket.io.min.js') }}"></script>{% endif %}
+{% if current_user.is_authenticated %}<script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/socket.io.min.js') }}"></script>{% endif %}
 <script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/app.js') }}"></script>
 <script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/auth.js') }}"></script>
 {% if compiled_frontend %}<script nonce="{{ csp_nonce }}" type="module" src="{{ compiled_frontend.script }}"></script>
@@ -21,10 +23,6 @@
 <script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/master.js') }}"></script>
 
 <script nonce="{{ csp_nonce }}">window.gaCatalog={{ interface_catalog|tojson }};window.gaT=function(text,params){return (window.gaCatalog[text]||text).replace(/\{([a-z]+)\}/g,function(match,key){return params&&params[key]!==undefined?String(params[key]):match})};</script>
-
-<link rel="stylesheet" href="{{ asset_url('css/platform.css') }}">
-
-<link rel="stylesheet" href="{{ asset_url('css/navigation.css') }}">
 
 <script nonce="{{ csp_nonce }}">window.gaPrivacy={{ privacy_choice|tojson }};</script>
 <script nonce="{{ csp_nonce }}" defer src="{{ asset_url('js/privacy.js') }}"></script>
