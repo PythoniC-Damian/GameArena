@@ -1,7 +1,8 @@
 {% macro action(value, label) %}<form method="POST" action="{{ url_for('update_player_connection', user_id=connection_user_id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="{{ value }}"><button class="ga-button ga-button-secondary" type="submit">{{ label }}</button></form>{% endmacro %}
-<div class="ga-connection-controls" data-player-connection="{{ connection_user_id }}" {% if connection.state == 'open' %}hidden{% endif %} data-url="{{ url_for('update_player_connection', user_id=connection_user_id) }}">
+<div class="ga-connection-controls" data-player-connection="{{ connection_user_id }}" data-url="{{ url_for('update_player_connection', user_id=connection_user_id) }}">
 {% if connection.state == 'accepted' %}{{ action('unfriend', 'Unfriend') }}<p class="ga-muted">{{ t("Friends") }}</p>
 {% elif connection.state == 'open' %}
+{{ action('request', 'Add friend') }}
 {% elif connection.state == 'incoming' %}{{ action('accept', 'Accept player') }}{{ action('decline', 'Decline') }}<p class="ga-muted">{{ t("Player request · Accept to start chatting.") }}</p>
 {% elif connection.state == 'outgoing' %}{{ action('cancel', 'Cancel request') }}<p class="ga-muted">Request sent · {{ 'You can send one introduction.' if connection.can_send else 'Waiting for acceptance.' }}</p>
 {% elif connection.state == 'declined' %}

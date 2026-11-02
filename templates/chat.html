@@ -1,3 +1,4 @@
+{% from '_icons.html' import icon %}
 {% from '_master.html' import master_badge %}
 <!DOCTYPE html>
 <html lang="{{ current_language }}" dir="{{ language_direction }}">
@@ -20,23 +21,22 @@
     {% set request_view = request.args.get('inbox') == 'requests' %}
     {% set displayed_conversations = conversations|selectattr('request', 'equalto', request_view)|list %}
     <div class="grid gap-6 xl:grid-cols-[0.9fr_0.5fr]">
-        <section class="min-w-0 rounded-[36px] border border-slate-800 bg-slate-900/90 p-4 shadow-2xl shadow-slate-950/20 sm:p-6">
-            <div class="flex items-center justify-between">
+        <section class="ga-chat-main min-w-0 rounded-[36px] border border-slate-800 bg-slate-900/90 p-4 shadow-2xl shadow-slate-950/20 sm:p-6">
+            <div class="ga-chat-heading flex items-center justify-between">
                 <div>
                     {% if conversation_user %}
-                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t("Private conversation") }}</p>
+                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t("Private chat") }}</p>
                     <a href="{{ url_for('public_profile', user_id=conversation_user.id) }}" class="ga-chat-person" aria-label="View {{ conversation_user.username }}'s profile">
                         {% if conversation_user.avatar_url %}<img src="{{ conversation_user.avatar_url }}" alt="" class="ga-chat-avatar" width="52" height="52">{% else %}<span class="ga-chat-avatar">{{ conversation_user.username[:1]|upper }}</span>{% endif %}
                         <h1 class="break-words text-3xl font-bold text-white">{{ conversation_user.username }} {{ master_badge(conversation_user) }}</h1>
                     </a>
-                    <p id="dmUnreadCount" class="mt-1 text-xs text-slate-400">{{ dm_unread_count }} unread messages across your inbox</p>
+
                     {% else %}
-                    <p class="text-sm uppercase tracking-[0.35em] text-emerald-300">{{ t("Global chat") }}</p>
-                    <h1 class="mt-2 text-3xl font-bold text-white">{{ t("Community") }}</h1>
+                    <h1 class="text-2xl font-bold">{{ t("Global chat") }}</h1>
                     {% endif %}
-                </div>
+                </div><button type="button" class="ga-icon-button" data-chat-expand aria-label="{{ t('Fullscreen chat') }}" aria-pressed="false"><span data-expand-icon>{{ icon('expand') }}</span><span data-close-icon hidden>{{ icon('close') }}</span></button>
             </div>
-            {% if conversation_user %}{% set connection_user_id = conversation_user.id %}{% include '_connection_controls.html' %}{% endif %}
+            {% if conversation_user and connection and connection.state not in ['accepted','open'] %}{% set connection_user_id=conversation_user.id %}{% include '_connection_controls.html' %}{% endif %}
             <div id="chatWindow" class="mt-6 flex h-[66vh] min-w-0 flex-col overflow-hidden rounded-[32px] border border-slate-800 bg-slate-950/80 p-3 sm:p-4">
                 <div id="messages" class="min-w-0 flex-1 space-y-3 overflow-y-auto pr-1 sm:pr-2">
 {% if conversation_user %}

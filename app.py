@@ -420,6 +420,8 @@ from gamearena.privacy_controls import init_privacy
 init_privacy(app)
 from gamearena.email_security import init_email_security, finish_signin
 init_email_security(app)
+from gamearena.social_upgrade import init_social
+init_social(app)
 
 from gamearena.models import (User, AccountSecurity, UserSettings, Achievement, UserAchievement, Tournament, TournamentStat, UserTournament, WalletTransaction, RateLimitBucket, Notification, TournamentChatMessage, GlobalChatMessage, DirectMessage, PlayerConnection, ProfilePhoto, PushSubscription, SavedTournament, UserBlock, UserReport, TournamentMatch, TournamentMatchChatMessage, TournamentMatchDispute)
 from gamearena.models import TournamentCompetition, TournamentCheckIn, MatchLobby, MatchEvidence
@@ -461,7 +463,7 @@ def mark_notifications_read_for_user(user_id: int, only_count: bool = False):
     return get_unread_notification_count(user_id)
 
 
-def create_and_emit_notification(user_id: int, message: str, category='system', target_url=None):
+def create_and_emit_notification(user_id: int, message: str, category='system', target_url=None, kind=None, sender_id=None):
     """Create one preference-aware notification and emit it to the user's room."""
     if not user_id or not message:
         return
@@ -487,6 +489,7 @@ def create_and_emit_notification(user_id: int, message: str, category='system', 
         target_url = None
     notif = Notification(
         user_id=int(user_id), message=message, category=category, target_url=target_url,
+        kind=kind if kind in {'messages','requests'} else None,sender_id=sender_id,
     )
     db.session.add(notif)
     db.session.commit()
@@ -499,13 +502,14 @@ def create_and_emit_notification(user_id: int, message: str, category='system', 
             'id': notif.id,
             'message': message,
             'category': category,
+            'kind':notif.kind,'read':bool(notif.read_at),
             'target_url': target_url,
             'created_at': notif.created_at.isoformat() if notif.created_at else None,
         },
         room=f'user:{int(user_id)}'
     )
     notify_activity_changed()
-    if push_configured() and not queue_push(notif.id):
+    if not notif.read_at and push_configured() and not queue_push(notif.id):
         from gamearena.workers import deliver_notification_push
         socketio.start_background_task(deliver_notification_push, notif.id)
 
@@ -1102,9 +1106,9 @@ def update_player_connection(user_id):
     for viewer, other in ((current_user.id,user_id),(user_id,current_user.id)):
         socketio.emit('player_connection_changed', {'partner_id':other}, room=f'user:{viewer}')
     if action == 'request':
-        create_and_emit_notification(user_id, f'{current_user.username} sent you a player request.', 'chat', f'/messages/{current_user.id}')
+        create_and_emit_notification(user_id, f'{current_user.username} sent you a player request.', 'chat', f'/messages/{current_user.id}',kind='requests',sender_id=current_user.id)
     elif action == 'accept':
-        create_and_emit_notification(user_id, f'{current_user.username} added you.', 'chat', f'/messages/{current_user.id}')
+        create_and_emit_notification(user_id, f'{current_user.username} added you.', 'chat', f'/messages/{current_user.id}',kind='requests',sender_id=current_user.id)
     return respond({'request':'Player request sent.', 'accept':f'You added {partner.username}.', 'cancel':'Player request cancelled.', 'decline':'Player request declined.', 'unfriend':f'You unfriended {partner.username}.'}[action])
 
 
@@ -4895,7 +4899,7 @@ def on_send_global_chat_message(data):
     socketio.emit('new_global_chat_message', payload, room='global_chat')
     socketio.emit('new_global_chat_message', payload, room=f'user:{sender_id}')
     for mentioned_id in {item['id'] for item in mentions} - {sender_id}:
-        create_and_emit_notification(mentioned_id, f'{username} mentioned you in community chat.', 'chat', f'/chat#message-{message_id}')
+        create_and_emit_notification(mentioned_id, f'{username} mentioned you in community chat.', 'chat', f'/chat#message-{message_id}',kind='messages',sender_id=sender_id)
     return {'status':'success', 'id':message_id, 'mentions':mentions}
 
 
@@ -5001,7 +5005,7 @@ def on_send_direct_message(data):
 def chat_notification(recipient_id, sender_id, sender_name):
     with app.app_context():
         try:
-            create_and_emit_notification(recipient_id, f'{sender_name} sent you a message.', 'chat', f'/messages/{sender_id}')
+            create_and_emit_notification(recipient_id, f'{sender_name} sent you a message.', 'chat', f'/messages/{sender_id}',kind='messages',sender_id=sender_id)
             count = DirectMessage.query.filter_by(recipient_id=recipient_id, read_at=None).count()
             socketio.emit('unread_count', {'unread':count}, room=f'user:{recipient_id}')
         except Exception as error:

@@ -1,0 +1,17 @@
+{% from '_master.html' import master_badge %}
+{% from '_icons.html' import icon %}
+<section class="ga-profile-hero" aria-labelledby="profile-name">
+  <div class="ga-profile-cover ga-cosmetic-card ga-master-surface" data-arena-card="{{ profile_player.cosmetic_card or '' }}" data-profile-theme="{{ profile_player.master_profile_theme if profile_player.master_active else 'arena' }}" aria-label="Equipped player card"></div>
+  <div class="ga-profile-hero-body">
+    <div class="ga-profile-identity">
+      {% if profile_player.avatar_url %}<img src="{{ profile_player.avatar_url }}" alt="{{ profile_player.username }} avatar" width="104" height="104" class="ga-avatar {{ 'ga-shop-frame' if profile_player.cosmetic_frame else 'ga-master-frame' }}" data-frame="{{ profile_player.profile_frame }}">{% else %}<span class="ga-avatar {{ 'ga-shop-frame' if profile_player.cosmetic_frame else 'ga-master-frame' }}" data-frame="{{ profile_player.profile_frame }}">{{ profile_player.username[:1]|upper }}</span>{% endif %}
+      <div class="ga-profile-name"><h1 id="profile-name"><span class="ga-cosmetic-name" data-arena-nameplate="{{ profile_player.cosmetic_nameplate or '' }}">{{ profile_player.username }}</span> {{ master_badge(profile_player) }}</h1><button type="button" class="ga-friends-count" data-open-friends data-friends-url="{{ url_for('social.friends',user_id=profile_player.id) }}">{{ icon('user') }}<span data-friends-count>{{ friend_count(profile_player.id) }}</span> {{ t('Friends') }}</button></div>
+    </div>
+    {% if profile_player.bio %}<p class="ga-profile-bio">{{ profile_player.bio }}</p>{% endif %}
+    <div class="ga-profile-actions ga-actions">
+      {% if current_user.is_authenticated and current_user.id==profile_player.id %}<a class="ga-button" href="{{ url_for('settings',section='account') }}">{{ icon('edit') }}{{ t('Edit profile') }}</a><a class="ga-button ga-button-secondary" href="{{ url_for('settings') }}">{{ icon('settings') }}{{ t('Settings') }}</a>
+      {% elif current_user.is_authenticated %}<a class="ga-button" href="{{ url_for('direct_message',user_id=profile_player.id) }}">{{ icon('chat') }}{{ t('Message') }}</a>{% if connection and not is_blocked %}{% set connection_user_id=profile_player.id %}{% include '_connection_controls.html' %}{% endif %}{% endif %}
+    </div>
+  </div>
+</section>
+<dialog class="ga-friends-dialog" data-friends-dialog aria-labelledby="friends-title"><header><h2 id="friends-title">{{ t('Friends') }}</h2><button type="button" class="ga-icon-button" data-close-friends aria-label="{{ t('Close') }}">{{ icon('close') }}</button></header><div class="ga-friends-list" data-friend-list></div><p data-friends-status role="status"></p><button class="ga-button ga-button-secondary" data-more-friends hidden>{{ t('Load more') }}</button></dialog>

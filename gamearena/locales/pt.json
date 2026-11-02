@@ -716,5 +716,17 @@
   "Secure your account": "Proteja a sua conta",
   "18+ only. Your birthday is checked, not saved.": "Apenas maiores de 18. A sua data de nascimento é verificada, não guardada.",
   "Enter your date of birth and accept the terms below to continue with Google.": "Introduza a sua data de nascimento e aceite os termos abaixo para continuar com o Google.",
-  "Connecting to Google…": "A ligar ao Google…"
+  "Connecting to Google…": "A ligar ao Google…",
+  "Private chat": "Chat privado",
+  "Fullscreen chat": "Chat em ecrã inteiro",
+  "Exit fullscreen": "Sair do ecrã inteiro",
+  "Add friend": "Adicionar amigo",
+  "View request": "Ver pedido",
+  "Try again later": "Tente mais tarde",
+  "Load more": "Carregar mais",
+  "No friends yet.": "Ainda sem amigos.",
+  "Could not load friends. Please sign in and try again.": "Não foi possível carregar os amigos. Inicie sessão e tente novamente.",
+  "Request sent": "Pedido enviado",
+  "Could not send the request. Please try again.": "Não foi possível enviar o pedido. Tente novamente.",
+  "Loading…": "A carregar…"
 }

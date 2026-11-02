@@ -1,0 +1,11 @@
+# Profiles, chat and notifications
+
+- Public and own profiles share a cover driven by the equipped player-card cosmetic. Avatar frames and nameplates remain independent. No controller stock image, follower counts, cosmetic purchase or profile setting is substituted.
+- Friends shows accepted connections. Its authenticated, paginated popup excludes blocked/suspended users and private profiles, links to each player profile, and offers Add friend through the existing rate-limited, CSRF-protected connection route. Unfriend remains on player profiles.
+- Global chat has one heading. Private chat removes the overall inbox-unread label and accepted-friend controls from its header. Incoming requests still retain their consent controls.
+- Both chats have an icon-only fullscreen/X toggle, Escape support, native fullscreen where available and a viewport fallback. The inbox and app navigation are hidden while expanded; the composer remains available.
+- Message notifications delivered to a visible signed-in tab show a top toast and are acknowledged through an owner-scoped, CSRF-protected endpoint. They do not remain unread in the bell after acknowledgement. Actual unread chat messages remain unread until the conversation is viewed. Hidden tabs do not acknowledge incoming messages. The service worker also hands visible-window message pushes to the page instead of showing a second tray alert.
+- New message and friend-request push summaries have separate stable notification tags. They show the latest update per sender, capped at seven senders, ordered by newest notification. Queued older summaries cannot replace a newer one. User ownership and mute preferences are rechecked at delivery. Browser/OS notification rendering controls expansion arrows, line truncation and tray grouping: web push cannot reproduce WhatsApp's native expandable multi-row UI exactly.
+- The additive `20261102_social_notifications` migration adds nullable notification kind/sender metadata. Existing notification rows and wallet records are preserved; earlier alerts are not retroactively marked read or reclassified.
+
+Validation uses disposable PostgreSQL data, synthetic users, browser previews and service-worker tests. No live messages, friend requests, payments or phone pushes were sent during development. A real Android/iOS tray check is still needed after deployment.

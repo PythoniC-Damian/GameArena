@@ -49,8 +49,8 @@ def deliver_notification_push(notification_id):
         if preferences and record.category in names and not getattr(preferences, names[record.category]):
             return
         subscriptions = [item.subscription for item in PushSubscription.query.filter_by(user_id=record.user_id).all()]
-        outcome = deliver_push(subscriptions, {'title':'GameArena', 'body':record.message,
-            'url':record.target_url or '/notifications', 'id':record.id}, app.logger)
+        from gamearena.push_summary import payload_for
+        outcome = deliver_push(subscriptions, payload_for(record), app.logger)
         if outcome and outcome.get('expired'):
             PushSubscription.query.filter_by(user_id=record.user_id).filter(
                 PushSubscription.endpoint_hash.in_(outcome['expired'])).delete(synchronize_session=False)

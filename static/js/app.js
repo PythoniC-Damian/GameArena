@@ -30,7 +30,9 @@
   });
   document.addEventListener('click', event => { if (!menus.some(menu => menu.contains(event.target))) closeMenus(); });
   document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenus(true); });
+  let unreadRevision=0;
   function updateUnread(count) {
+    unreadRevision++;
     if (!Number.isFinite(Number(count))) return;
     count = Math.max(0, Number(count));
     document.querySelectorAll('[data-unread-badge]').forEach(badge => { badge.textContent = count > 99 ? '99+' : String(count); badge.hidden = count === 0; });
@@ -76,10 +78,15 @@
     const button = event.currentTarget; button.disabled = true;
     try { await markRead(button.dataset.url); } catch (error) { panel.textContent = error.message; } finally { button.disabled = false; }
   });
+  const shownToasts=new Set();
   window.gamearenaNotify = payload => {
+    if(document.hidden || (payload?.id && shownToasts.has(payload.id)))return;
+    if(payload?.id){shownToasts.add(payload.id);if(shownToasts.size>100)shownToasts.delete(shownToasts.values().next().value);}
     if (!payload?.message) return;
     let stack = document.querySelector('.ga-toast-stack');
     if (!stack) { stack = document.createElement('div'); stack.className = 'ga-toast-stack'; stack.setAttribute('aria-live','polite'); document.body.append(stack); }
+    const toastHost=document.fullscreenElement||document.body;
+    if(stack.parentNode!==toastHost)toastHost.append(stack);
     const toast = document.createElement('div'); toast.className = 'ga-toast';
     const text = document.createElement('a'); text.textContent = payload.message; text.href = internalURL(payload.target_url) || '/notifications';
     const close = document.createElement('button'); close.type = 'button'; close.textContent = '×'; close.setAttribute('aria-label','Dismiss notification'); close.addEventListener('click', () => toast.remove()); toast.append(text,close); stack.append(toast);
@@ -159,9 +166,10 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshConnections(); });
   function refreshUnread() {
     if (!header.dataset.unreadUrl || refreshing) return;
+    const revision=unreadRevision;
     refreshing = fetch(header.dataset.unreadUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' })
       .then(response => response.ok ? response.json() : null)
-      .then(data => { if (data) updateUnread(data.unread); }).catch(() => {})
+      .then(data => { if (data && revision===unreadRevision) updateUnread(data.unread); }).catch(() => {})
       .finally(() => { refreshing = null; });
   }
   if (header.dataset.userId && typeof io === 'function') {
@@ -170,9 +178,12 @@
     socket.on('player_connection_changed', payload => window.gamearenaRefreshConnection(Number(payload.partner_id)));
     if (socket.connected) socket.emit('join_user', { user_id: Number(header.dataset.userId) });
     socket.on('notification', payload => {
-      refreshUnread();
+      const liveMessage=payload?.kind==='messages'&&!document.hidden;
+      if(liveMessage)window.gamearenaSeenLive?.(payload);
+      if(!liveMessage)refreshUnread();
       window.gamearenaNotify(payload);
-      if (notificationMenu?.open) loadPreview();
+      if (!liveMessage && notificationMenu?.open) loadPreview();
+      if(liveMessage||payload?.read)return;
       const list = document.querySelector('[data-live-notifications]');
       if (!list || !payload?.message || (payload.id && list.querySelector(`[data-notification-id="${Number(payload.id)}"]`))) return;
       list.querySelector('[data-notification-empty]')?.remove();

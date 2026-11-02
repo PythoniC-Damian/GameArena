@@ -40,12 +40,21 @@ self.addEventListener('push', event => {
   let data;
   try { data = event.data.json(); } catch (_) { data = {body:'You have a new GameArena update.'}; }
   if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
-  const target = notificationTarget(data.url);
-  const url = target.pathname + target.search + target.hash;
-  event.waitUntil(self.registration.showNotification(data.title || 'GameArena', {
-    body:data.body || 'You have a new update.', icon:'/static/icons/icon-192.png',
-    badge:'/static/icons/icon-192.png', tag:`gamearena-${data.id || 'update'}`, data:{url}
-  }));
+  event.waitUntil((async()=>{
+    const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    const visible=windows.filter(client=>client.visibilityState==='visible');
+    if(data.kind==='messages'&&visible.length){visible.forEach(client=>client.postMessage({type:'gamearena-message',payload:data}));return;}
+    const target=notificationTarget(data.url),url=target.pathname+target.search+target.hash;
+    const group=['messages','requests'].includes(data.group)?data.group:null;
+    const tag=group?'gamearena-'+group:`gamearena-${data.id || 'update'}`;
+    const existing=await self.registration.getNotifications({tag});
+    if(group&&existing.some(item=>Number(item.data?.version)>Number(data.version)))return;
+    await self.registration.showNotification(data.title || 'GameArena', {
+      body:data.body || 'You have a new update.',icon:'/static/icons/icon-192.png',
+      badge:'/static/icons/icon-192.png',tag,renotify:!!group,
+      data:{url,version:data.version,kind:data.kind,entries:(data.entries||[]).slice(0,7)}
+    });
+  })());
 });
 function notificationTarget(value) {
   try {

@@ -333,6 +333,8 @@ class Notification(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     message = db.Column(db.String(500), nullable=False)
     category = db.Column(db.String(30), nullable=False, default='system')
+    kind = db.Column(db.String(20), nullable=True)
+    sender_id = db.Column(db.Integer, nullable=True)
     target_url = db.Column(db.String(500), nullable=True)
     read_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.now())
